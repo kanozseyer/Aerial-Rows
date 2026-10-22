@@ -265,7 +265,7 @@ fun SlidingRowsArea(
                             style = MaterialTheme.typography.titleMedium,
                             color = Color.White.copy(alpha = 0.75f),
                             letterSpacing = 1.6.sp,
-                            modifier = Modifier.padding(horizontal = 22.dp, bottom = 12.dp),
+                            modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 12.dp),
                         )
 
                         categorized.forEachIndexed { index, (category, _) ->
