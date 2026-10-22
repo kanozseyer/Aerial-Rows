@@ -11,6 +11,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
@@ -22,6 +23,16 @@ class MainActivity : ComponentActivity() {
     /** Bumped whenever a package is installed/removed so the app grid rescans. */
     var rescanTick by mutableIntStateOf(0)
         private set
+
+    private val tvListingsPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            // TvContentRepository may have queried before permission was granted.
+            // Recreate once so Watch Next / preview rows are queried immediately.
+            recreate()
+        }
+    }
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -78,24 +89,7 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences(PERMISSION_PREFS, MODE_PRIVATE)
         if (prefs.getBoolean(TV_LISTINGS_PROMPTED_KEY, false)) return
         prefs.edit().putBoolean(TV_LISTINGS_PROMPTED_KEY, true).apply()
-        requestPermissions(arrayOf(TV_LISTINGS_PERMISSION), TV_LISTINGS_PERMISSION_REQUEST)
-    }
-
-    @Deprecated("Deprecated in Android framework; retained for Android TV permission flow")
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray,
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (
-            requestCode == TV_LISTINGS_PERMISSION_REQUEST &&
-            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
-        ) {
-            // TvContentRepository may have queried while the permission dialog was
-            // still open. Recreate once so Watch Next / preview rows reload now.
-            recreate()
-        }
+        tvListingsPermissionLauncher.launch(TV_LISTINGS_PERMISSION)
     }
 
     override fun onDestroy() {
@@ -109,7 +103,6 @@ class MainActivity : ComponentActivity() {
         private const val PERMISSION_PREFS = "permissions"
         private const val TV_LISTINGS_PROMPTED_KEY = "tv_listings_prompted"
         private const val TV_LISTINGS_PERMISSION = "android.permission.READ_TV_LISTINGS"
-        private const val TV_LISTINGS_PERMISSION_REQUEST = 4107
 
         /** Mirror the chosen language so attachBaseContext can read it synchronously. */
         fun persistLocale(context: Context, lang: String) {
