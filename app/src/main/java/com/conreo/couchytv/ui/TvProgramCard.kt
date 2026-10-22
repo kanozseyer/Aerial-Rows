@@ -43,6 +43,7 @@ fun TvProgramCard(
     item: TvProgramItem,
     cardWidth: Dp,
     accent: Color,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -59,7 +60,7 @@ fun TvProgramCard(
 
     Surface(
         onClick = onClick,
-        modifier = Modifier.width(cardWidth),
+        modifier = modifier.width(cardWidth),
         shape = ClickableSurfaceDefaults.shape(SmoothCornerShape(LocalCornerRadius.current)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color(0xFF20242A),
