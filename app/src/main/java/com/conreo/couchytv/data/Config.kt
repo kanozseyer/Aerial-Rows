@@ -73,13 +73,14 @@ data class LauncherConfig(
     val uiScale: Int = 0, // Auto
     /** language code (e.g. "fr", "de"); empty = system default */
     val language: String = "",
-    /** 0 = carousel (fixed selection), 1 = grid, 2 = dock */
-    val layout: Int = 2, // Dock
+    /** 0 = carousel, 1 = grid, 2 = dock, 3 = Projectivy-style sliding rows */
+    val layout: Int = LAYOUT_SLIDING_ROWS,
 )
 
 const val LAYOUT_CAROUSEL = 0
 const val LAYOUT_GRID = 1
 const val LAYOUT_DOCK = 2
+const val LAYOUT_SLIDING_ROWS = 3
 
 /** Status bar date formats (SimpleDateFormat patterns); index 0 = off. */
 val DATE_FORMATS = listOf("", "EEE d", "EEE d MMM", "d MMM yyyy", "dd/MM", "MM/dd", "yyyy-MM-dd")
