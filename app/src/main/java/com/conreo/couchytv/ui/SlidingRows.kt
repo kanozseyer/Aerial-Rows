@@ -21,11 +21,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -40,6 +40,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -49,20 +50,19 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
+import com.conreo.couchytv.Actions
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.CategoryCfg
 import com.conreo.couchytv.data.LauncherConfig
+import com.conreo.couchytv.data.TvContentRepository
+import com.conreo.couchytv.data.TvContentRows
+import com.conreo.couchytv.data.TvProgramItem
 import kotlinx.coroutines.launch
 
 /**
  * Projectivy-inspired layout: vertically stacked sections, each one a normal
- * horizontally sliding LazyRow. Unlike Couchy's Carousel mode, the selected
- * card itself moves across the screen rather than remaining pinned at a pivot.
- *
- * The left navigation rail is hidden during normal browsing. Pressing LEFT on
- * the first card reveals it; pressing LEFT again transfers focus to the rail.
- * RIGHT from the rail collapses it and returns to the first card of the active
- * section.
+ * horizontally sliding LazyRow. Android TV Watch Next and preview channels are
+ * injected above app sections when the device/provider exposes them.
  */
 @Composable
 fun SlidingRowsArea(
@@ -79,6 +79,7 @@ fun SlidingRowsArea(
     onSettings: () -> Unit,
     onAndroidSettings: () -> Unit,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val verticalState = rememberLazyListState()
     var railVisible by remember { mutableStateOf(false) }
@@ -88,6 +89,22 @@ fun SlidingRowsArea(
         List(categorized.size) { FocusRequester() }
     }
 
+    val tvContent by produceState(
+        initialValue = TvContentRows(),
+        config.showWatchNext,
+        config.showPreviewChannels,
+        config.channelItemLimit,
+    ) {
+        value = TvContentRepository.load(context, config)
+    }
+    val tvRowCount = (if (tvContent.watchNext.isNotEmpty()) 1 else 0) + tvContent.channels.size
+
+    fun revealRail(): Boolean {
+        if (!railVisible) railVisible = true
+        else runCatching { railFocus.requestFocus() }
+        return true
+    }
+
     Box(modifier.fillMaxSize()) {
         LazyColumn(
             state = verticalState,
@@ -95,66 +112,109 @@ fun SlidingRowsArea(
                 .fillMaxSize()
                 .focusGroup(),
             contentPadding = PaddingValues(top = 12.dp, bottom = 36.dp),
-            verticalArrangement = Arrangement.spacedBy(22.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
+            if (tvContent.watchNext.isNotEmpty()) {
+                item(key = "__watch_next__") {
+                    TvContentRow(
+                        title = "WATCH NEXT",
+                        programs = tvContent.watchNext,
+                        config = config,
+                        accent = accent,
+                        cardWidth = cardWidth,
+                        gap = gap,
+                        onFirstLeft = { revealRail() },
+                        onLaunch = { item ->
+                            Actions.launchTvContent(context, item.intentUri, item.packageName)
+                        },
+                    )
+                }
+            }
+
+            itemsIndexed(
+                items = tvContent.channels,
+                key = { _, channel -> "channel:${channel.id}" },
+            ) { _, channel ->
+                TvContentRow(
+                    title = channel.name.uppercase(),
+                    programs = channel.programs,
+                    config = config,
+                    accent = accent,
+                    cardWidth = cardWidth,
+                    gap = gap,
+                    onFirstLeft = { revealRail() },
+                    onLaunch = { item ->
+                        Actions.launchTvContent(
+                            context,
+                            item.intentUri,
+                            item.packageName.ifBlank { channel.packageName },
+                        )
+                    },
+                )
+            }
+
             itemsIndexed(
                 items = categorized,
                 key = { _, pair -> pair.first.id },
             ) { rowIndex, (category, apps) ->
-                Column(Modifier.fillMaxWidth()) {
-                    if (config.showCategoryNames) {
-                        Text(
-                            text = category.name.uppercase(),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White.copy(alpha = 0.72f),
-                            letterSpacing = 1.4.sp,
-                            modifier = Modifier.padding(start = 52.dp, bottom = 10.dp),
-                        )
-                    }
-
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(start = 52.dp, end = 72.dp),
-                        horizontalArrangement = Arrangement.spacedBy(gap),
+                AerialPanel(
+                    config = config,
+                    shape = SmoothCornerShape(LocalCornerRadius.current + 12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 28.dp),
+                ) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp)
                     ) {
-                        itemsIndexed(
-                            items = apps,
-                            key = { _, app -> "${category.id}:${app.pkg}" },
-                        ) { appIndex, app ->
-                            val firstInRow = appIndex == 0
-                            var cardModifier: Modifier = Modifier.onFocusChanged {
-                                if (it.hasFocus) activeRow = rowIndex
-                            }
-                            if (firstInRow) {
-                                cardModifier = cardModifier
-                                    .focusRequester(firstCardFocus[rowIndex])
-                                    .onPreviewKeyEvent { event ->
-                                        if (event.type != KeyEventType.KeyDown || event.key != Key.DirectionLeft) {
-                                            return@onPreviewKeyEvent false
-                                        }
-                                        if (!railVisible) {
-                                            railVisible = true
-                                        } else {
-                                            runCatching { railFocus.requestFocus() }
-                                        }
-                                        true
-                                    }
-                            }
-                            if (movePkg == app.pkg) {
-                                cardModifier = cardModifier.focusRequester(moveFocus)
-                            }
-
-                            AppCard(
-                                app = app,
-                                isMoving = movePkg == app.pkg,
-                                isHidden = app.pkg in config.hidden,
-                                accent = accent,
-                                cardWidth = cardWidth,
-                                showLabel = config.showAppLabels,
-                                modifier = cardModifier,
-                                onLaunch = { onLaunch(app) },
-                                onLongPress = { onMenu(app) },
+                        if (config.showCategoryNames) {
+                            Text(
+                                text = category.name.uppercase(),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color.White.copy(alpha = 0.72f),
+                                letterSpacing = 1.4.sp,
+                                modifier = Modifier.padding(start = 24.dp, bottom = 10.dp),
                             )
+                        }
+
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(start = 24.dp, end = 44.dp, top = 4.dp, bottom = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(gap),
+                        ) {
+                            itemsIndexed(
+                                items = apps,
+                                key = { _, app -> "${category.id}:${app.pkg}" },
+                            ) { appIndex, app ->
+                                val firstInRow = appIndex == 0
+                                var cardModifier: Modifier = Modifier.onFocusChanged {
+                                    if (it.hasFocus) activeRow = rowIndex
+                                }
+                                if (firstInRow) {
+                                    cardModifier = cardModifier
+                                        .focusRequester(firstCardFocus[rowIndex])
+                                        .onPreviewKeyEvent { event ->
+                                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                                                revealRail()
+                                            } else false
+                                        }
+                                }
+                                if (movePkg == app.pkg) cardModifier = cardModifier.focusRequester(moveFocus)
+
+                                AppCard(
+                                    app = app,
+                                    isMoving = movePkg == app.pkg,
+                                    isHidden = app.pkg in config.hidden,
+                                    accent = accent,
+                                    cardWidth = cardWidth,
+                                    showLabel = config.showAppLabels,
+                                    modifier = cardModifier,
+                                    onLaunch = { onLaunch(app) },
+                                    onLongPress = { onMenu(app) },
+                                )
+                            }
                         }
                     }
                 }
@@ -168,8 +228,8 @@ fun SlidingRowsArea(
             modifier = Modifier.align(Alignment.CenterStart),
         ) {
             Surface(
-                shape = RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp),
-                colors = SurfaceDefaults.colors(containerColor = Color(0xE61A1C21)),
+                shape = SmoothCornerShape(22.dp),
+                colors = SurfaceDefaults.colors(containerColor = Color.Transparent),
                 modifier = Modifier
                     .width(250.dp)
                     .fillMaxHeight()
@@ -185,40 +245,103 @@ fun SlidingRowsArea(
                         }
                     },
             ) {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.10f))
-                        .padding(top = 42.dp, bottom = 28.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                AerialPanel(
+                    config = config.copy(
+                        panelOpacity = (config.panelOpacity + 2).coerceAtMost(10),
+                        panelEffectStrength = (config.panelEffectStrength + 1).coerceAtMost(5),
+                    ),
+                    shape = SmoothCornerShape(22.dp),
+                    modifier = Modifier.fillMaxSize(),
                 ) {
-                    Text(
-                        text = "AERIAL ROWS",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White.copy(alpha = 0.75f),
-                        letterSpacing = 1.6.sp,
-                        modifier = Modifier.padding(horizontal = 22.dp, bottom = 12.dp),
-                    )
-
-                    categorized.forEachIndexed { index, (category, _) ->
-                        RailItem(
-                            label = category.name,
-                            selected = index == activeRow,
-                            modifier = if (index == activeRow) Modifier.focusRequester(railFocus) else Modifier,
-                            onClick = {
-                                activeRow = index
-                                scope.launch {
-                                    verticalState.animateScrollToItem(index)
-                                    railVisible = false
-                                    firstCardFocus.getOrNull(index)?.let { runCatching { it.requestFocus() } }
-                                }
-                            },
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.08f))
+                            .padding(top = 42.dp, bottom = 28.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = "AERIAL ROWS",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White.copy(alpha = 0.75f),
+                            letterSpacing = 1.6.sp,
+                            modifier = Modifier.padding(horizontal = 22.dp, bottom = 12.dp),
                         )
-                    }
 
-                    Box(Modifier.weight(1f))
-                    RailItem(label = "Launcher settings", selected = false, onClick = onSettings)
-                    RailItem(label = "Android settings", selected = false, onClick = onAndroidSettings)
+                        categorized.forEachIndexed { index, (category, _) ->
+                            RailItem(
+                                label = category.name,
+                                selected = index == activeRow,
+                                modifier = if (index == activeRow) Modifier.focusRequester(railFocus) else Modifier,
+                                onClick = {
+                                    activeRow = index
+                                    scope.launch {
+                                        verticalState.animateScrollToItem(tvRowCount + index)
+                                        railVisible = false
+                                        firstCardFocus.getOrNull(index)?.let { runCatching { it.requestFocus() } }
+                                    }
+                                },
+                            )
+                        }
+
+                        Box(Modifier.weight(1f))
+                        RailItem(label = "Launcher settings", selected = false, onClick = onSettings)
+                        RailItem(label = "Android settings", selected = false, onClick = onAndroidSettings)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvContentRow(
+    title: String,
+    programs: List<TvProgramItem>,
+    config: LauncherConfig,
+    accent: Color,
+    cardWidth: Dp,
+    gap: Dp,
+    onFirstLeft: () -> Boolean,
+    onLaunch: (TvProgramItem) -> Unit,
+) {
+    AerialPanel(
+        config = config,
+        shape = SmoothCornerShape(LocalCornerRadius.current + 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 28.dp),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White.copy(alpha = 0.72f),
+                letterSpacing = 1.4.sp,
+                modifier = Modifier.padding(start = 24.dp, bottom = 10.dp),
+            )
+            LazyRow(
+                contentPadding = PaddingValues(start = 24.dp, end = 44.dp, top = 4.dp, bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                itemsIndexed(programs, key = { _, item -> item.id }) { index, item ->
+                    val nav = if (index == 0) {
+                        Modifier.onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) onFirstLeft()
+                            else false
+                        }
+                    } else Modifier
+                    TvProgramCard(
+                        item = item,
+                        cardWidth = cardWidth,
+                        accent = accent,
+                        modifier = nav,
+                        onClick = { onLaunch(item) },
+                    )
                 }
             }
         }
@@ -238,7 +361,7 @@ private fun RailItem(
         modifier = modifier
             .padding(horizontal = 10.dp)
             .onFocusChanged { focused = it.hasFocus },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+        shape = ClickableSurfaceDefaults.shape(SmoothCornerShape(12.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Color.White.copy(alpha = 0.10f) else Color.Transparent,
             focusedContainerColor = Color(0xFFF2F3F5),
