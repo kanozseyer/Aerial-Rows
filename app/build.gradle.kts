@@ -13,8 +13,8 @@ android {
         applicationId = "com.conreo.couchytv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.0.6"
+        versionCode = 8
+        versionName = "1.1.0-ar-dev"
     }
 
     val ciKeystore = System.getenv("KEYSTORE_FILE")
@@ -60,9 +60,10 @@ android {
 }
 
 /*
- * Aerial Rows keeps Couchy's two large upstream UI files close to upstream and
- * applies narrow, idempotent integration hooks before compilation. Each feature
- * has its own guard so an already-built local checkout can receive newer hooks.
+ * Aerial Rows adds narrow integration hooks to Couchy's two large upstream UI
+ * files before compilation. Each hook is idempotent, and each feature is
+ * checked independently so an older/partially patched local checkout upgrades
+ * cleanly instead of silently remaining stock Couchy.
  */
 val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches") {
     doLast {
@@ -70,11 +71,13 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
         var s = settings.readText()
 
         // 1) Fourth Display > Layout > View mode: Sliding Rows.
-        if (!s.contains("LAYOUT_SLIDING_ROWS")) {
+        if (!s.contains("import com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS")) {
             s = s.replace(
                 "import com.conreo.couchytv.data.LAYOUT_GRID\n",
                 "import com.conreo.couchytv.data.LAYOUT_GRID\nimport com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS\n",
             )
+        }
+        if (!s.contains("R.string.mode_sliding_rows")) {
             s = s.replace(
                 "value = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock))[config.layout.coerceIn(0, 2)],",
                 "value = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock), stringResource(R.string.mode_sliding_rows))[config.layout.coerceIn(0, 3)],",
@@ -87,8 +90,8 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
                 "steps = 3,\n            current = config.layout.coerceIn(0, 2),",
                 "steps = 4,\n            current = config.layout.coerceIn(0, 3),",
             )
-            check(s.contains("mode_sliding_rows")) { "Aerial Rows: failed to patch SettingsSheet view-mode selector" }
         }
+        check(s.contains("R.string.mode_sliding_rows")) { "Aerial Rows: failed to patch Display view-mode selector" }
 
         // 2) Content > Channels settings page.
         if (!s.contains("SettingsScreen.Channels")) {
@@ -114,17 +117,18 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
             supportingContent = { Text(stringResource(R.string.item_sections_sub)) },
             leadingContent = { Icon(AppIcons.Folder, contentDescription = null) },
         )"""
-            val channelsItem = sectionsItem + """
+            if (s.contains(sectionsItem) && !s.contains("onClick = onChannels")) {
+                val channelsItem = sectionsItem + """
         SettingsItem(
             selected = false, onClick = onChannels,
             headlineContent = { Text("Channels") },
             supportingContent = { Text("Watch Next and Android TV app channels") },
             leadingContent = { Icon(AppIcons.Play, contentDescription = null) },
         )"""
-            check(s.contains(sectionsItem)) { "Aerial Rows: Settings main-menu section hook not found" }
-            s = s.replace(sectionsItem, channelsItem)
-            check(s.contains("ChannelsSettingsScreen")) { "Aerial Rows: channel settings hook failed" }
+                s = s.replace(sectionsItem, channelsItem)
+            }
         }
+        check(s.contains("ChannelsSettingsScreen")) { "Aerial Rows: failed to patch Channels settings" }
 
         // 3) Display > Row & Dock Background controls.
         if (!s.contains("PanelAppearanceSettings(config = config, store = store)")) {
@@ -136,45 +140,81 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
             onSelect = { v -> update { it.copy(spacing = v) } },
         )"""
             check(s.contains(spacingBlock)) { "Aerial Rows: Display spacing hook not found" }
-            s = s.replace(
-                spacingBlock,
-                spacingBlock + "\n        PanelAppearanceSettings(config = config, store = store)",
-            )
+            s = s.replace(spacingBlock, spacingBlock + "\n        PanelAppearanceSettings(config = config, store = store)")
         }
 
-        // 4) Aerial Rows uses only Apple + Amazon. Remove Couchy's community
-        // collections from the selector as well as the runtime loader.
-        if (s.contains("R.string.aerial_src_comm1") || s.contains("R.string.aerial_src_comm2")) {
-            val oldSources = """            val sourceNames = listOf(
-                stringResource(R.string.aerial_src_all),
-                stringResource(R.string.aerial_src_apple),
-                stringResource(R.string.aerial_src_amazon),
-                stringResource(R.string.aerial_src_comm1),
-                stringResource(R.string.aerial_src_comm2),
-            )"""
-            val newSources = """            val sourceNames = listOf(
-                stringResource(R.string.aerial_src_all),
-                stringResource(R.string.aerial_src_apple),
-                stringResource(R.string.aerial_src_amazon),
-            )"""
-            check(s.contains(oldSources)) { "Aerial Rows: aerial source selector hook not found" }
-            s = s.replace(oldSources, newSources)
-            s = s.replace(
-                "val idx = config.builtinSource.coerceIn(0, sourceNames.size - 1)",
-                "val idx = if (config.builtinSource in sourceNames.indices) config.builtinSource else 0",
+        // 4) Multi-select aerial collections instead of All-or-one.
+        val oldCallback = """                        onSelectBuiltinSource = { v ->
+                            scope.launch { store.update { it.copy(builtinSource = v) } }
+                        },"""
+        val newCallback = """                        onSelectBuiltinSource = { v ->
+                            val key = listOf("A", "Z", "C1", "C2").getOrNull(v - 1)
+                            if (key != null) scope.launch {
+                                store.update { cfg ->
+                                    val next = if (key in cfg.builtinSources) cfg.builtinSources - key
+                                    else cfg.builtinSources + key
+                                    if (next.isEmpty()) cfg else cfg.copy(builtinSources = next)
+                                }
+                            }
+                        },"""
+        if (s.contains(oldCallback)) s = s.replace(oldCallback, newCallback)
+
+        val aerialStart = s.indexOf("        if (config.useBuiltinAerials) {")
+        val aerialEndMarker = "\n\n        // A video file of your own"
+        if (aerialStart >= 0) {
+            val aerialEnd = s.indexOf(aerialEndMarker, aerialStart)
+            check(aerialEnd > aerialStart) { "Aerial Rows: aerial source block end not found" }
+            val existing = s.substring(aerialStart, aerialEnd)
+            if (!existing.contains("builtinSources")) {
+                val multi = """        if (config.useBuiltinAerials) {
+            Text(
+                "AERIAL COLLECTIONS",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
             )
+            SettingsItem(
+                selected = false,
+                onClick = { onSelectBuiltinSource(1) },
+                headlineContent = { Text(stringResource(R.string.aerial_src_apple)) },
+                trailingContent = { CheckMark(checked = "A" in config.builtinSources) },
+            )
+            SettingsItem(
+                selected = false,
+                onClick = { onSelectBuiltinSource(2) },
+                headlineContent = { Text(stringResource(R.string.aerial_src_amazon)) },
+                trailingContent = { CheckMark(checked = "Z" in config.builtinSources) },
+            )
+            SettingsItem(
+                selected = false,
+                onClick = { onSelectBuiltinSource(3) },
+                headlineContent = { Text(stringResource(R.string.aerial_src_comm1)) },
+                trailingContent = { CheckMark(checked = "C1" in config.builtinSources) },
+            )
+            SettingsItem(
+                selected = false,
+                onClick = { onSelectBuiltinSource(4) },
+                headlineContent = { Text(stringResource(R.string.aerial_src_comm2)) },
+                trailingContent = { CheckMark(checked = "C2" in config.builtinSources) },
+            )
+        }"""
+                s = s.substring(0, aerialStart) + multi + s.substring(aerialEnd)
+            }
         }
+        check(s.contains("\"C1\" in config.builtinSources")) { "Aerial Rows: failed to patch multi-select aerial sources" }
         settings.writeText(s)
 
         val launcher = file("src/main/java/com/conreo/couchytv/ui/LauncherScreen.kt")
         var l = launcher.readText()
 
         // 5) Actual Sliding Rows renderer selection.
-        if (!l.contains("LAYOUT_SLIDING_ROWS")) {
+        if (!l.contains("import com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS")) {
             l = l.replace(
                 "import com.conreo.couchytv.data.LAYOUT_GRID\n",
                 "import com.conreo.couchytv.data.LAYOUT_GRID\nimport com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS\n",
             )
+        }
+        if (!l.contains("LAYOUT_SLIDING_ROWS -> SlidingRowsArea(")) {
             val hook = """                when (config.layout) {
                     LAYOUT_DOCK -> DockArea("""
             val replacement = """                when (config.layout) {
@@ -197,7 +237,14 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
             l = l.replace(hook, replacement)
         }
 
-        // 6) Make Couchy's Dock use the same Clear / Solid / Liquid Glass panel.
+        // 6) Built-in aerial player uses the multi-selected source set.
+        l = l.replace(
+            "com.conreo.couchytv.data.BuiltinAerials.load(context, config.builtinSource)",
+            "com.conreo.couchytv.data.BuiltinAerials.load(context, config.builtinSources)",
+        )
+        check(l.contains("BuiltinAerials.load(context, config.builtinSources)")) { "Aerial Rows: aerial player source hook failed" }
+
+        // 7) Make Couchy's Dock use the same Clear / Solid / Liquid Glass panel.
         if (!l.contains("// Aerial Rows customizable dock panel")) {
             val oldDockPanel = """            Box(
                 Modifier
