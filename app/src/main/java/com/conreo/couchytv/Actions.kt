@@ -22,6 +22,24 @@ object Actions {
         } else toast(context, context.getString(R.string.toast_no_launchable))
     }
 
+    /** Launch an Android TV preview/Watch Next program using the provider's intent URI. */
+    fun launchTvContent(context: Context, intentUri: String, packageName: String) {
+        if (intentUri.isNotBlank()) {
+            val launched = runCatching {
+                val intent = Intent.parseUri(intentUri, Intent.URI_INTENT_SCHEME).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }.isSuccess
+            if (launched) return
+        }
+        if (packageName.isNotBlank()) {
+            launchApp(context, packageName)
+        } else {
+            toast(context, context.getString(R.string.toast_cannot_open))
+        }
+    }
+
     fun openAppInfo(context: Context, pkg: String) {
         runCatching {
             context.startActivity(
