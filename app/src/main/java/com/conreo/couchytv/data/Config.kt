@@ -49,6 +49,13 @@ data class LauncherConfig(
     val h24: Boolean = true,
     val showHidden: Boolean = false,
     val setupDone: Boolean = false,
+    // ----- Android TV content rows -----
+    /** System Watch Next / Play Next content, when the device exposes it. */
+    val showWatchNext: Boolean = true,
+    /** App-published Android TV preview channels. */
+    val showPreviewChannels: Boolean = true,
+    /** Maximum cards loaded from each TV channel row. */
+    val channelItemLimit: Int = 12,
     // ----- status bar -----
     val showStatusBar: Boolean = true,
     /** package of the app the VPN icon opens; empty = system VPN settings */
@@ -71,6 +78,16 @@ data class LauncherConfig(
     val cornerRadius: Int = 3, // Large
     /** UI scale: 0 = Auto (compact high-DPI TVs), 1..5 = fixed (see UI_SCALES) */
     val uiScale: Int = 0, // Auto
+    /** Row + dock panel: clear, solid tint, or layered liquid-glass effect. */
+    val panelStyle: Int = PANEL_CLEAR,
+    /** Panel opacity step 0..10, representing 0%..100%. */
+    val panelOpacity: Int = 5,
+    /** 0 = neutral; 1..12 = 30-degree hue steps. */
+    val panelTintHue: Int = 0,
+    /** Tint saturation step 0..5. */
+    val panelTintSaturation: Int = 2,
+    /** Liquid-glass highlight/border strength step 0..5. */
+    val panelEffectStrength: Int = 3,
     /** language code (e.g. "fr", "de"); empty = system default */
     val language: String = "",
     /** 0 = carousel, 1 = grid, 2 = dock, 3 = Projectivy-style sliding rows */
@@ -81,6 +98,10 @@ const val LAYOUT_CAROUSEL = 0
 const val LAYOUT_GRID = 1
 const val LAYOUT_DOCK = 2
 const val LAYOUT_SLIDING_ROWS = 3
+
+const val PANEL_CLEAR = 0
+const val PANEL_SOLID = 1
+const val PANEL_LIQUID_GLASS = 2
 
 /** Status bar date formats (SimpleDateFormat patterns); index 0 = off. */
 val DATE_FORMATS = listOf("", "EEE d", "EEE d MMM", "d MMM yyyy", "dd/MM", "MM/dd", "yyyy-MM-dd")
