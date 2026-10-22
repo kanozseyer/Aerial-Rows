@@ -36,10 +36,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signing priority:
-            //  • CI (KEYSTORE_FILE env set)  → your real release key, from secrets.
-            //  • -PlocalSign                 → the auto-generated debug key (local test).
-            //  • otherwise (incl. F-Droid)   → UNSIGNED; F-Droid signs with its own key.
             signingConfig = when {
                 ciKeystore != null -> signingConfigs.getByName("ci")
                 project.hasProperty("localSign") -> signingConfigs.getByName("debug")
@@ -48,8 +44,6 @@ android {
         }
     }
 
-    // Reproducibility for F-Droid: don't embed the Google-signed dependency
-    // metadata block in the artifact.
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
@@ -68,16 +62,16 @@ android {
 }
 
 /*
- * Aerial Rows keeps Couchy's large upstream LauncherScreen/SettingsSheet files
- * intact in Git history while applying a tiny, idempotent integration patch
- * before Android compiles them. This makes upstream rebases much easier: the
- * custom SlidingRows renderer lives in its own file and these replacements are
- * deliberately narrow and fail loudly if Couchy's surrounding code changes.
+ * Aerial Rows keeps Couchy's two large upstream UI files close to upstream and
+ * applies narrow, idempotent integration hooks before compilation. Each feature
+ * has its own guard so an already-built local checkout can receive newer hooks.
  */
 val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches") {
     doLast {
         val settings = file("src/main/java/com/conreo/couchytv/ui/SettingsSheet.kt")
         var s = settings.readText()
+
+        // 1) Fourth Display > Layout > View mode: Sliding Rows.
         if (!s.contains("LAYOUT_SLIDING_ROWS")) {
             s = s.replace(
                 "import com.conreo.couchytv.data.LAYOUT_GRID\n",
@@ -91,13 +85,70 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
                 "LAYOUT_DOCK -> stringResource(R.string.mode_dock_desc)\n                else -> stringResource(R.string.mode_carousel_desc)",
                 "LAYOUT_DOCK -> stringResource(R.string.mode_dock_desc)\n                LAYOUT_SLIDING_ROWS -> stringResource(R.string.mode_sliding_rows_desc)\n                else -> stringResource(R.string.mode_carousel_desc)",
             )
-            s = s.replace("steps = 3,\n            current = config.layout.coerceIn(0, 2),", "steps = 4,\n            current = config.layout.coerceIn(0, 3),")
+            s = s.replace(
+                "steps = 3,\n            current = config.layout.coerceIn(0, 2),",
+                "steps = 4,\n            current = config.layout.coerceIn(0, 3),",
+            )
             check(s.contains("mode_sliding_rows")) { "Aerial Rows: failed to patch SettingsSheet view-mode selector" }
-            settings.writeText(s)
         }
+
+        // 2) Content > Channels settings page.
+        if (!s.contains("SettingsScreen.Channels")) {
+            s = s.replace(
+                "private enum class SettingsScreen { Main, Wallpaper, Display, StatusBar, Apps, Categories, Launcher, About }",
+                "private enum class SettingsScreen { Main, Wallpaper, Display, StatusBar, Apps, Channels, Categories, Launcher, About }",
+            )
+            s = s.replace(
+                "                        onApps = { screen = SettingsScreen.Apps },\n                        onCategories = { screen = SettingsScreen.Categories },",
+                "                        onApps = { screen = SettingsScreen.Apps },\n                        onChannels = { screen = SettingsScreen.Channels },\n                        onCategories = { screen = SettingsScreen.Categories },",
+            )
+            s = s.replace(
+                "                    SettingsScreen.Categories -> CategoriesScreen(",
+                "                    SettingsScreen.Channels -> ChannelsSettingsScreen(\n                        config = config,\n                        store = store,\n                    )\n                    SettingsScreen.Categories -> CategoriesScreen(",
+            )
+            s = s.replace(
+                "    onApps: () -> Unit,\n    onCategories: () -> Unit,",
+                "    onApps: () -> Unit,\n    onChannels: () -> Unit,\n    onCategories: () -> Unit,",
+            )
+            val sectionsItem = """        SettingsItem(
+            selected = false, onClick = onCategories,
+            headlineContent = { Text(stringResource(R.string.item_sections)) },
+            supportingContent = { Text(stringResource(R.string.item_sections_sub)) },
+            leadingContent = { Icon(AppIcons.Folder, contentDescription = null) },
+        )"""
+            val channelsItem = sectionsItem + """
+        SettingsItem(
+            selected = false, onClick = onChannels,
+            headlineContent = { Text("Channels") },
+            supportingContent = { Text("Watch Next and Android TV app channels") },
+            leadingContent = { Icon(AppIcons.Play, contentDescription = null) },
+        )"""
+            check(s.contains(sectionsItem)) { "Aerial Rows: Settings main-menu section hook not found" }
+            s = s.replace(sectionsItem, channelsItem)
+            check(s.contains("ChannelsSettingsScreen")) { "Aerial Rows: channel settings hook failed" }
+        }
+
+        // 3) Display > Row & Dock Background controls.
+        if (!s.contains("PanelAppearanceSettings(config = config, store = store)")) {
+            val spacingBlock = """        SelectorRow(
+            label = stringResource(R.string.spacing),
+            value = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl))[config.spacing.coerceIn(0, 4)],
+            steps = 5,
+            current = config.spacing.coerceIn(0, 4),
+            onSelect = { v -> update { it.copy(spacing = v) } },
+        )"""
+            check(s.contains(spacingBlock)) { "Aerial Rows: Display spacing hook not found" }
+            s = s.replace(
+                spacingBlock,
+                spacingBlock + "\n        PanelAppearanceSettings(config = config, store = store)",
+            )
+        }
+        settings.writeText(s)
 
         val launcher = file("src/main/java/com/conreo/couchytv/ui/LauncherScreen.kt")
         var l = launcher.readText()
+
+        // 4) Actual Sliding Rows renderer selection.
         if (!l.contains("LAYOUT_SLIDING_ROWS")) {
             l = l.replace(
                 "import com.conreo.couchytv.data.LAYOUT_GRID\n",
@@ -123,8 +174,27 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
                     LAYOUT_DOCK -> DockArea("""
             check(l.contains(hook)) { "Aerial Rows: LauncherScreen layout hook was not found" }
             l = l.replace(hook, replacement)
-            launcher.writeText(l)
         }
+
+        // 5) Make Couchy's Dock use the same Clear / Solid / Liquid Glass panel.
+        if (!l.contains("// Aerial Rows customizable dock panel")) {
+            val oldDockPanel = """            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(SmoothCornerShape(LocalCornerRadius.current + 14.dp))
+                    .background(Color(0xB3121418))
+                    .background(Color.White.copy(alpha = 0.06f))
+            )"""
+            val newDockPanel = """            // Aerial Rows customizable dock panel
+            AerialPanel(
+                config = config,
+                shape = SmoothCornerShape(LocalCornerRadius.current + 14.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {}"""
+            check(l.contains(oldDockPanel)) { "Aerial Rows: Dock background hook not found" }
+            l = l.replace(oldDockPanel, newDockPanel)
+        }
+        launcher.writeText(l)
 
         val strings = file("src/main/res/values/strings.xml")
         var x = strings.readText()
@@ -133,8 +203,8 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
             val extra = anchor + "\n    <string name=\"mode_sliding_rows\">Sliding Rows</string>\n    <string name=\"mode_sliding_rows_desc\">Projectivy-style horizontal rows — selection moves naturally and Left reveals the navigation pane</string>"
             check(x.contains(anchor)) { "Aerial Rows: strings.xml layout anchor was not found" }
             x = x.replace(anchor, extra)
-            strings.writeText(x)
         }
+        strings.writeText(x)
     }
 }
 
@@ -147,8 +217,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.tv:tv-material:1.0.0")
-    // iOS-style continuous (squircle) corners — perceptually smoother than the
-    // circular-arc RoundedCornerShape.
     implementation("androidx.graphics:graphics-shapes:1.0.1")
 
     implementation("androidx.core:core-ktx:1.13.1")
@@ -156,14 +224,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-    // Applies the bundled baseline profile (src/main/baseline-prof.txt) so the
-    // startup + scroll paths are AOT-compiled on first run instead of JIT'd —
-    // the big cold-start "screen shows but not smooth yet" win.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
-    // Video wallpaper playback — plays Apple .mov aerials that MediaPlayer can't
     implementation("androidx.media3:media3-exoplayer:1.4.1")
-    // OkHttp data source: lets us stream aerials through a trust-all TLS client
-    // so Apple's sylvan.apple.com (cert chain many TV trust stores reject) works.
     implementation("androidx.media3:media3-datasource-okhttp:1.4.1")
 }
