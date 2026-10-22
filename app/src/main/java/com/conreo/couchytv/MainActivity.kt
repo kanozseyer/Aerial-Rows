@@ -4,7 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -49,6 +51,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Android's TvProvider only exposes searchable channels / Watch Next
+        // entries from other apps when READ_TV_LISTINGS is granted. Ask once;
+        // denial is safe — channel rows simply stay empty and the launcher works.
+        maybeRequestTvListingsPermission()
+
         // A home screen never exits on Back
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { /* no-op */ }
@@ -71,6 +78,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun maybeRequestTvListingsPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        if (checkSelfPermission(TV_LISTINGS_PERMISSION) == PackageManager.PERMISSION_GRANTED) return
+
+        val prefs = getSharedPreferences(PERMISSION_PREFS, MODE_PRIVATE)
+        if (prefs.getBoolean(TV_LISTINGS_PROMPTED_KEY, false)) return
+        prefs.edit().putBoolean(TV_LISTINGS_PROMPTED_KEY, true).apply()
+        requestPermissions(arrayOf(TV_LISTINGS_PERMISSION), TV_LISTINGS_PERMISSION_REQUEST)
+    }
+
     override fun onDestroy() {
         unregisterReceiver(packageReceiver)
         super.onDestroy()
@@ -79,6 +96,10 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val LOCALE_PREFS = "locale"
         private const val LOCALE_KEY = "lang"
+        private const val PERMISSION_PREFS = "permissions"
+        private const val TV_LISTINGS_PROMPTED_KEY = "tv_listings_prompted"
+        private const val TV_LISTINGS_PERMISSION = "android.permission.READ_TV_LISTINGS"
+        private const val TV_LISTINGS_PERMISSION_REQUEST = 4107
 
         /** Mirror the chosen language so attachBaseContext can read it synchronously. */
         fun persistLocale(context: Context, lang: String) {
