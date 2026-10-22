@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -31,6 +32,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
@@ -40,6 +42,8 @@ import com.conreo.couchytv.data.LauncherConfig
 import com.conreo.couchytv.data.PANEL_CLEAR
 import com.conreo.couchytv.data.PANEL_LIQUID_GLASS
 import com.conreo.couchytv.data.PANEL_SOLID
+import com.conreo.couchytv.data.TvChannelRow
+import com.conreo.couchytv.data.TvContentRepository
 import kotlinx.coroutines.launch
 
 @Composable
@@ -48,6 +52,11 @@ fun ChannelsSettingsScreen(
     store: ConfigStore,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val channels by produceState(emptyList<TvChannelRow>()) {
+        value = TvContentRepository.discoverChannels(context)
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -78,24 +87,79 @@ fun ChannelsSettingsScreen(
         )
         ExtraSettingRow(
             title = "App preview channels",
-            subtitle = "Show browsable channels published by installed TV apps",
+            subtitle = "Master switch for browsable channels published by installed TV apps",
             checked = config.showPreviewChannels,
             onClick = {
                 scope.launch { store.update { it.copy(showPreviewChannels = !it.showPreviewChannels) } }
             },
         )
+
         val limits = listOf(4, 6, 8, 10, 12, 16, 20, 24, 30)
         val current = limits.indices.minByOrNull { kotlin.math.abs(limits[it] - config.channelItemLimit) } ?: 4
         ExtraSelector(
-            title = "Items per channel",
-            subtitle = "Limits artwork and memory use for every channel row",
+            title = "Default cards per channel",
+            subtitle = "Used unless a channel below has its own value",
             value = limits[current].toString(),
             steps = limits.size,
             current = current,
             onSelect = { i -> scope.launch { store.update { it.copy(channelItemLimit = limits[i]) } } },
         )
+
         Text(
-            "Rows are hidden automatically when Android TV or an app exposes no readable content.",
+            "INDIVIDUAL CHANNELS",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 8.dp, top = 16.dp, bottom = 4.dp),
+        )
+
+        if (channels.isEmpty()) {
+            Text(
+                "No readable preview channels are currently exposed by Android TV apps.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            )
+        } else {
+            channels.forEach { channel ->
+                val hidden = channel.key in config.hiddenTvChannels
+                ExtraSettingRow(
+                    title = channel.name,
+                    subtitle = channel.packageName.ifBlank { "Android TV channel" },
+                    checked = !hidden,
+                    onClick = {
+                        scope.launch {
+                            store.update { cfg ->
+                                cfg.copy(
+                                    hiddenTvChannels = if (channel.key in cfg.hiddenTvChannels)
+                                        cfg.hiddenTvChannels - channel.key
+                                    else cfg.hiddenTvChannels + channel.key
+                                )
+                            }
+                        }
+                    },
+                )
+                if (!hidden) {
+                    val value = config.channelItemLimits[channel.key] ?: config.channelItemLimit
+                    val index = limits.indices.minByOrNull { kotlin.math.abs(limits[it] - value) } ?: current
+                    ExtraSelector(
+                        title = "↳ ${channel.name}: cards shown",
+                        value = limits[index].toString(),
+                        steps = limits.size,
+                        current = index,
+                        onSelect = { i ->
+                            scope.launch {
+                                store.update { cfg ->
+                                    cfg.copy(channelItemLimits = cfg.channelItemLimits + (channel.key to limits[i]))
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        Text(
+            "The provider app decides which programmes belong to a preview channel and their programme order. Aerial Rows controls which channel rows are visible and how many cards each row displays.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp, top = 14.dp, end = 8.dp),
@@ -110,6 +174,26 @@ fun PanelAppearanceSettings(
     store: ConfigStore,
 ) {
     val scope = rememberCoroutineScope()
+
+    Text(
+        "SLIDING ROWS POSITION",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 12.dp, start = 8.dp, bottom = 4.dp),
+    )
+    val margins = listOf(0, 3, 6, 9, 12, 15, 20, 25, 30, 40, 50)
+    val marginIndex = margins.indices.minByOrNull {
+        kotlin.math.abs(margins[it] - config.rowsTopMarginPercent)
+    } ?: 2
+    ExtraSelector(
+        title = "Top row margin",
+        subtitle = "Space between the top of the screen and the first home row",
+        value = "${margins[marginIndex]}%",
+        steps = margins.size,
+        current = marginIndex,
+        onSelect = { i -> scope.launch { store.update { it.copy(rowsTopMarginPercent = margins[i]) } } },
+    )
+
     Text(
         "ROW & DOCK BACKGROUND",
         style = MaterialTheme.typography.labelMedium,
