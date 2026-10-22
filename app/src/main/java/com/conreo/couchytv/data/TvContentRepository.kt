@@ -1,0 +1,145 @@
+package com.conreo.couchytv.data
+
+import android.content.Context
+import android.media.tv.TvContract
+import android.net.Uri
+import android.os.Build
+import android.provider.BaseColumns
+import androidx.annotation.RequiresApi
+import androidx.compose.runtime.Immutable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+@Immutable
+data class TvProgramItem(
+    val id: Long,
+    val title: String,
+    val subtitle: String,
+    val artworkUri: String,
+    val intentUri: String,
+    val packageName: String,
+    val durationMs: Long,
+    val playbackPositionMs: Long,
+)
+
+@Immutable
+data class TvChannelRow(
+    val id: Long,
+    val name: String,
+    val packageName: String,
+    val programs: List<TvProgramItem>,
+)
+
+@Immutable
+data class TvContentRows(
+    val watchNext: List<TvProgramItem> = emptyList(),
+    val channels: List<TvChannelRow> = emptyList(),
+)
+
+/** Reads Android TV's system Watch Next row and app-published preview channels. */
+object TvContentRepository {
+
+    suspend fun load(context: Context, config: LauncherConfig): TvContentRows = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < 26) return@withContext TvContentRows()
+
+        val limit = config.channelItemLimit.coerceIn(4, 30)
+        val watchNext = if (config.showWatchNext) {
+            runCatching {
+                queryPrograms(context, TvContract.WatchNextPrograms.CONTENT_URI, limit)
+            }.getOrDefault(emptyList())
+        } else emptyList()
+
+        val channels = if (config.showPreviewChannels) {
+            runCatching { queryChannels(context, limit) }.getOrDefault(emptyList())
+        } else emptyList()
+
+        TvContentRows(watchNext = watchNext, channels = channels)
+    }
+
+    @RequiresApi(26)
+    private fun queryChannels(context: Context, limit: Int): List<TvChannelRow> {
+        val resolver = context.contentResolver
+        val projection = arrayOf(
+            BaseColumns._ID,
+            TvContract.Channels.COLUMN_DISPLAY_NAME,
+            TvContract.Channels.COLUMN_BROWSABLE,
+            TvContract.Channels.COLUMN_TYPE,
+            TvContract.Channels.COLUMN_PACKAGE_NAME,
+        )
+        val rows = mutableListOf<TvChannelRow>()
+        resolver.query(TvContract.Channels.CONTENT_URI, projection, null, null, null)?.use { cursor ->
+            val idCol = cursor.getColumnIndex(BaseColumns._ID)
+            val nameCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_DISPLAY_NAME)
+            val browsableCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_BROWSABLE)
+            val typeCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_TYPE)
+            val pkgCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_PACKAGE_NAME)
+            while (cursor.moveToNext()) {
+                val id = if (idCol >= 0) cursor.getLong(idCol) else continue
+                val type = if (typeCol >= 0) cursor.getString(typeCol).orEmpty() else ""
+                if (type != TvContract.Channels.TYPE_PREVIEW) continue
+                if (browsableCol >= 0 && cursor.getInt(browsableCol) == 0) continue
+
+                val programs = runCatching {
+                    queryPrograms(context, TvContract.buildPreviewProgramsUriForChannel(id), limit)
+                }.getOrDefault(emptyList())
+                if (programs.isEmpty()) continue
+
+                rows += TvChannelRow(
+                    id = id,
+                    name = if (nameCol >= 0) cursor.getString(nameCol).orEmpty().ifBlank { "Channel" } else "Channel",
+                    packageName = if (pkgCol >= 0) cursor.getString(pkgCol).orEmpty() else "",
+                    programs = programs,
+                )
+            }
+        }
+        return rows
+    }
+
+    @RequiresApi(26)
+    private fun queryPrograms(context: Context, uri: Uri, limit: Int): List<TvProgramItem> {
+        // Common BasePreviewProgram/WatchNext columns. Literal names make one
+        // reader work for both provider tables without pulling in another library.
+        val projection = arrayOf(
+            BaseColumns._ID,
+            "title",
+            "episode_title",
+            "short_description",
+            "poster_art_uri",
+            "thumbnail_uri",
+            "intent_uri",
+            "package_name",
+            "duration_millis",
+            "last_playback_position_millis",
+            "browsable",
+        )
+        val result = ArrayList<TvProgramItem>(limit)
+        context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            fun text(name: String): String {
+                val i = cursor.getColumnIndex(name)
+                return if (i >= 0 && !cursor.isNull(i)) cursor.getString(i).orEmpty() else ""
+            }
+            fun long(name: String): Long {
+                val i = cursor.getColumnIndex(name)
+                return if (i >= 0 && !cursor.isNull(i)) cursor.getLong(i) else 0L
+            }
+            val idCol = cursor.getColumnIndex(BaseColumns._ID)
+            val browsableCol = cursor.getColumnIndex("browsable")
+            while (cursor.moveToNext() && result.size < limit) {
+                if (browsableCol >= 0 && cursor.getInt(browsableCol) == 0) continue
+                val title = text("title")
+                if (title.isBlank()) continue
+                result += TvProgramItem(
+                    id = if (idCol >= 0) cursor.getLong(idCol) else result.size.toLong(),
+                    title = title,
+                    subtitle = text("episode_title").ifBlank { text("short_description") },
+                    artworkUri = text("poster_art_uri").ifBlank { text("thumbnail_uri") },
+                    intentUri = text("intent_uri"),
+                    packageName = text("package_name"),
+                    durationMs = long("duration_millis"),
+                    playbackPositionMs = long("last_playback_position_millis"),
+                )
+            }
+        }
+        return result
+    }
+}
