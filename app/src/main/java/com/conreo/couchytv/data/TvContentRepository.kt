@@ -25,6 +25,7 @@ data class TvProgramItem(
 @Immutable
 data class TvChannelRow(
     val id: Long,
+    val key: String,
     val name: String,
     val packageName: String,
     val programs: List<TvProgramItem>,
@@ -42,22 +43,54 @@ object TvContentRepository {
     suspend fun load(context: Context, config: LauncherConfig): TvContentRows = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < 26) return@withContext TvContentRows()
 
-        val limit = config.channelItemLimit.coerceIn(4, 30)
+        val defaultLimit = config.channelItemLimit.coerceIn(4, 30)
         val watchNext = if (config.showWatchNext) {
             runCatching {
-                queryPrograms(context, TvContract.WatchNextPrograms.CONTENT_URI, limit)
+                queryPrograms(context, TvContract.WatchNextPrograms.CONTENT_URI, defaultLimit)
             }.getOrDefault(emptyList())
         } else emptyList()
 
         val channels = if (config.showPreviewChannels) {
-            runCatching { queryChannels(context, limit) }.getOrDefault(emptyList())
+            runCatching {
+                queryChannels(
+                    context = context,
+                    defaultLimit = defaultLimit,
+                    hidden = config.hiddenTvChannels,
+                    perChannelLimits = config.channelItemLimits,
+                )
+            }.getOrDefault(emptyList())
         } else emptyList()
 
         TvContentRows(watchNext = watchNext, channels = channels)
     }
 
+    /**
+     * Settings uses this to show every readable channel, including channels the
+     * user has hidden from the home screen. Only a few programs are loaded for
+     * the preview so this remains cheap.
+     */
+    suspend fun discoverChannels(context: Context): List<TvChannelRow> = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < 26) return@withContext emptyList()
+        runCatching {
+            queryChannels(
+                context = context,
+                defaultLimit = 4,
+                hidden = emptySet(),
+                perChannelLimits = emptyMap(),
+            )
+        }.getOrDefault(emptyList())
+    }
+
+    fun channelKey(packageName: String, channelId: Long): String =
+        "${packageName.ifBlank { "unknown" }}:$channelId"
+
     @RequiresApi(26)
-    private fun queryChannels(context: Context, limit: Int): List<TvChannelRow> {
+    private fun queryChannels(
+        context: Context,
+        defaultLimit: Int,
+        hidden: Set<String>,
+        perChannelLimits: Map<String, Int>,
+    ): List<TvChannelRow> {
         val projection = arrayOf(
             BaseColumns._ID,
             TvContract.Channels.COLUMN_DISPLAY_NAME,
@@ -78,6 +111,14 @@ object TvContentRepository {
                 if (type != TvContract.Channels.TYPE_PREVIEW) continue
                 if (browsableCol >= 0 && cursor.getInt(browsableCol) == 0) continue
 
+                val name = if (nameCol >= 0) {
+                    cursor.getString(nameCol).orEmpty().ifBlank { "Channel" }
+                } else "Channel"
+                val packageName = if (pkgCol >= 0) cursor.getString(pkgCol).orEmpty() else ""
+                val key = channelKey(packageName, id)
+                if (key in hidden) continue
+
+                val limit = (perChannelLimits[key] ?: defaultLimit).coerceIn(4, 30)
                 val programs = runCatching {
                     queryPrograms(context, TvContract.buildPreviewProgramsUriForChannel(id), limit)
                 }.getOrDefault(emptyList())
@@ -85,8 +126,9 @@ object TvContentRepository {
 
                 rows += TvChannelRow(
                     id = id,
-                    name = if (nameCol >= 0) cursor.getString(nameCol).orEmpty().ifBlank { "Channel" } else "Channel",
-                    packageName = if (pkgCol >= 0) cursor.getString(pkgCol).orEmpty() else "",
+                    key = key,
+                    name = name,
+                    packageName = packageName,
                     programs = programs,
                 )
             }
