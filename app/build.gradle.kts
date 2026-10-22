@@ -130,7 +130,7 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
         }
         check(s.contains("ChannelsSettingsScreen")) { "Aerial Rows: failed to patch Channels settings" }
 
-        // 3) Display > Row & Dock Background controls.
+        // 3) Display > Row positioning + Row & Dock Background controls.
         if (!s.contains("PanelAppearanceSettings(config = config, store = store)")) {
             val spacingBlock = """        SelectorRow(
             label = stringResource(R.string.spacing),
@@ -221,7 +221,9 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
                     LAYOUT_SLIDING_ROWS -> SlidingRowsArea(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         categorized = categorized,
+                        allApps = apps,
                         config = config,
+                        store = store,
                         accent = accent,
                         movePkg = movePkg,
                         moveFocus = moveFocus,
@@ -235,6 +237,16 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
                     LAYOUT_DOCK -> DockArea("""
             check(l.contains(hook)) { "Aerial Rows: LauncherScreen layout hook was not found" }
             l = l.replace(hook, replacement)
+        }
+        // Upgrade already-patched local source from the older SlidingRowsArea signature.
+        if (l.contains("LAYOUT_SLIDING_ROWS -> SlidingRowsArea(") && !l.contains("allApps = apps,")) {
+            l = l.replace(
+                "                        categorized = categorized,\n                        config = config,",
+                "                        categorized = categorized,\n                        allApps = apps,\n                        config = config,\n                        store = store,",
+            )
+        }
+        check(l.contains("allApps = apps,") && l.contains("store = store,")) {
+            "Aerial Rows: failed to wire full app list/config store into Sliding Rows"
         }
 
         // 6) Built-in aerial player uses the multi-selected source set.
