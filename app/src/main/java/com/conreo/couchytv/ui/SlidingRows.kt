@@ -90,7 +90,7 @@ fun SlidingRowsArea(
     }
 
     val tvContent by produceState(
-        initialValue = TvContentRows(),
+        TvContentRows(),
         config.showWatchNext,
         config.showPreviewChannels,
         config.channelItemLimit,
