@@ -51,13 +51,28 @@ data class LauncherConfig(
     val h24: Boolean = true,
     val showHidden: Boolean = false,
     val setupDone: Boolean = false,
+
     // ----- Android TV content rows -----
     /** System Watch Next / Play Next content, when the device exposes it. */
     val showWatchNext: Boolean = true,
     /** App-published Android TV preview channels. */
     val showPreviewChannels: Boolean = true,
-    /** Maximum cards loaded from each TV channel row. */
+    /** Maximum cards loaded from each TV channel row unless overridden per channel. */
     val channelItemLimit: Int = 12,
+    /** Stable channel keys hidden by the user. */
+    val hiddenTvChannels: Set<String> = emptySet(),
+    /** Optional per-channel item limit, keyed by TvChannelRow.key. */
+    val channelItemLimits: Map<String, Int> = emptyMap(),
+
+    // ----- home row organization -----
+    /**
+     * Ordered row ids. Unknown/new rows are appended automatically, so provider
+     * channels can appear/disappear without corrupting the saved order.
+     */
+    val homeRowOrder: List<String> = emptyList(),
+    /** Gap between the top of the screen and the first Sliding Rows row, percent. */
+    val rowsTopMarginPercent: Int = 6,
+
     // ----- status bar -----
     val showStatusBar: Boolean = true,
     /** package of the app the VPN icon opens; empty = system VPN settings */
@@ -67,6 +82,7 @@ data class LauncherConfig(
     val statusBarGlass: Boolean = true,
     /** index into DATE_FORMATS; 0 = no date shown */
     val dateFormat: Int = 0,
+
     // ----- display options -----
     /** wallpaper dimming: 0 = top & bottom, 1 = top, 2 = bottom, 3 = full, 4 = off */
     val scrimMode: Int = 1, // Top
@@ -128,7 +144,16 @@ class ConfigStore(private val context: Context) {
         val valid = config.builtinSources.filter { it in ALL_AERIAL_SOURCES }.toSet()
         // Never leave built-in aerial mode with no playable collection.
         val sources = if (valid.isEmpty()) ALL_AERIAL_SOURCES else valid
-        return if (sources == config.builtinSources) config else config.copy(builtinSources = sources)
+        val topMargin = config.rowsTopMarginPercent.coerceIn(0, 50)
+        val defaultLimit = config.channelItemLimit.coerceIn(4, 30)
+        val perChannelLimits = config.channelItemLimits.mapValues { (_, value) -> value.coerceIn(4, 30) }
+        return config.copy(
+            builtinSources = sources,
+            rowsTopMarginPercent = topMargin,
+            channelItemLimit = defaultLimit,
+            channelItemLimits = perChannelLimits,
+            homeRowOrder = config.homeRowOrder.distinct(),
+        )
     }
 
     val flow: Flow<LauncherConfig> = context.dataStore.data.map { prefs ->
