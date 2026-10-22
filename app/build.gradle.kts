@@ -67,6 +67,81 @@ android {
     }
 }
 
+/*
+ * Aerial Rows keeps Couchy's large upstream LauncherScreen/SettingsSheet files
+ * intact in Git history while applying a tiny, idempotent integration patch
+ * before Android compiles them. This makes upstream rebases much easier: the
+ * custom SlidingRows renderer lives in its own file and these replacements are
+ * deliberately narrow and fail loudly if Couchy's surrounding code changes.
+ */
+val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches") {
+    doLast {
+        val settings = file("src/main/java/com/conreo/couchytv/ui/SettingsSheet.kt")
+        var s = settings.readText()
+        if (!s.contains("LAYOUT_SLIDING_ROWS")) {
+            s = s.replace(
+                "import com.conreo.couchytv.data.LAYOUT_GRID\n",
+                "import com.conreo.couchytv.data.LAYOUT_GRID\nimport com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS\n",
+            )
+            s = s.replace(
+                "value = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock))[config.layout.coerceIn(0, 2)],",
+                "value = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock), stringResource(R.string.mode_sliding_rows))[config.layout.coerceIn(0, 3)],",
+            )
+            s = s.replace(
+                "LAYOUT_DOCK -> stringResource(R.string.mode_dock_desc)\n                else -> stringResource(R.string.mode_carousel_desc)",
+                "LAYOUT_DOCK -> stringResource(R.string.mode_dock_desc)\n                LAYOUT_SLIDING_ROWS -> stringResource(R.string.mode_sliding_rows_desc)\n                else -> stringResource(R.string.mode_carousel_desc)",
+            )
+            s = s.replace("steps = 3,\n            current = config.layout.coerceIn(0, 2),", "steps = 4,\n            current = config.layout.coerceIn(0, 3),")
+            check(s.contains("mode_sliding_rows")) { "Aerial Rows: failed to patch SettingsSheet view-mode selector" }
+            settings.writeText(s)
+        }
+
+        val launcher = file("src/main/java/com/conreo/couchytv/ui/LauncherScreen.kt")
+        var l = launcher.readText()
+        if (!l.contains("LAYOUT_SLIDING_ROWS")) {
+            l = l.replace(
+                "import com.conreo.couchytv.data.LAYOUT_GRID\n",
+                "import com.conreo.couchytv.data.LAYOUT_GRID\nimport com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS\n",
+            )
+            val hook = """                when (config.layout) {
+                    LAYOUT_DOCK -> DockArea("""
+            val replacement = """                when (config.layout) {
+                    LAYOUT_SLIDING_ROWS -> SlidingRowsArea(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        categorized = categorized,
+                        config = config,
+                        accent = accent,
+                        movePkg = movePkg,
+                        moveFocus = moveFocus,
+                        cardWidth = cardWidth,
+                        gap = gap,
+                        onLaunch = { app -> if (movePkg == null) Actions.launchApp(context, app.pkg) },
+                        onMenu = { app -> if (movePkg == null) menuFor = app },
+                        onSettings = { showSettings = true },
+                        onAndroidSettings = { Actions.openSystemSettings(context) },
+                    )
+                    LAYOUT_DOCK -> DockArea("""
+            check(l.contains(hook)) { "Aerial Rows: LauncherScreen layout hook was not found" }
+            l = l.replace(hook, replacement)
+            launcher.writeText(l)
+        }
+
+        val strings = file("src/main/res/values/strings.xml")
+        var x = strings.readText()
+        if (!x.contains("name=\"mode_sliding_rows\"")) {
+            val anchor = "    <string name=\"mode_dock_desc\">Floating dock at the bottom — Down expands over a blurred wallpaper</string>"
+            val extra = anchor + "\n    <string name=\"mode_sliding_rows\">Sliding Rows</string>\n    <string name=\"mode_sliding_rows_desc\">Projectivy-style horizontal rows — selection moves naturally and Left reveals the navigation pane</string>"
+            check(x.contains(anchor)) { "Aerial Rows: strings.xml layout anchor was not found" }
+            x = x.replace(anchor, extra)
+            strings.writeText(x)
+        }
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(applyAerialRowsSourcePatches)
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))
     implementation("androidx.compose.ui:ui")
