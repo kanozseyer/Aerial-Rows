@@ -1,0 +1,43 @@
+{
+  "appQueries": {
+    "tv": {"action":"android.intent.action.MAIN","category":"android.intent.category.LEANBACK_LAUNCHER","queryFlags":64},
+    "mobile": {"action":"android.intent.action.MAIN","category":"android.intent.category.LAUNCHER","queryFlags":64},
+    "all":"tv + mobile"
+  },
+  "appSelection": {
+    "identity":"package_name",
+    "excludeMobileWhenLeanbackExists":true,
+    "dedupeByPackage":true,
+    "preferDefaultResolveInfo":true,
+    "sort":"activity label, case-insensitive"
+  },
+  "projectivyIds": {
+    "app":"packageName.hashCode()",
+    "shortcut":"shortcutId.hashCode()"
+  },
+  "recommendedIds": {
+    "app":"user + packageName",
+    "shortcut":"user + packageName + shortcutId"
+  },
+  "customizer": {
+    "serializedType":"com.spocky.projengmenu.actions.ActionCustomizer",
+    "preferenceKey":"action_customizers_list",
+    "fields":["actionId","customIconUri","customIconCrop","customTitle","launchCount","lastLaunchDate"]
+  },
+  "systemActions": {
+    "appInfo":"android.settings.APPLICATION_DETAILS_SETTINGS",
+    "uninstall":"android.intent.action.UNINSTALL_PACKAGE"
+  },
+  "packageEvents": {
+    "callback":"android.content.pm.LauncherApps.Callback",
+    "debounceMs":500,
+    "events":["PACKAGE_ADDED","PACKAGE_CHANGED","PACKAGE_REMOVED","PACKAGE_FULLY_REMOVED"]
+  },
+  "shortcutQueries": {
+    "homeRowFlags":2,
+    "perAppFlags":11,
+    "launchApi":"LauncherApps.startShortcut",
+    "pinApi":"LauncherApps.pinShortcuts"
+  },
+  "startAtBootPreference":"power_autostart_source"
+}
