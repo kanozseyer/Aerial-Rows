@@ -17,8 +17,6 @@ android {
         versionName = "1.0.6"
     }
 
-    // Release signing key, supplied by CI via environment variables (from GitHub
-    // secrets). Absent locally and on F-Droid, so this config stays inert there.
     val ciKeystore = System.getenv("KEYSTORE_FILE")
     signingConfigs {
         if (ciKeystore != null) {
@@ -143,12 +141,35 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
                 spacingBlock + "\n        PanelAppearanceSettings(config = config, store = store)",
             )
         }
+
+        // 4) Aerial Rows uses only Apple + Amazon. Remove Couchy's community
+        // collections from the selector as well as the runtime loader.
+        if (s.contains("R.string.aerial_src_comm1") || s.contains("R.string.aerial_src_comm2")) {
+            val oldSources = """            val sourceNames = listOf(
+                stringResource(R.string.aerial_src_all),
+                stringResource(R.string.aerial_src_apple),
+                stringResource(R.string.aerial_src_amazon),
+                stringResource(R.string.aerial_src_comm1),
+                stringResource(R.string.aerial_src_comm2),
+            )"""
+            val newSources = """            val sourceNames = listOf(
+                stringResource(R.string.aerial_src_all),
+                stringResource(R.string.aerial_src_apple),
+                stringResource(R.string.aerial_src_amazon),
+            )"""
+            check(s.contains(oldSources)) { "Aerial Rows: aerial source selector hook not found" }
+            s = s.replace(oldSources, newSources)
+            s = s.replace(
+                "val idx = config.builtinSource.coerceIn(0, sourceNames.size - 1)",
+                "val idx = if (config.builtinSource in sourceNames.indices) config.builtinSource else 0",
+            )
+        }
         settings.writeText(s)
 
         val launcher = file("src/main/java/com/conreo/couchytv/ui/LauncherScreen.kt")
         var l = launcher.readText()
 
-        // 4) Actual Sliding Rows renderer selection.
+        // 5) Actual Sliding Rows renderer selection.
         if (!l.contains("LAYOUT_SLIDING_ROWS")) {
             l = l.replace(
                 "import com.conreo.couchytv.data.LAYOUT_GRID\n",
@@ -176,7 +197,7 @@ val applyAerialRowsSourcePatches = tasks.register("applyAerialRowsSourcePatches"
             l = l.replace(hook, replacement)
         }
 
-        // 5) Make Couchy's Dock use the same Clear / Solid / Liquid Glass panel.
+        // 6) Make Couchy's Dock use the same Clear / Solid / Liquid Glass panel.
         if (!l.contains("// Aerial Rows customizable dock panel")) {
             val oldDockPanel = """            Box(
                 Modifier
