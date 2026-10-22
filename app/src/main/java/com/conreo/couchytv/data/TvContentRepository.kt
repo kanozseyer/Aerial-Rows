@@ -58,21 +58,20 @@ object TvContentRepository {
 
     @RequiresApi(26)
     private fun queryChannels(context: Context, limit: Int): List<TvChannelRow> {
-        val resolver = context.contentResolver
         val projection = arrayOf(
             BaseColumns._ID,
             TvContract.Channels.COLUMN_DISPLAY_NAME,
             TvContract.Channels.COLUMN_BROWSABLE,
             TvContract.Channels.COLUMN_TYPE,
-            TvContract.Channels.COLUMN_PACKAGE_NAME,
+            "package_name",
         )
         val rows = mutableListOf<TvChannelRow>()
-        resolver.query(TvContract.Channels.CONTENT_URI, projection, null, null, null)?.use { cursor ->
+        context.contentResolver.query(TvContract.Channels.CONTENT_URI, projection, null, null, null)?.use { cursor ->
             val idCol = cursor.getColumnIndex(BaseColumns._ID)
             val nameCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_DISPLAY_NAME)
             val browsableCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_BROWSABLE)
             val typeCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_TYPE)
-            val pkgCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_PACKAGE_NAME)
+            val pkgCol = cursor.getColumnIndex("package_name")
             while (cursor.moveToNext()) {
                 val id = if (idCol >= 0) cursor.getLong(idCol) else continue
                 val type = if (typeCol >= 0) cursor.getString(typeCol).orEmpty() else ""
@@ -97,8 +96,8 @@ object TvContentRepository {
 
     @RequiresApi(26)
     private fun queryPrograms(context: Context, uri: Uri, limit: Int): List<TvProgramItem> {
-        // Common BasePreviewProgram/WatchNext columns. Literal names make one
-        // reader work for both provider tables without pulling in another library.
+        // Shared preview/watch-next column names. Using literal provider names
+        // avoids Kotlin/JVM inherited-static binding differences across SDKs.
         val projection = arrayOf(
             BaseColumns._ID,
             "title",
