@@ -33,6 +33,8 @@ data class AppEntry(
     val autoCategory: String,
     /** Tile color precomputed at scan time — never hashed during composition. */
     val tile: Color,
+    /** Focus glow sampled from the app's own banner/icon artwork. */
+    val glow: Color,
     /** lastUpdateTime of the package — used to reuse entries across rescans. */
     val stamp: Long,
     /** firstInstallTime — tiebreak so a newly installed app sorts last in its section. */
@@ -155,13 +157,15 @@ object AppRepository {
                 banner?.prepareToDraw()
                 icon?.prepareToDraw()
 
+                val tile = tileColor(pkg)
                 AppEntry(
                     pkg = pkg,
                     label = runCatching { ri.loadLabel(pm)?.toString() }.getOrNull() ?: pkg,
                     banner = banner?.asImageBitmap(),
                     icon = icon?.asImageBitmap(),
                     autoCategory = autoCategory(ai.applicationInfo),
-                    tile = tileColor(pkg),
+                    tile = tile,
+                    glow = artworkGlowColor(banner ?: icon, tile),
                     stamp = stamp,
                     firstInstall = firstInstall,
                 )
@@ -179,6 +183,60 @@ object AppRepository {
         if (result == memoryCache) return@coroutineScope memoryCache!!
         memoryCache = result
         result
+    }
+
+    /**
+     * Samples a small grid from an app banner/icon and produces a bright,
+     * saturated focus colour. Near-black, near-white and transparent pixels are
+     * ignored so a logo background does not wash the glow out. This runs once
+     * during the existing artwork scan, never during focus/recomposition.
+     */
+    private fun artworkGlowColor(bitmap: Bitmap?, fallback: Color): Color {
+        bitmap ?: return fallback
+        if (bitmap.width <= 0 || bitmap.height <= 0) return fallback
+
+        val stepX = (bitmap.width / 24).coerceAtLeast(1)
+        val stepY = (bitmap.height / 14).coerceAtLeast(1)
+        val hsv = FloatArray(3)
+        var red = 0.0
+        var green = 0.0
+        var blue = 0.0
+        var weightTotal = 0.0
+
+        var y = stepY / 2
+        while (y < bitmap.height) {
+            var x = stepX / 2
+            while (x < bitmap.width) {
+                val pixel = bitmap.getPixel(x, y)
+                val alpha = android.graphics.Color.alpha(pixel)
+                if (alpha >= 96) {
+                    val r = android.graphics.Color.red(pixel)
+                    val g = android.graphics.Color.green(pixel)
+                    val b = android.graphics.Color.blue(pixel)
+                    android.graphics.Color.RGBToHSV(r, g, b, hsv)
+                    val saturation = hsv[1]
+                    val value = hsv[2]
+                    if (value in 0.12f..0.97f && saturation >= 0.16f) {
+                        val weight = 0.25 + saturation * 0.75
+                        red += r * weight
+                        green += g * weight
+                        blue += b * weight
+                        weightTotal += weight
+                    }
+                }
+                x += stepX
+            }
+            y += stepY
+        }
+
+        if (weightTotal <= 0.0) return fallback
+        val r = (red / weightTotal).toInt().coerceIn(0, 255)
+        val g = (green / weightTotal).toInt().coerceIn(0, 255)
+        val b = (blue / weightTotal).toInt().coerceIn(0, 255)
+        android.graphics.Color.RGBToHSV(r, g, b, hsv)
+        hsv[1] = hsv[1].coerceAtLeast(0.58f).coerceAtMost(0.95f)
+        hsv[2] = hsv[2].coerceAtLeast(0.78f).coerceAtMost(0.96f)
+        return Color(android.graphics.Color.HSVToColor(hsv))
     }
 
     /**
