@@ -26,8 +26,6 @@ class MainActivity : ComponentActivity() {
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val pkg = intent.data?.schemeSpecificPart
-            // Removals always rescan (the app may be on the grid). For installs and
-            // changes, skip the full scan unless the package is actually launchable.
             val launchable = pkg != null && (
                 packageManager.getLeanbackLaunchIntentForPackage(pkg) != null ||
                     packageManager.getLaunchIntentForPackage(pkg) != null
@@ -39,10 +37,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun attachBaseContext(newBase: Context) {
-        // Read the chosen UI language synchronously from SharedPreferences — cheap,
-        // and off the DataStore (a runBlocking DataStore read here blocked the main
-        // thread and made language changes hang until a restart). LauncherApp keeps
-        // this mirror in sync with the DataStore config and triggers recreate().
         val lang = newBase.getSharedPreferences(LOCALE_PREFS, MODE_PRIVATE)
             .getString(LOCALE_KEY, "").orEmpty()
         super.attachBaseContext(if (lang.isEmpty()) newBase else applyLocale(newBase, lang))
@@ -51,9 +45,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Android's TvProvider only exposes searchable channels / Watch Next
-        // entries from other apps when READ_TV_LISTINGS is granted. Ask once;
-        // denial is safe — channel rows simply stay empty and the launcher works.
+        // Android's TvProvider exposes searchable channels / Watch Next entries
+        // from other apps when READ_TV_LISTINGS is granted. Ask only once.
         maybeRequestTvListingsPermission()
 
         // A home screen never exits on Back
@@ -86,6 +79,23 @@ class MainActivity : ComponentActivity() {
         if (prefs.getBoolean(TV_LISTINGS_PROMPTED_KEY, false)) return
         prefs.edit().putBoolean(TV_LISTINGS_PROMPTED_KEY, true).apply()
         requestPermissions(arrayOf(TV_LISTINGS_PERMISSION), TV_LISTINGS_PERMISSION_REQUEST)
+    }
+
+    @Deprecated("Deprecated in Android framework; retained for Android TV permission flow")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (
+            requestCode == TV_LISTINGS_PERMISSION_REQUEST &&
+            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        ) {
+            // TvContentRepository may have queried while the permission dialog was
+            // still open. Recreate once so Watch Next / preview rows reload now.
+            recreate()
+        }
     }
 
     override fun onDestroy() {
