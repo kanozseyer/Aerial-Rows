@@ -1,0 +1,52 @@
+{
+  "target": {"package":"com.spocky.projengmenu","version":"4.72","versionCode":97},
+  "rows": [
+    {"id":12,"name":"Now Playing","type":8,"source":"media_notifications"},
+    {"id":1,"name":"Inputs","type":1,"source":"tv_inputs"},
+    {"id":2,"name":"Favorites","type":0,"source":"manual"},
+    {"id":20,"name":"Video","type":0,"source":"manual"},
+    {"id":21,"name":"Music","type":0,"source":"manual"},
+    {"id":22,"name":"Games","type":0,"source":"manual"},
+    {"id":3,"name":"TV Apps","type":2,"source":"tv_apps"},
+    {"id":4,"name":"Mobile Apps","type":3,"source":"mobile_apps"},
+    {"id":10,"name":"Watch Next","type":5,"source":"watch_next"},
+    {"id":11,"name":"Shortcuts","type":7,"source":"launcher_shortcuts"},
+    {"id":13,"name":"Folders","type":9,"source":"category_folders"},
+    {"id":14,"name":"Live TV","type":10,"source":"live_tv"},
+    {"id":5,"name":"Settings","type":4,"source":"static_tools"},
+    {"id":6,"name":"Display","type":4,"source":"static_tools"},
+    {"id":7,"name":"Apps","type":4,"source":"static_tools"},
+    {"id":8,"name":"System","type":4,"source":"static_tools"},
+    {"id":9,"name":"About","type":4,"source":"static_tools"}
+  ],
+  "rowTypeSources": {
+    "0":"manual/custom action IDs",
+    "1":"TV inputs/source registry",
+    "2":"TV/Leanback apps",
+    "3":"mobile launcher apps",
+    "4":"static Projectivy tools",
+    "5":"Android TV Watch Next provider",
+    "6":"Android TV channel programs",
+    "7":"Launcher shortcuts",
+    "8":"active media/notification sessions",
+    "9":"category/folder cards",
+    "10":"live TV/input collection"
+  },
+  "cardPresenterByType": {
+    "0":"q64","1":"q64","2":"rb","3":"rb","4":"q64",
+    "5":"ek3","6":"ek3","7":"q94","8":"d73","9":"dk1","10":"wj2"
+  },
+  "namedEvidence": {
+    "activity":"com.spocky.projengmenu.ui.home.MainActivity",
+    "fragment":"com.spocky.projengmenu.ui.home.MainFragment",
+    "rowRepository":"defpackage.w40",
+    "rowModel":"defpackage.i5",
+    "rowWrapper":"defpackage.eb3",
+    "cardBase":"defpackage.t4",
+    "rowAdapter":"defpackage.po2",
+    "rowPresenterSelector":"defpackage.ui2",
+    "cardPresenterSelector":"defpackage.r30",
+    "headerPresenter":"defpackage.r12",
+    "preferencesRegistry":"defpackage.hj3"
+  }
+}
