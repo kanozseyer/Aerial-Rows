@@ -41,8 +41,10 @@ data class LauncherConfig(
     val useVideoWallpaper: Boolean = false,
     /** built-in aerials source */
     val useBuiltinAerials: Boolean = false,
-    /** 0 = all (Apple + Amazon), 1 = Apple, 2 = Amazon */
+    /** Legacy single-source value kept only so older Couchy backups still decode. */
     val builtinSource: Int = 0,
+    /** Aerial collections enabled together. A=Apple, Z=Amazon, C1/C2=community. */
+    val builtinSources: Set<String> = setOf("A", "Z", "C1", "C2"),
     /** video wallpaper playback speed: index into VIDEO_SPEEDS */
     val videoSpeed: Int = 3, // 1x
     val accent: Int = 0,
@@ -103,6 +105,8 @@ const val PANEL_CLEAR = 0
 const val PANEL_SOLID = 1
 const val PANEL_LIQUID_GLASS = 2
 
+val ALL_AERIAL_SOURCES = setOf("A", "Z", "C1", "C2")
+
 /** Status bar date formats (SimpleDateFormat patterns); index 0 = off. */
 val DATE_FORMATS = listOf("", "EEE d", "EEE d MMM", "d MMM yyyy", "dd/MM", "MM/dd", "yyyy-MM-dd")
 
@@ -120,8 +124,12 @@ private val json = Json { ignoreUnknownKeys = true }
 
 class ConfigStore(private val context: Context) {
 
-    private fun normalize(config: LauncherConfig): LauncherConfig =
-        if (config.builtinSource in 0..2) config else config.copy(builtinSource = 0)
+    private fun normalize(config: LauncherConfig): LauncherConfig {
+        val valid = config.builtinSources.filter { it in ALL_AERIAL_SOURCES }.toSet()
+        // Never leave built-in aerial mode with no playable collection.
+        val sources = if (valid.isEmpty()) ALL_AERIAL_SOURCES else valid
+        return if (sources == config.builtinSources) config else config.copy(builtinSources = sources)
+    }
 
     val flow: Flow<LauncherConfig> = context.dataStore.data.map { prefs ->
         val loaded = prefs[KEY_CONFIG]?.let {
