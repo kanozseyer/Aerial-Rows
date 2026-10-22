@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
+import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.CategoryCfg
@@ -169,10 +169,7 @@ fun SlidingRowsArea(
         ) {
             Surface(
                 shape = RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp),
-                colors = ClickableSurfaceDefaults.colors(
-                    containerColor = Color(0xE61A1C21),
-                    focusedContainerColor = Color(0xE61A1C21),
-                ),
+                colors = SurfaceDefaults.colors(containerColor = Color(0xE61A1C21)),
                 modifier = Modifier
                     .width(250.dp)
                     .fillMaxHeight()
@@ -187,7 +184,6 @@ fun SlidingRowsArea(
                             else -> false
                         }
                     },
-                onClick = {},
             ) {
                 Column(
                     Modifier
