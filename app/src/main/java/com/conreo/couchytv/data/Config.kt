@@ -41,7 +41,7 @@ data class LauncherConfig(
     val useVideoWallpaper: Boolean = false,
     /** built-in aerials source */
     val useBuiltinAerials: Boolean = false,
-    /** which built-in collection (index into BuiltinAerials.SOURCES; 0 = all) */
+    /** 0 = all (Apple + Amazon), 1 = Apple, 2 = Amazon */
     val builtinSource: Int = 0,
     /** video wallpaper playback speed: index into VIDEO_SPEEDS */
     val videoSpeed: Int = 3, // 1x
@@ -120,10 +120,14 @@ private val json = Json { ignoreUnknownKeys = true }
 
 class ConfigStore(private val context: Context) {
 
+    private fun normalize(config: LauncherConfig): LauncherConfig =
+        if (config.builtinSource in 0..2) config else config.copy(builtinSource = 0)
+
     val flow: Flow<LauncherConfig> = context.dataStore.data.map { prefs ->
-        prefs[KEY_CONFIG]?.let {
+        val loaded = prefs[KEY_CONFIG]?.let {
             runCatching { json.decodeFromString<LauncherConfig>(it) }.getOrNull()
         } ?: LauncherConfig(categories = defaultCategories(context))
+        normalize(loaded)
     }
 
     private fun defaultCategories(ctx: Context) = listOf(
@@ -138,7 +142,7 @@ class ConfigStore(private val context: Context) {
             val current = prefs[KEY_CONFIG]?.let {
                 runCatching { json.decodeFromString<LauncherConfig>(it) }.getOrNull()
             } ?: LauncherConfig()
-            prefs[KEY_CONFIG] = json.encodeToString(transform(current))
+            prefs[KEY_CONFIG] = json.encodeToString(normalize(transform(normalize(current))))
         }
     }
 }
