@@ -1,0 +1,29 @@
+{
+  "uris": {
+    "channels": "content://android.media.tv/channel",
+    "previewPrograms": "content://android.media.tv/preview_program",
+    "watchNext": "content://android.media.tv/watch_next_program"
+  },
+  "channels": {
+    "projection": ["_id","package_name","type","display_name","description","app_link_intent_uri","internal_provider_id"],
+    "filter": {"type":"TYPE_PREVIEW","excludePackageContains":".tvrecommendations"}
+  },
+  "programProjection": [
+    "package_name","title","short_description","poster_art_uri","thumbnail_uri","channel_id","weight","browsable","intent_uri","preview_video_uri","logo_uri","poster_art_aspect_ratio","poster_thumbnail_aspect_ratio","season_display_number","episode_display_number","duration_millis","last_playback_position_millis","type","author","genre","release_date","_id"
+  ],
+  "previewPrograms": {
+    "sort":"weight DESC",
+    "specificChannelUri":"content://android.media.tv/preview_program?channel=<id>",
+    "requiresBrowsable":true,
+    "requiresIntentUri":true,
+    "limitPreference":"action_channel_general_programs_per_channel"
+  },
+  "watchNext": {
+    "sort":"last_engagement_time_utc_millis DESC",
+    "requiresBrowsable":true,
+    "requiresIntentUri":true,
+    "limitPreference":"action_watch_next_programs_per_app"
+  },
+  "cache": {"observedHomeRefreshMs":30000},
+  "permission":"android.permission.READ_TV_LISTINGS"
+}
