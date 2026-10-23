@@ -1,0 +1,81 @@
+name: Phase 0A Source Materializer
+
+on:
+  push:
+    branches: [phase0a-source-pure]
+    paths:
+      - '.github/workflows/phase0a-materialize.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Phase 0A branch
+        uses: actions/checkout@v4
+        with:
+          ref: phase0a-source-pure
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize current Aerial Rows source patches
+        run: ./gradlew applyAerialRowsSourcePatches --no-daemon
+
+      - name: Remove build-time source rewriting and add cleanliness gate
+        shell: python
+        run: |
+          from pathlib import Path
+
+          gradle = Path('app/build.gradle.kts')
+          text = gradle.read_text()
+          marker = '/*\n * Aerial Rows adds narrow integration hooks'
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit('Phase 0A: source patch block start not found')
+          end = text.find('dependencies {', start)
+          if end < 0:
+              raise SystemExit('Phase 0A: dependencies block not found')
+          gradle.write_text(text[:start] + text[end:])
+
+          workflow = Path('.github/workflows/build.yml')
+          build = workflow.read_text()
+          anchor = '      - name: Build (debug + unsigned release) and lint\n        run: ./gradlew assembleDebug assembleRelease lintRelease --no-daemon\n'
+          if anchor not in build:
+              raise SystemExit('Phase 0A: build workflow anchor not found')
+          gate = anchor + '''\n      - name: Verify build does not mutate tracked source\n        shell: bash\n        run: |\n          if ! git diff --exit-code; then\n            echo "::error::Gradle build mutated tracked repository files"\n            git status --short\n            exit 1\n          fi\n'''
+          workflow.write_text(build.replace(anchor, gate, 1))
+
+      - name: Verify source is now fully materialized
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -q 'applyAerialRowsSourcePatches' app/build.gradle.kts
+          grep -q 'LAYOUT_SLIDING_ROWS -> SlidingRowsArea(' app/src/main/java/com/conreo/couchytv/ui/LauncherScreen.kt
+          grep -q 'SettingsScreen.Channels' app/src/main/java/com/conreo/couchytv/ui/SettingsSheet.kt
+          grep -q '"C1" in config.builtinSources' app/src/main/java/com/conreo/couchytv/ui/SettingsSheet.kt
+          grep -q 'name="mode_sliding_rows"' app/src/main/res/values/strings.xml
+
+      - name: Commit materialized source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Aerial Rows Phase 0A'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/com/conreo/couchytv/ui/LauncherScreen.kt \
+                  app/src/main/java/com/conreo/couchytv/ui/SettingsSheet.kt \
+                  app/src/main/res/values/strings.xml \
+                  .github/workflows/build.yml
+          git diff --cached --check
+          git commit -m 'Materialize Aerial Rows source patches'
+          git push origin HEAD:phase0a-source-pure
