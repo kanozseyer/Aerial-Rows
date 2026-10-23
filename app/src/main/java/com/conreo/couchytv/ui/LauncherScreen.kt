@@ -81,6 +81,8 @@ import com.conreo.couchytv.core.launch.LaunchRequest
 import com.conreo.couchytv.core.launch.LaunchTarget
 import com.conreo.couchytv.core.model.AppId
 import com.conreo.couchytv.feature.wallpaper.VideoWallpaper
+import com.conreo.couchytv.feature.wallpaper.AerialProviderResult
+import com.conreo.couchytv.feature.wallpaper.createBuiltinAerialProvider
 import com.conreo.couchytv.integration.android.createDefaultLaunchDispatcher
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.AppRepository
@@ -568,8 +570,7 @@ fun LauncherApp(rescanTick: Int) {
     }
 
     // ----- Built-in aerial videos: typed metadata + fair shuffle bag. -----
-    val aerialShuffleBag = remember { com.conreo.couchytv.data.AerialShuffleBag() }
-    val aerialFailures = remember { com.conreo.couchytv.data.AerialFailureTracker() }
+    val aerialProvider = remember(context) { createBuiltinAerialProvider(context) }
     val aerialWallpaper by produceState<com.conreo.couchytv.data.AerialItem?>(
         initialValue = null,
         config.useBuiltinAerials, config.builtinSources, aerialVersion,
@@ -581,24 +582,21 @@ fun LauncherApp(rescanTick: Int) {
         // NOTE: value is intentionally NOT reset here — when the collection
         // changes, the previous video keeps playing until the new one is
         // picked, instead of flashing back to the preset background.
-        val aerials = withContext(Dispatchers.IO) {
-            com.conreo.couchytv.data.BuiltinAerials.loadItems(context, config.builtinSources)
+        when (val result = aerialProvider.next(config.builtinSources)) {
+            is AerialProviderResult.Ready -> value = result.item
+            is AerialProviderResult.RetryAfter -> {
+                // Every selected clip is temporarily quarantined. Drop back to
+                // the preset and wake when the earliest clip can be retried.
+                value = null
+                delay(result.delayMs.coerceAtLeast(1_000L))
+                aerialVersion++
+                return@produceState
+            }
+            AerialProviderResult.Empty -> {
+                value = null
+                return@produceState
+            }
         }
-        aerialFailures.retain(aerials.mapTo(linkedSetOf()) { it.id })
-        val eligibleAerials = aerialFailures.eligible(aerials)
-        if (eligibleAerials.isEmpty()) {
-            // Every selected clip is temporarily quarantined. Drop back to the
-            // preset instead of hammering known-bad streams, then retry the first
-            // clip whose quarantine expires.
-            value = null
-            val retryDelay = aerialFailures.retryDelayMs(aerials) ?: return@produceState
-            delay(retryDelay.coerceAtLeast(1_000L))
-            aerialVersion++
-            return@produceState
-        }
-        // A source-set or quarantine change rebuilds the bag for the currently
-        // eligible catalogue while preventing an immediate repeat.
-        value = aerialShuffleBag.next(eligibleAerials) ?: return@produceState
         // Clip end advances immediately; the timer is only a safety cap for very
         // long clips. Every eligible clip is consumed before the bag refills.
         delay(10 * 60_000L)
@@ -668,14 +666,14 @@ fun LauncherApp(rescanTick: Int) {
                     // isn't ready yet. Fall back to the gradient and retry via
                     // aerialError, instead of sitting on the gradient cover.
                     onEnded = {
-                        aerialWallpaper?.let { aerialFailures.recordSuccess(it.id) }
+                        aerialWallpaper?.let { aerialProvider.recordSuccess(it.id) }
                         aerialVersion++
                     },
                     onError = {
                         // Player error + stall watchdog can both fire for one load.
                         // Count that visible playback attempt only once.
                         if (!aerialError) {
-                            aerialWallpaper?.let { aerialFailures.recordFailure(it.id) }
+                            aerialWallpaper?.let { aerialProvider.recordFailure(it.id) }
                             aerialError = true
                         }
                     },
