@@ -5,7 +5,7 @@ Expected corpus: `docs/ai-handoff/raw/SOURCE_CATALOG.json`
 Machine state: `docs/ai-handoff/raw/ARCHIVE_MANIFEST.json`  
 Validator: `python docs/ai-handoff/tools/validate_archive.py`
 
-**Export Process v5** is authoritative. C1-C7 remain byte-exact raw Markdown; C8 onward may use lossless `gzip-base64` transport with exact original Markdown reconstruction.
+**Export Process v5 is frozen.** Do not redesign the export method unless the existing validator fails.
 
 ## Orientation/context layer
 
@@ -13,25 +13,18 @@ Validator: `python docs/ai-handoff/tools/validate_archive.py`
 
 ## Raw Couchy archive
 
-- C01-C07 — COMPLETE / validated
-- C08 — COMPLETE / compressed transport / exact source reconstruction
-- C09 — PENDING
-- C10 — PENDING
-- C11 — PENDING
-- C12 — PENDING
+**C01-C12 — COMPLETE / validated source identities / manifested**
 
 ## Projectivy raw archive
 
-**PENDING.** The expected original + authoritative post-closure corpus is machine-cataloged in `SOURCE_CATALOG.json`.
+**NEXT: Stage 2 — Projectivy G1-G4 originals + post-closure audits.**
+
+Remaining after that: G5-G8, G9-G12, then final process/chat closure.
 
 ## Audit-process/tooling archive
 
-**PENDING**, except final contract/process-bundle reference hashes are cataloged. Do not commit proprietary analysis binaries/source.
+Final closure remains pending. Do not commit proprietary APK/decompiled source/JADX/REA binaries.
 
 ## Final E9
 
-Run `validate_archive.py --require-complete`, verify process-history coverage, and compare against the pre-export application baseline to prove the export changed documentation/workflow only.
-
-## Current continuation point
-
-**Next subgroup: E4a — raw Couchy C09 only.**
+Run `validate_archive.py --require-complete`, verify process/chat coverage, and compare against the research baseline to prove export changes are documentation/workflow only.
