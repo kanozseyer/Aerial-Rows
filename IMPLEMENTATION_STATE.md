@@ -15,7 +15,8 @@ The active implementation phase is **Phase 6 — settings architecture**. Phases
 Merged Phase 6 milestones:
 
 - semantic settings navigation and shared choice controls: `891bcdb257110ddcad74312e54a07f7c8d704a51`;
-- debounced settings runtime, Display/Wallpaper semantic focus and CI/cache speed work: `d458d2ed92a8c820c8634bb7aca73984d6a0016b`.
+- debounced settings runtime, Display/Wallpaper semantic focus and CI/cache speed work: `d458d2ed92a8c820c8634bb7aca73984d6a0016b`;
+- panel semantic focus, debounced panel controls and live optimistic preview: `177900956ac46c9e48526df1f019b7f55083bdcf`.
 
 ## Phase 5 completion checkpoint
 
@@ -23,29 +24,29 @@ The merged wallpaper runtime has secure/typed Aerial playback, fair shuffle and 
 
 A meaningful Shield checkpoint for wallpaper/fallback/dock behavior is still useful, but it does not block Phase 6 coding.
 
-## Active Phase 6 panel-settings milestone
+## Active Phase 6 Status / Launcher / effects milestone
 
-The current unopened milestone is rebased directly onto `d458d2ed92a8c820c8634bb7aca73984d6a0016b` and contains only the intended settings/runtime changes. Temporary materializer workflows have been removed.
+The current milestone is based directly on `177900956ac46c9e48526df1f019b7f55083bdcf` and has passed the cheap development gate (`:app:testDebugUnitTest :app:compileDebugKotlin`). Temporary materializer/check workflows are removed before review.
 
 Current work:
 
-- stable `SettingId` for Sliding Rows top margin and existing panel appearance controls;
-- panel style stays immediate because it changes which controls are composed;
-- top margin, opacity, tint hue, tint saturation and glass-effect strength use validated debounced persistence;
-- `ExtraSelector` uses optimistic local selection so D-pad stepping remains visually instant while DataStore writes are coalesced;
-- Display focus restoration includes only panel controls currently visible for Clear/Solid/Liquid Glass state;
-- pending panel mutations feed the live panel preview immediately through Compose-observable preview state;
-- captured debounced mutations still persist non-cancellably once drained, preserving the runtime reliability invariant;
-- preview invalidation waits for persisted ConfigStore state after a write, avoiding a brief rollback/flicker to the old base value;
-- descriptor tests cover immediate panel style, debounced panel controls and the discrete top-margin value set.
+- stable semantic IDs for Status Bar and Launcher-management rows;
+- Status Bar restores exact semantic focus and excludes the disabled VPN-app row from the active focus set;
+- Launcher settings restore focus across Language, Save, Load and Setup Wizard actions;
+- date format uses the shared named choice dialog and debounced persistence rather than one DataStore write per D-pad step;
+- typed Status descriptors define validation, persistence policy and RECOMPOSE effects;
+- date-format validation is regression-tested against the current `DATE_FORMATS` contract;
+- global setting-ID uniqueness now covers Main, Display, Wallpaper, Status and Launcher IDs;
+- a pure `SettingsEffectDispatcher` turns descriptor effect batches into deterministic external work order while keeping `NONE`/`RECOMPOSE` inside state-driven Compose;
+- dispatcher ordering/deduplication is JVM-tested.
 
 After this milestone, continue Phase 6 with:
 
-1. semantic focus/descriptors for Status Bar and Launcher settings;
-2. explicit setting-effect dispatch (`RELOAD_APPS`, `RELOAD_TV_CONTENT`, `RELOAD_WALLPAPER`, recreate/restart) instead of ad-hoc reload callbacks;
-3. ON_CONFIRM/session-preview adapters only where a setting genuinely needs them;
-4. remaining named multi-choice controls migrated to the shared choice-dialog primitive where useful;
-5. a Shield D-pad/settings checkpoint before Phase 7 notifications/media work.
+1. wire true external effects (`RELOAD_APPS`, `RELOAD_TV_CONTENT`, `RELOAD_WALLPAPER`, recreate/restart) to existing launcher/runtime invalidation seams only where config observation is insufficient;
+2. extract the shared named-choice primitive so panel `ExtraSelector` uses the same OK-to-open choice UI as Display/Status selectors;
+3. add ON_CONFIRM/session-preview adapters only where a setting genuinely needs them;
+4. add semantic restore to remaining dynamic settings surfaces where it materially improves TV navigation (Apps/Channels/Categories), using stable app/channel/category identities rather than list positions;
+5. run the Phase 6 Shield D-pad/settings checkpoint before Phase 7 notifications/media work.
 
 ## Development / CI strategy
 
@@ -64,7 +65,7 @@ Current CI speed path:
 
 - Gradle parallel execution and local build cache are enabled;
 - pushes to `aerialrows-development` run a trusted compile/unit-test cache warmer;
-- the first post-merge cache warmer completed successfully after `d458d2e`;
+- post-merge cache warming is verified working;
 - PRs targeting `aerialrows-development` can restore that base-branch cache;
 - benchmark APKs are compiled only when benchmark/build configuration changes (and for tags);
 - release/R8, unit tests, debug build, device-test compilation, lint and source-purity stay mandatory for product PRs.
