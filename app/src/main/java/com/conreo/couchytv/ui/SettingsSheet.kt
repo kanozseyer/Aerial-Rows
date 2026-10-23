@@ -69,6 +69,11 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.conreo.couchytv.Actions
+import com.conreo.couchytv.core.launch.LaunchDispatcher
+import com.conreo.couchytv.core.launch.LaunchOrigin
+import com.conreo.couchytv.core.launch.LaunchRequest
+import com.conreo.couchytv.core.launch.LaunchTarget
+import com.conreo.couchytv.core.model.AppId
 import com.conreo.couchytv.R
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.AppRepository
@@ -100,6 +105,7 @@ fun SettingsSheet(
     config: LauncherConfig,
     apps: List<AppEntry>,
     store: ConfigStore,
+    launchDispatcher: LaunchDispatcher,
     onDismiss: () -> Unit,
     onWallpaperChanged: () -> Unit,
     onRerunWizard: () -> Unit,
@@ -278,7 +284,14 @@ fun SettingsSheet(
                         apps = apps,
                         config = config,
                         onBack = { screen = SettingsScreen.Main },
-                        onLaunch = { pkg -> Actions.launchApp(context, pkg) },
+                        onLaunch = { pkg ->
+                            launchDispatcher.dispatch(
+                                LaunchRequest(
+                                    target = LaunchTarget.App(AppId(packageName = pkg)),
+                                    origin = LaunchOrigin.SETTINGS,
+                                ),
+                            )
+                        },
                         onAppInfo = { pkg -> Actions.openAppInfo(context, pkg) },
                         onUninstall = { pkg -> Actions.uninstall(context, pkg) },
                         onToggleHide = { pkg ->

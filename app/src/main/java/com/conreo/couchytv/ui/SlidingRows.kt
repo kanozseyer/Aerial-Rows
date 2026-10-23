@@ -52,7 +52,10 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
-import com.conreo.couchytv.Actions
+import com.conreo.couchytv.core.launch.LaunchDispatcher
+import com.conreo.couchytv.core.launch.LaunchOrigin
+import com.conreo.couchytv.core.launch.LaunchRequest
+import com.conreo.couchytv.core.launch.LaunchTarget
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.CategoryCfg
 import com.conreo.couchytv.data.ConfigStore
@@ -123,6 +126,7 @@ fun SlidingRowsArea(
     allApps: List<AppEntry>,
     config: LauncherConfig,
     store: ConfigStore,
+    launchDispatcher: LaunchDispatcher,
     accent: Color,
     movePkg: String?,
     moveFocus: FocusRequester,
@@ -231,7 +235,15 @@ fun SlidingRowsArea(
                         onFocused = { activeRowId = row.id },
                         onFirstLeft = { revealRail() },
                         onLaunch = { item ->
-                            Actions.launchTvContent(context, item.intentUri, item.packageName)
+                            launchDispatcher.dispatch(
+                                LaunchRequest(
+                                    target = LaunchTarget.TvProgram(
+                                        intentUri = item.intentUri,
+                                        ownerPackage = item.packageName,
+                                    ),
+                                    origin = LaunchOrigin.TV_CONTENT,
+                                ),
+                            )
                         },
                     )
 
@@ -247,10 +259,14 @@ fun SlidingRowsArea(
                         onFocused = { activeRowId = row.id },
                         onFirstLeft = { revealRail() },
                         onLaunch = { item ->
-                            Actions.launchTvContent(
-                                context,
-                                item.intentUri,
-                                item.packageName.ifBlank { row.channel.packageName },
+                            launchDispatcher.dispatch(
+                                LaunchRequest(
+                                    target = LaunchTarget.TvProgram(
+                                        intentUri = item.intentUri,
+                                        ownerPackage = item.packageName.ifBlank { row.channel.packageName },
+                                    ),
+                                    origin = LaunchOrigin.TV_CONTENT,
+                                ),
                             )
                         },
                     )

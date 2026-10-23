@@ -24,6 +24,13 @@ import java.io.File
  * bitmap, which was the main source of jank on weak TV GPUs.
  */
 @Immutable
+data class ArtworkVariant(
+    val bannerWidthPx: Int,
+    val iconSizePx: Int,
+    val cacheSchemaVersion: Int,
+)
+
+@Immutable
 data class AppEntry(
     val pkg: String,
     val label: String,
@@ -37,11 +44,16 @@ data class AppEntry(
     val glow: Color,
     /** lastUpdateTime of the package — used to reuse entries across rescans. */
     val stamp: Long,
+    /** Raster dimensions/schema must match before in-memory artwork can be reused. */
+    val artworkVariant: ArtworkVariant,
     /** firstInstallTime — tiebreak so a newly installed app sorts last in its section. */
     val firstInstall: Long,
 )
 
 object AppRepository {
+
+    private const val ARTWORK_CACHE_SCHEMA_VERSION = 1
+    private const val ICON_SIZE_PX = 128
 
     /** Reserved id for the auto-filled "All apps" section (every launchable app). */
     const val ALL_APPS_ID = "__all__"
@@ -95,6 +107,11 @@ object AppRepository {
         val density = context.resources.displayMetrics.density
         val bannerW = (270 * density).toInt().coerceIn(320, 720)
         val bannerH = bannerW * 9 / 16
+        val artworkVariant = ArtworkVariant(
+            bannerWidthPx = bannerW,
+            iconSizePx = ICON_SIZE_PX,
+            cacheSchemaVersion = ARTWORK_CACHE_SCHEMA_VERSION,
+        )
         val validCacheNames = java.util.Collections.synchronizedSet(HashSet<String>())
 
         // 1) Fast pass: collect unique launchable activities.
@@ -123,10 +140,12 @@ object AppRepository {
                 val firstInstall = pkgInfo?.firstInstallTime ?: 0L
                 // Size is baked into the name: a density change (or the earlier
                 // fixed-size caches) regenerates instead of loading a stale size.
-                val bannerName = "$pkg-$stamp-b$bannerW.webp"
-                val iconName = "$pkg-$stamp-i128.webp"
+                val bannerName = "$pkg-$stamp-v${artworkVariant.cacheSchemaVersion}-b${artworkVariant.bannerWidthPx}.webp"
+                val iconName = "$pkg-$stamp-v${artworkVariant.cacheSchemaVersion}-i${artworkVariant.iconSizePx}.webp"
 
-                previous?.get(pkg)?.takeIf { it.stamp == stamp }?.let { cached ->
+                previous?.get(pkg)?.takeIf {
+                    it.stamp == stamp && it.artworkVariant == artworkVariant
+                }?.let { cached ->
                     if (cached.banner != null) validCacheNames.add(bannerName)
                     if (cached.icon != null) validCacheNames.add(iconName)
                     return@async cached
@@ -147,7 +166,12 @@ object AppRepository {
                 val icon = if (banner == null) {
                     // 128px: sharp on the fallback tile even on 4K panels.
                     cachedBitmap(cacheDir, iconName, Bitmap.Config.ARGB_8888) {
-                        runCatching { ri.loadIcon(pm)?.toBitmap(128, 128) }.getOrNull()
+                        runCatching {
+                            ri.loadIcon(pm)?.toBitmap(
+                                artworkVariant.iconSizePx,
+                                artworkVariant.iconSizePx,
+                            )
+                        }.getOrNull()
                     }
                 } else null
                 if (banner != null) validCacheNames.add(bannerName)
@@ -167,6 +191,7 @@ object AppRepository {
                     tile = tile,
                     glow = artworkGlowColor(banner ?: icon, tile),
                     stamp = stamp,
+                    artworkVariant = artworkVariant,
                     firstInstall = firstInstall,
                 )
             }

@@ -1,16 +1,13 @@
 package com.conreo.couchytv.data
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.conreo.couchytv.R
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import androidx.compose.runtime.Immutable
 
 @Serializable
 data class CategoryCfg(
@@ -136,46 +133,61 @@ val LANGUAGES = listOf(
 
 private val Context.dataStore by preferencesDataStore(name = "launcher")
 private val KEY_CONFIG = stringPreferencesKey("config")
-private val json = Json { ignoreUnknownKeys = true }
+private val KEY_LAST_KNOWN_GOOD = stringPreferencesKey("config_last_known_good")
+private val KEY_CORRUPT_CONFIG = stringPreferencesKey("config_corrupt_backup")
 
 class ConfigStore(private val context: Context) {
 
-    private fun normalize(config: LauncherConfig): LauncherConfig {
-        val valid = config.builtinSources.filter { it in ALL_AERIAL_SOURCES }.toSet()
-        // Never leave built-in aerial mode with no playable collection.
-        val sources = if (valid.isEmpty()) ALL_AERIAL_SOURCES else valid
-        val topMargin = config.rowsTopMarginPercent.coerceIn(0, 50)
-        val defaultLimit = config.channelItemLimit.coerceIn(4, 30)
-        val perChannelLimits = config.channelItemLimits.mapValues { (_, value) -> value.coerceIn(4, 30) }
-        return config.copy(
-            builtinSources = sources,
-            rowsTopMarginPercent = topMargin,
-            channelItemLimit = defaultLimit,
-            channelItemLimits = perChannelLimits,
-            homeRowOrder = config.homeRowOrder.distinct(),
-        )
+    private val fallbackCategories: List<CategoryCfg>
+        get() = ConfigDefaults.defaultCategories(context)
+
+    private fun decode(raw: String?): LauncherConfig? = when (val result = raw?.let(ConfigCodec::decode)) {
+        is ConfigDecodeResult.Success -> result.envelope.launcherConfig
+        else -> null
     }
 
+    private fun normalize(config: LauncherConfig): LauncherConfig =
+        ConfigNormalizer.normalize(config, fallbackCategories)
+
     val flow: Flow<LauncherConfig> = context.dataStore.data.map { prefs ->
-        val loaded = prefs[KEY_CONFIG]?.let {
-            runCatching { json.decodeFromString<LauncherConfig>(it) }.getOrNull()
-        } ?: LauncherConfig(categories = defaultCategories(context))
+        val loaded = decode(prefs[KEY_CONFIG])
+            ?: decode(prefs[KEY_LAST_KNOWN_GOOD])
+            ?: ConfigDefaults.create(context)
         normalize(loaded)
     }
 
-    private fun defaultCategories(ctx: Context) = listOf(
-        CategoryCfg("streaming", ctx.getString(R.string.cat_streaming)),
-        CategoryCfg("games", ctx.getString(R.string.cat_games)),
-        CategoryCfg("music", ctx.getString(R.string.cat_music)),
-        CategoryCfg("apps", ctx.getString(R.string.cat_apps)),
-    )
-
     suspend fun update(transform: (LauncherConfig) -> LauncherConfig) {
         context.dataStore.edit { prefs ->
-            val current = prefs[KEY_CONFIG]?.let {
-                runCatching { json.decodeFromString<LauncherConfig>(it) }.getOrNull()
-            } ?: LauncherConfig()
-            prefs[KEY_CONFIG] = json.encodeToString(normalize(transform(normalize(current))))
+            val rawCurrent = prefs[KEY_CONFIG]
+            val currentResult = rawCurrent?.let(ConfigCodec::decode)
+
+            if (currentResult is ConfigDecodeResult.UnsupportedSchema) {
+                error(
+                    "Stored config schema ${currentResult.schemaVersion} is newer than " +
+                        "supported schema $CURRENT_CONFIG_SCHEMA_VERSION",
+                )
+            }
+
+            // Never silently destroy a malformed payload. Preserve the first
+            // damaged value for diagnostics/manual recovery before writing a
+            // repaired snapshot back to the primary key.
+            if (rawCurrent != null && currentResult is ConfigDecodeResult.Failure && prefs[KEY_CORRUPT_CONFIG] == null) {
+                prefs[KEY_CORRUPT_CONFIG] = rawCurrent
+            }
+
+            val current = (currentResult as? ConfigDecodeResult.Success)?.envelope?.launcherConfig
+                ?: decode(prefs[KEY_LAST_KNOWN_GOOD])
+                ?: ConfigDefaults.create(context)
+
+            val next = normalize(transform(normalize(current)))
+            val encoded = ConfigCodec.encode(next)
+
+            check(ConfigCodec.decode(encoded) is ConfigDecodeResult.Success) {
+                "Refusing to persist unreadable launcher config"
+            }
+
+            prefs[KEY_CONFIG] = encoded
+            prefs[KEY_LAST_KNOWN_GOOD] = encoded
         }
     }
 }
