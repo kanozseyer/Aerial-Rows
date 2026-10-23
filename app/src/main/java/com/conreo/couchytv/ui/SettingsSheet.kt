@@ -1045,16 +1045,25 @@ private fun LauncherSettingsSubscreen(
         return
     }
 
-    fun saveConfig() {
-        scope.launch {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                    dir.mkdirs()
-                    File(dir, "CouchyBackup.json").writeText(format.encodeToString(LauncherConfig.serializer(), config))
+    val savePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val payload = format.encodeToString(LauncherConfig.serializer(), config)
+                        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { writer ->
+                            writer.write(payload)
+                        } ?: error("Could not open backup destination")
+                    }.isSuccess
+                }
+                if (saved) {
+                    Actions.toast(context, context.getString(R.string.toast_config_saved))
+                } else {
+                    Actions.toast(context, "Could not save configuration")
                 }
             }
-            Actions.toast(context, "Saved to Downloads/CouchyBackup.json")
         }
     }
 
@@ -1106,7 +1115,10 @@ private fun LauncherSettingsSubscreen(
         )
         SettingsItem(
             selected = false,
-            onClick = { saveConfig() },
+            onClick = {
+                runCatching { savePicker.launch("CouchyBackup.json") }
+                    .onFailure { Actions.toast(context, context.getString(R.string.toast_no_picker)) }
+            },
             modifier = focus.modifier(LauncherSettingIds.SaveConfig),
             headlineContent = { Text(stringResource(R.string.item_save_config)) },
             supportingContent = { Text(stringResource(R.string.item_save_config_sub)) },
