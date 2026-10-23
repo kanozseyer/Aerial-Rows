@@ -85,8 +85,8 @@
     <string name="mode_carousel_desc">Selection stays fixed — the icons scroll under it</string>
     <string name="mode_grid_desc">All icons contained on screen — the selection moves</string>
     <string name="mode_dock_desc">Floating dock at the bottom — Down expands over a blurred wallpaper</string>
-    <string name="mode_sliding_rows">Sliding Rows</string>
-    <string name="mode_sliding_rows_desc">Projectivy-style horizontal rows — selection moves naturally and Left reveals the navigation pane</string>
+    <string name="mode_sliding_rows" translatable="false">Sliding Rows</string>
+    <string name="mode_sliding_rows_desc" translatable="false">Projectivy-style horizontal rows — selection moves naturally and Left reveals the navigation pane</string>
     <string name="section_elements">Elements</string>
     <string name="section_names_label">Section names</string>
     <string name="section_size">Size — rows fit as many icons as size + spacing allow</string>
