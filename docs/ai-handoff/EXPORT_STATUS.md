@@ -28,53 +28,67 @@ That commit added the orientation/context layer without changing Kotlin, Gradle,
 
 These are enough for a new AI to understand the project and continue implementation, but they are **consolidations**, not yet the complete raw report corpus requested by the user.
 
-## Remaining raw-detail export groups
+## Export process rule
 
-Work on **one group at a time**. After each group:
+Work on **one small subgroup at a time**. After each subgroup:
 
-1. commit it;
-2. fetch/verify the branch head;
-3. update this status file;
-4. stop and report completion before starting the next group.
+1. commit every completed file immediately;
+2. verify the branch head;
+3. verify concatenated chunk SHA where a raw report is split;
+4. update this status file;
+5. stop/report before the next subgroup.
 
-### E2 — Couchy raw reports C1–C4
+Oversized reports are split into ordered numbered parts to avoid connector/tool truncation. Concatenating those parts byte-for-byte must reproduce the original report SHA-256 recorded in `RESEARCH_INDEX.md`.
+
+## E2 — Couchy raw reports C1–C4
 
 Target directory:
 
 `docs/ai-handoff/raw/couchy/`
 
-Files:
+### E2a — C1–C2
 
-- `C01.md`
-- `C02.md`
-- `C03.md`
-- `C04.md`
+Status: **COMPLETE**
+
+Committed:
+
+- `C01.md` — original SHA-256 `c85c2188906a849854865fc549e1f62c697899d7a648d05fb3f1fd6954e88cea`
+- `C02.md` — original SHA-256 `2c9732f438cdfc075239ba4c06754821d09846e4d706fbf7dc181dc480e0e381`
+
+### E2b — C3
+
+Status: **COMPLETE**
+
+Committed as ordered parts:
+
+- `C03.part01.md`
+- `C03.part02.md`
+- `C03.part03.md`
+- `C03.part04.md`
+- `C03.part05.md`
+- `C03.part06.md`
+
+Local reassembly check after splitting:
+
+`cat C03.part*.md | sha256sum` -> `c756b965caa99ac016eb312a9828be05cfcd6618d666c5b41b1ca333c6761f03`
+
+This exactly matches the original `couchy_group03.md` SHA-256 in `RESEARCH_INDEX.md`.
+
+### E2c — C4
 
 Status: **PENDING**
 
-### E3 — Couchy raw reports C5–C8
+C4 is ~1064 lines and will be exported as numbered parts using the same process as C3.
 
-Files:
-
-- `C05.md`
-- `C06.md`
-- `C07.md`
-- `C08.md`
+## E3 — Couchy raw reports C5–C8
 
 Status: **PENDING**
 
-### E4 — Couchy raw reports C9–C12
-
-Files:
-
-- `C09.md`
-- `C10.md`
-- `C11.md`
-- `C12.md`
+## E4 — Couchy raw reports C9–C12
 
 Status: **PENDING**
 
-### E5 — Projectivy raw G1–G4
+## E5 — Projectivy raw G1–G4
 
 Target directory:
 
@@ -84,13 +98,13 @@ Include each original group report and its post-closure audit where available.
 
 Status: **PENDING**
 
-### E6 — Projectivy raw G5–G8
+## E6 — Projectivy raw G5–G8
 
 Include originals + post-closure/corrected reports, with Group 8 using the final v2 audit as the authoritative correction.
 
 Status: **PENDING**
 
-### E7 — Projectivy raw G9–G12
+## E7 — Projectivy raw G9–G12
 
 Include originals + final corrected reports:
 
@@ -101,7 +115,7 @@ Include originals + final corrected reports:
 
 Status: **PENDING**
 
-### E8 — Raw audit-process/tooling history
+## E8 — Raw audit-process/tooling history
 
 Target directory:
 
@@ -113,15 +127,15 @@ Do **not** commit proprietary APKs, decompiled Projectivy source, JADX binaries,
 
 Status: **PENDING**
 
-### E9 — Final validation and manifest
+## E9 — Final validation and manifest
 
 Tasks:
 
-- verify all expected raw files are present;
-- compare their SHA-256 values to `RESEARCH_INDEX.md` where recorded;
+- verify all expected raw files/parts are present;
+- compare/reassemble SHA-256 values against `RESEARCH_INDEX.md` where recorded;
 - verify every C1–C12 report is represented;
 - verify every Projectivy G1–G12 original/final audit is represented;
-- update `README.md`, `AGENTS.md`, and `RESEARCH_INDEX.md` with the raw archive paths;
+- update `README.md`, `AGENTS.md`, and `RESEARCH_INDEX.md` with raw archive paths;
 - mark this export COMPLETE;
 - verify application source files are unchanged from the pre-export implementation baseline except for documentation commits.
 
@@ -129,17 +143,18 @@ Status: **PENDING**
 
 ## Failure/recovery rule
 
-If a tool call, conversation, or environment fails mid-group:
+If a tool call, conversation, or environment fails mid-subgroup:
 
-- do not repeat completed groups;
+- do not repeat completed groups/subgroups;
 - inspect the branch head and this file first;
-- check which individual files from the current group exist;
-- continue only the missing files;
-- keep files small enough for GitHub Contents API operations rather than building one giant archive/blob;
+- check which individual part files from the current report exist;
+- continue only the missing part files;
+- use small GitHub Contents API writes rather than one giant archive/blob;
+- verify concatenated SHA before marking a split report complete;
 - never wait until the end of the whole export to commit progress.
 
 ## Current continuation point
 
-**Next group: E2 — Couchy raw reports C1–C4.**
+**Next subgroup: E2c — raw Couchy C4 only.**
 
 Do not begin Phase 0A implementation until the user either finishes E2–E9 or explicitly chooses to pause the export and start coding.
