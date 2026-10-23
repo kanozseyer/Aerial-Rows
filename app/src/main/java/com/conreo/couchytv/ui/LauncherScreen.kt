@@ -1440,9 +1440,16 @@ private fun VideoWallpaper(
                         .build()
                 )
                 .build().apply {
+                    // Wallpaper video is always silent. Disable the audio track
+                    // entirely so Media3 does not allocate/decode audio just to mute it.
+                    setTrackSelectionParameters(
+                        trackSelectionParameters.buildUpon()
+                            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, true)
+                            .build()
+                    )
                     repeatMode = if (loop) androidx.media3.common.Player.REPEAT_MODE_ONE
                         else androidx.media3.common.Player.REPEAT_MODE_OFF
-                    volume = 0f
+                    volume = 0f // defensive mute if a future renderer changes track policy
                     videoScalingMode =
                         androidx.media3.common.C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
                     playWhenReady = true
