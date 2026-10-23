@@ -48,3 +48,51 @@ object MainSettingIds {
         About,
     )
 }
+
+/** Stable IDs for the first Display controls migrated to semantic focus/policy. */
+object DisplaySettingIds {
+    val Layout = SettingId("display.layout")
+    val SectionNames = SettingId("display.section_names")
+    val UiScale = SettingId("display.ui_scale")
+    val Roundness = SettingId("display.roundness")
+    val IconSize = SettingId("display.icon_size")
+    val Spacing = SettingId("display.spacing")
+
+    val all: List<SettingId> = listOf(
+        Layout,
+        SectionNames,
+        UiScale,
+        Roundness,
+        IconSize,
+        Spacing,
+    )
+}
+
+/** Stable IDs for wallpaper controls whose focus should survive dialogs/re-entry. */
+object WallpaperSettingIds {
+    val Dimming = SettingId("wallpaper.dimming")
+    val GradientMode = SettingId("wallpaper.gradient_mode")
+    val GradientPreset = SettingId("wallpaper.gradient_preset")
+    val Photo = SettingId("wallpaper.photo")
+    val Aerials = SettingId("wallpaper.aerials")
+    val AerialApple = SettingId("wallpaper.aerial.apple")
+    val AerialAmazon = SettingId("wallpaper.aerial.amazon")
+    val AerialCommunity1 = SettingId("wallpaper.aerial.community_1")
+    val AerialCommunity2 = SettingId("wallpaper.aerial.community_2")
+    val Video = SettingId("wallpaper.video")
+    val VideoSpeed = SettingId("wallpaper.video_speed")
+
+    val all: List<SettingId> = listOf(
+        Dimming,
+        GradientMode,
+        GradientPreset,
+        Photo,
+        Aerials,
+        AerialApple,
+        AerialAmazon,
+        AerialCommunity1,
+        AerialCommunity2,
+        Video,
+        VideoSpeed,
+    )
+}
