@@ -74,6 +74,10 @@ import com.conreo.couchytv.core.launch.LaunchOrigin
 import com.conreo.couchytv.core.launch.LaunchRequest
 import com.conreo.couchytv.core.launch.LaunchTarget
 import com.conreo.couchytv.core.model.AppId
+import com.conreo.couchytv.core.settings.MainSettingIds
+import com.conreo.couchytv.core.settings.SettingId
+import com.conreo.couchytv.core.settings.SettingsNavigationState
+import com.conreo.couchytv.core.settings.SettingsRoutes
 import com.conreo.couchytv.R
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.AppRepository
@@ -93,8 +97,6 @@ import kotlinx.serialization.json.Json
 
 private val format = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
 
-private enum class SettingsScreen { Main, Wallpaper, Display, StatusBar, Apps, Channels, Categories, Launcher, About }
-
 /**
  * Settings panel built entirely from focusable rows and buttons — every
  * element is reachable with the D-pad alone. Text entry only ever happens
@@ -112,7 +114,7 @@ fun SettingsSheet(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var screen by remember { mutableStateOf(SettingsScreen.Main) }
+    var navigation by remember { mutableStateOf(SettingsNavigationState()) }
 
     // Same document-picker flow as videos: opens the system file manager,
     // works with USB drives and network storage providers.
@@ -166,7 +168,7 @@ fun SettingsSheet(
 
     Dialog(
         onDismissRequest = {
-            if (screen != SettingsScreen.Main) screen = SettingsScreen.Main else onDismiss()
+            if (navigation.canGoBack) navigation = navigation.back() else onDismiss()
         },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
@@ -196,9 +198,9 @@ fun SettingsSheet(
                 // Slide left when entering a sub-screen, right when going back
                 // to Main (the root); cross-fade so it never looks abrupt.
                 androidx.compose.animation.AnimatedContent(
-                    targetState = screen,
+                    targetState = navigation.currentRoute,
                     transitionSpec = {
-                        val forward = targetState != SettingsScreen.Main
+                        val forward = targetState != SettingsRoutes.Main
                         val dir = if (forward) 1 else -1
                         (androidx.compose.animation.slideInHorizontally(tween(260)) { w -> dir * w } +
                             androidx.compose.animation.fadeIn(tween(260))) togetherWith
@@ -208,18 +210,20 @@ fun SettingsSheet(
                     label = "settingsScreen",
                 ) { target ->
                 when (target) {
-                    SettingsScreen.Main -> MainScreen(
-                        onWallpaper = { screen = SettingsScreen.Wallpaper },
-                        onDisplay = { screen = SettingsScreen.Display },
-                        onStatusBar = { screen = SettingsScreen.StatusBar },
-                        onApps = { screen = SettingsScreen.Apps },
-                        onChannels = { screen = SettingsScreen.Channels },
-                        onCategories = { screen = SettingsScreen.Categories },
-                        onLauncher = { screen = SettingsScreen.Launcher },
+                    SettingsRoutes.Main -> MainScreen(
+                        rememberedFocus = navigation.rememberedFocus(SettingsRoutes.Main) ?: MainSettingIds.Apps,
+                        onFocus = { id -> navigation = navigation.rememberFocus(SettingsRoutes.Main, id) },
+                        onWallpaper = { navigation = navigation.open(SettingsRoutes.Wallpaper) },
+                        onDisplay = { navigation = navigation.open(SettingsRoutes.Display) },
+                        onStatusBar = { navigation = navigation.open(SettingsRoutes.StatusBar) },
+                        onApps = { navigation = navigation.open(SettingsRoutes.Apps) },
+                        onChannels = { navigation = navigation.open(SettingsRoutes.Channels) },
+                        onCategories = { navigation = navigation.open(SettingsRoutes.Categories) },
+                        onLauncher = { navigation = navigation.open(SettingsRoutes.Launcher) },
                         onAndroidSettings = { Actions.openSystemSettings(context) },
-                        onAbout = { screen = SettingsScreen.About },
+                        onAbout = { navigation = navigation.open(SettingsRoutes.About) },
                     )
-                    SettingsScreen.Wallpaper -> WallpaperScreen(
+                    SettingsRoutes.Wallpaper -> WallpaperScreen(
                         config = config,
                         onSelectBuiltinAerials = {
                             scope.launch {
@@ -269,21 +273,21 @@ fun SettingsSheet(
                                 .onFailure { Actions.toast(context, context.getString(R.string.toast_no_picker)) }
                         },
                     )
-                    SettingsScreen.Display -> DisplayScreen(
+                    SettingsRoutes.Display -> DisplayScreen(
                         config = config,
                         store = store,
-                        onBack = { screen = SettingsScreen.Main },
+                        onBack = { navigation = navigation.back() },
                     )
-                    SettingsScreen.StatusBar -> StatusBarScreen(
+                    SettingsRoutes.StatusBar -> StatusBarScreen(
                         config = config,
                         apps = apps,
                         store = store,
-                        onBack = { screen = SettingsScreen.Main },
+                        onBack = { navigation = navigation.back() },
                     )
-                    SettingsScreen.Apps -> AppsScreen(
+                    SettingsRoutes.Apps -> AppsScreen(
                         apps = apps,
                         config = config,
-                        onBack = { screen = SettingsScreen.Main },
+                        onBack = { navigation = navigation.back() },
                         onLaunch = { pkg ->
                             launchDispatcher.dispatch(
                                 LaunchRequest(
@@ -302,23 +306,23 @@ fun SettingsSheet(
                             }
                         },
                     )
-                    SettingsScreen.Channels -> ChannelsSettingsScreen(
+                    SettingsRoutes.Channels -> ChannelsSettingsScreen(
                         config = config,
                         store = store,
                     )
-                    SettingsScreen.Categories -> CategoriesScreen(
+                    SettingsRoutes.Categories -> CategoriesScreen(
                         config = config,
                         apps = apps,
                         store = store,
-                        onBack = { screen = SettingsScreen.Main },
+                        onBack = { navigation = navigation.back() },
                     )
-                    SettingsScreen.About -> AboutScreen(
-                        onBack = { screen = SettingsScreen.Main },
+                    SettingsRoutes.About -> AboutScreen(
+                        onBack = { navigation = navigation.back() },
                     )
-                    SettingsScreen.Launcher -> LauncherSettingsSubscreen(
+                    SettingsRoutes.Launcher -> LauncherSettingsSubscreen(
                         config = config,
                         store = store,
-                        onBack = { screen = SettingsScreen.Main },
+                        onBack = { navigation = navigation.back() },
                         onRerunWizard = onRerunWizard,
                     )
                 }
@@ -333,6 +337,8 @@ fun SettingsSheet(
 
 @Composable
 private fun MainScreen(
+    rememberedFocus: SettingId,
+    onFocus: (SettingId) -> Unit,
     onWallpaper: () -> Unit,
     onDisplay: () -> Unit,
     onStatusBar: () -> Unit,
@@ -352,7 +358,21 @@ private fun MainScreen(
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
-        val f = initialFocus()
+        val focusRequesters = remember {
+            MainSettingIds.all.associateWith { FocusRequester() }
+        }
+        val focusTarget = rememberedFocus.takeIf { it in focusRequesters } ?: MainSettingIds.Apps
+        LaunchedEffect(focusTarget) {
+            repeat(30) {
+                if (runCatching { focusRequesters.getValue(focusTarget).requestFocus() }.isSuccess) {
+                    return@LaunchedEffect
+                }
+                withFrameNanos {}
+            }
+        }
+        fun focusModifier(id: SettingId): Modifier = Modifier
+            .focusRequester(focusRequesters.getValue(id))
+            .onFocusChanged { state -> if (state.isFocused) onFocus(id) }
 
         // ---- Content: what shows on the home screen ----
         SectionLabel(stringResource(R.string.group_content))
@@ -361,16 +381,18 @@ private fun MainScreen(
             headlineContent = { Text(stringResource(R.string.item_app)) },
             supportingContent = { Text(stringResource(R.string.item_app_sub)) },
             leadingContent = { Icon(AppIcons.Apps, contentDescription = null) },
-            modifier = Modifier.focusRequester(f),
+            modifier = focusModifier(MainSettingIds.Apps),
         )
         SettingsItem(
             selected = false, onClick = onCategories,
+            modifier = focusModifier(MainSettingIds.Categories),
             headlineContent = { Text(stringResource(R.string.item_sections)) },
             supportingContent = { Text(stringResource(R.string.item_sections_sub)) },
             leadingContent = { Icon(AppIcons.Folder, contentDescription = null) },
         )
         SettingsItem(
             selected = false, onClick = onChannels,
+            modifier = focusModifier(MainSettingIds.Channels),
             headlineContent = { Text("Channels") },
             supportingContent = { Text("Watch Next and Android TV app channels") },
             leadingContent = { Icon(AppIcons.Play, contentDescription = null) },
@@ -380,18 +402,21 @@ private fun MainScreen(
         SectionLabel(stringResource(R.string.group_appearance))
         SettingsItem(
             selected = false, onClick = onDisplay,
+            modifier = focusModifier(MainSettingIds.Display),
             headlineContent = { Text(stringResource(R.string.item_display)) },
             supportingContent = { Text(stringResource(R.string.item_display_sub)) },
             leadingContent = { Icon(AppIcons.Display, contentDescription = null) },
         )
         SettingsItem(
             selected = false, onClick = onWallpaper,
+            modifier = focusModifier(MainSettingIds.Wallpaper),
             headlineContent = { Text(stringResource(R.string.item_wallpaper)) },
             supportingContent = { Text(stringResource(R.string.item_wallpaper_sub)) },
             leadingContent = { Icon(AppIcons.Image, contentDescription = null) },
         )
         SettingsItem(
             selected = false, onClick = onStatusBar,
+            modifier = focusModifier(MainSettingIds.StatusBar),
             headlineContent = { Text(stringResource(R.string.item_statusbar)) },
             supportingContent = { Text(stringResource(R.string.item_statusbar_sub)) },
             leadingContent = { Icon(AppIcons.Wifi, contentDescription = null) },
@@ -401,18 +426,21 @@ private fun MainScreen(
         SectionLabel(stringResource(R.string.group_system))
         SettingsItem(
             selected = false, onClick = onLauncher,
+            modifier = focusModifier(MainSettingIds.Launcher),
             headlineContent = { Text(stringResource(R.string.item_launcher_settings)) },
             supportingContent = { Text(stringResource(R.string.item_launcher_settings_sub)) },
             leadingContent = { Icon(painter = androidx.compose.ui.res.painterResource(R.drawable.ic_couch), contentDescription = null, modifier = Modifier.size(24.dp)) },
         )
         SettingsItem(
             selected = false, onClick = onAndroidSettings,
+            modifier = focusModifier(MainSettingIds.AndroidSettings),
             headlineContent = { Text(stringResource(R.string.item_android_settings)) },
             supportingContent = { Text(stringResource(R.string.item_android_settings_sub)) },
             leadingContent = { Icon(AppIcons.Gear, contentDescription = null) },
         )
         SettingsItem(
             selected = false, onClick = onAbout,
+            modifier = focusModifier(MainSettingIds.About),
             headlineContent = { Text(stringResource(R.string.item_about)) },
             leadingContent = { Icon(AppIcons.Info, contentDescription = null) },
         )
@@ -537,6 +565,7 @@ private fun DisplayScreen(
             modifier = Modifier.focusRequester(f),
             label = stringResource(R.string.view_mode),
             value = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock), stringResource(R.string.mode_sliding_rows))[config.layout.coerceIn(0, 3)],
+            options = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock), stringResource(R.string.mode_sliding_rows)),
             description = when (config.layout) {
                 LAYOUT_GRID -> stringResource(R.string.mode_grid_desc)
                 LAYOUT_DOCK -> stringResource(R.string.mode_dock_desc)
@@ -564,6 +593,7 @@ private fun DisplayScreen(
             SelectorRow(
                 label = stringResource(R.string.ui_scale),
                 value = labels[idx],
+                options = labels,
                 description = if (idx == 0) stringResource(R.string.ui_scale_auto_sub) else null,
                 steps = labels.size,
                 current = idx,
@@ -573,6 +603,7 @@ private fun DisplayScreen(
         SelectorRow(
             label = stringResource(R.string.roundness),
             value = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl))[config.cornerRadius.coerceIn(0, 4)],
+            options = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl)),
             steps = 5,
             current = config.cornerRadius.coerceIn(0, 4),
             onSelect = { v -> update { it.copy(cornerRadius = v) } },
@@ -580,6 +611,7 @@ private fun DisplayScreen(
         SelectorRow(
             label = stringResource(R.string.icon_size),
             value = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl))[config.iconScale.coerceIn(0, 4)],
+            options = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl)),
             steps = 5,
             current = config.iconScale.coerceIn(0, 4),
             onSelect = { v -> update { it.copy(iconScale = v) } },
@@ -587,6 +619,7 @@ private fun DisplayScreen(
         SelectorRow(
             label = stringResource(R.string.spacing),
             value = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl))[config.spacing.coerceIn(0, 4)],
+            options = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl)),
             steps = 5,
             current = config.spacing.coerceIn(0, 4),
             onSelect = { v -> update { it.copy(spacing = v) } },
@@ -596,8 +629,8 @@ private fun DisplayScreen(
 }
 
 /**
- * D-pad selector row: Left/Right changes the value directly, OK cycles.
- * The dots show the position within the available steps.
+ * D-pad selector row: Left/Right steps immediately; OK opens a choice dialog
+ * when named options are supplied, otherwise it retains legacy cycle behavior.
  */
 @Composable
 private fun SelectorRow(
@@ -608,17 +641,23 @@ private fun SelectorRow(
     onSelect: (Int) -> Unit,
     description: String? = null,
     modifier: Modifier = Modifier,
+    options: List<String>? = null,
 ) {
+    var showChoices by remember { mutableStateOf(false) }
+    val validOptions = options?.takeIf { it.size == steps }
     SettingsItem(
         selected = false,
-        onClick = { onSelect((current + 1) % steps) },
+        onClick = {
+            if (validOptions != null) showChoices = true
+            else onSelect((current + 1) % steps)
+        },
         headlineContent = { Text(label) },
         supportingContent = { if (description != null) Text(description) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("◄", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(value)
-                Text("►", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (validOptions != null) "▾" else "►", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         modifier = modifier.onPreviewKeyEvent { e ->
@@ -630,6 +669,56 @@ private fun SelectorRow(
             }
         },
     )
+    if (showChoices && validOptions != null) {
+        ChoiceDialog(
+            title = label,
+            options = validOptions,
+            current = current,
+            onSelect = { index ->
+                onSelect(index)
+                showChoices = false
+            },
+            onDismiss = { showChoices = false },
+        )
+    }
+}
+
+@Composable
+private fun ChoiceDialog(
+    title: String,
+    options: List<String>,
+    current: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.width(360.dp),
+        ) {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                )
+                val selectedFocus = initialFocus()
+                options.forEachIndexed { index, option ->
+                    SettingsItem(
+                        selected = index == current,
+                        onClick = { onSelect(index) },
+                        headlineContent = { Text(option) },
+                        trailingContent = { CheckMark(checked = index == current) },
+                        modifier = if (index == current) Modifier.focusRequester(selectedFocus) else Modifier,
+                    )
+                }
+            }
+        }
+    }
 }
 
 /* --------------- app list: icon + name launches, ⓘ = app info --------------- */
@@ -1342,6 +1431,7 @@ private fun WallpaperScreen(
             SelectorRow(
                 label = stringResource(R.string.preset_label),
                 value = presetNames[presetIdx],
+                options = presetNames,
                 steps = WALLPAPERS.size,
                 current = presetIdx,
                 onSelect = { v -> onPreset(v) },
@@ -1417,6 +1507,7 @@ private fun WallpaperScreen(
             SelectorRow(
                 label = stringResource(R.string.speed_label),
                 value = labels[idx],
+                options = labels,
                 steps = labels.size,
                 current = idx,
                 onSelect = { v -> onSetSpeed(v) },
