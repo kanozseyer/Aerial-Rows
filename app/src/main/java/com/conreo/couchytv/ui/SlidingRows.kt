@@ -53,6 +53,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.conreo.couchytv.core.launch.LaunchDispatcher
 import com.conreo.couchytv.core.launch.LaunchOrigin
 import com.conreo.couchytv.core.launch.LaunchRequest
@@ -184,6 +187,7 @@ fun SlidingRowsArea(
     onAndroidSettings: () -> Unit,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val verticalState = rememberLazyListState()
     var focusState by remember { mutableStateOf(HomeFocusState()) }
@@ -195,14 +199,19 @@ fun SlidingRowsArea(
 
     val tvContent by produceState(
         TvContentRows(),
+        lifecycleOwner,
         config.showWatchNext,
         config.showPreviewChannels,
+        config.watchNextPerProviderLimit,
+        config.excludedWatchNextProviders,
         config.channelItemLimit,
         config.hiddenTvChannels,
         config.channelItemLimits,
     ) {
-        TvContentRepository.observe(context, config).collect { rows ->
-            value = rows
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            TvContentRepository.observe(context, config).collect { rows ->
+                value = rows
+            }
         }
     }
 
