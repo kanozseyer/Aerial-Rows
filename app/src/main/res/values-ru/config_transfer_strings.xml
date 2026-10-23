@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="toast_config_save_failed">Не удалось сохранить конфигурацию</string>
+    <string name="toast_config_newer">Эта конфигурация создана в более новой версии</string>
+</resources>
