@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -37,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.conreo.couchytv.core.settings.DisplaySettingDescriptors
+import com.conreo.couchytv.core.settings.DisplaySettingIds
 import com.conreo.couchytv.data.ConfigStore
 import com.conreo.couchytv.data.LauncherConfig
 import com.conreo.couchytv.data.PANEL_CLEAR
@@ -251,11 +254,14 @@ fun ChannelsSettingsScreen(
 
 /** Extra Display settings shared by Sliding Rows and Couchy's Dock mode. */
 @Composable
-fun PanelAppearanceSettings(
+internal fun PanelAppearanceSettings(
     config: LauncherConfig,
     store: ConfigStore,
+    debouncedWriter: DebouncedSettingsWriter,
+    focus: SettingsFocusBindings,
 ) {
     val scope = rememberCoroutineScope()
+    val previewConfig = debouncedWriter.preview(config)
 
     Text(
         "SLIDING ROWS POSITION",
@@ -271,9 +277,16 @@ fun PanelAppearanceSettings(
         title = "Top row margin",
         subtitle = "Space between the top of the screen and the first home row",
         value = "${margins[marginIndex]}%",
+        options = margins.map { "$it%" },
         steps = margins.size,
         current = marginIndex,
-        onSelect = { i -> scope.launch { store.update { it.copy(rowsTopMarginPercent = margins[i]) } } },
+        modifier = focus.modifier(DisplaySettingIds.RowsTopMargin),
+        onSelect = { i ->
+            val value = DisplaySettingDescriptors.RowsTopMargin.requireValid(margins[i])
+            debouncedWriter.submit(DisplaySettingDescriptors.RowsTopMargin.id) {
+                it.copy(rowsTopMarginPercent = value)
+            }
+        },
     )
 
     Text(
@@ -292,18 +305,28 @@ fun PanelAppearanceSettings(
             else -> "Layered translucent glass with highlight and edge depth"
         },
         value = styles[config.panelStyle.coerceIn(0, 2)],
+        options = styles,
         steps = styles.size,
         current = config.panelStyle.coerceIn(0, 2),
-        onSelect = { v -> scope.launch { store.update { it.copy(panelStyle = v) } } },
+        modifier = focus.modifier(DisplaySettingIds.PanelStyle),
+        onSelect = { v ->
+            val value = DisplaySettingDescriptors.PanelStyle.requireValid(v)
+            scope.launch { store.update { it.copy(panelStyle = value) } }
+        },
     )
 
     if (config.panelStyle != PANEL_CLEAR) {
         ExtraSelector(
             title = "Opacity",
             value = "${config.panelOpacity.coerceIn(0, 10) * 10}%",
+            options = (0..10).map { "${it * 10}%" },
             steps = 11,
             current = config.panelOpacity.coerceIn(0, 10),
-            onSelect = { v -> scope.launch { store.update { it.copy(panelOpacity = v) } } },
+            modifier = focus.modifier(DisplaySettingIds.PanelOpacity),
+            onSelect = { v ->
+                val value = DisplaySettingDescriptors.PanelOpacity.requireValid(v)
+                debouncedWriter.submit(DisplaySettingDescriptors.PanelOpacity.id) { it.copy(panelOpacity = value) }
+            },
         )
 
         val hueNames = listOf(
@@ -313,18 +336,28 @@ fun PanelAppearanceSettings(
         ExtraSelector(
             title = "Tint colour",
             value = hueNames[config.panelTintHue.coerceIn(0, 12)],
+            options = hueNames,
             steps = hueNames.size,
             current = config.panelTintHue.coerceIn(0, 12),
-            onSelect = { v -> scope.launch { store.update { it.copy(panelTintHue = v) } } },
+            modifier = focus.modifier(DisplaySettingIds.PanelTintHue),
+            onSelect = { v ->
+                val value = DisplaySettingDescriptors.PanelTintHue.requireValid(v)
+                debouncedWriter.submit(DisplaySettingDescriptors.PanelTintHue.id) { it.copy(panelTintHue = value) }
+            },
         )
 
         val satNames = listOf("Subtle", "Soft", "Medium", "Rich", "Vivid", "Maximum")
         ExtraSelector(
             title = "Tint saturation",
             value = satNames[config.panelTintSaturation.coerceIn(0, 5)],
+            options = satNames,
             steps = satNames.size,
             current = config.panelTintSaturation.coerceIn(0, 5),
-            onSelect = { v -> scope.launch { store.update { it.copy(panelTintSaturation = v) } } },
+            modifier = focus.modifier(DisplaySettingIds.PanelTintSaturation),
+            onSelect = { v ->
+                val value = DisplaySettingDescriptors.PanelTintSaturation.requireValid(v)
+                debouncedWriter.submit(DisplaySettingDescriptors.PanelTintSaturation.id) { it.copy(panelTintSaturation = value) }
+            },
         )
 
         if (config.panelStyle == PANEL_LIQUID_GLASS) {
@@ -333,14 +366,19 @@ fun PanelAppearanceSettings(
                 title = "Glass effect strength",
                 subtitle = "Controls sheen, edge highlight and visual depth",
                 value = strengths[config.panelEffectStrength.coerceIn(0, 5)],
+                options = strengths,
                 steps = strengths.size,
                 current = config.panelEffectStrength.coerceIn(0, 5),
-                onSelect = { v -> scope.launch { store.update { it.copy(panelEffectStrength = v) } } },
+                modifier = focus.modifier(DisplaySettingIds.PanelEffectStrength),
+                onSelect = { v ->
+                    val value = DisplaySettingDescriptors.PanelEffectStrength.requireValid(v)
+                    debouncedWriter.submit(DisplaySettingDescriptors.PanelEffectStrength.id) { it.copy(panelEffectStrength = value) }
+                },
             )
         }
 
         AerialPanel(
-            config = config,
+            config = previewConfig,
             shape = SmoothCornerShape(18.dp),
             modifier = Modifier
                 .fillMaxWidth()
@@ -363,29 +401,39 @@ private fun ExtraSelector(
     onSelect: (Int) -> Unit,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
+    options: List<String>? = null,
 ) {
+    var optimisticCurrent by remember { mutableIntStateOf(current) }
+    LaunchedEffect(current) { optimisticCurrent = current }
+    val validOptions = options?.takeIf { it.size == steps }
+    val displayedCurrent = optimisticCurrent.coerceIn(0, steps - 1)
+    val displayedValue = validOptions?.getOrNull(displayedCurrent) ?: value
+    fun select(index: Int) {
+        optimisticCurrent = index
+        onSelect(index)
+    }
     ExtraListItem(
         modifier = modifier.onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             when (event.key) {
                 Key.DirectionLeft -> {
-                    onSelect((current - 1 + steps) % steps)
+                    select((displayedCurrent - 1 + steps) % steps)
                     true
                 }
                 Key.DirectionRight -> {
-                    onSelect((current + 1) % steps)
+                    select((displayedCurrent + 1) % steps)
                     true
                 }
                 else -> false
             }
         },
-        onClick = { onSelect((current + 1) % steps) },
+        onClick = { select((displayedCurrent + 1) % steps) },
         title = title,
         subtitle = subtitle,
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("◄", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(value)
+                Text(displayedValue)
                 Text("►", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },

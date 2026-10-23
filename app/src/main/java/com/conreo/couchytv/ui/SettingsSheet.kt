@@ -94,6 +94,8 @@ import com.conreo.couchytv.data.LAYOUT_DOCK
 import com.conreo.couchytv.data.LAYOUT_GRID
 import com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS
 import com.conreo.couchytv.data.LauncherConfig
+import com.conreo.couchytv.data.PANEL_CLEAR
+import com.conreo.couchytv.data.PANEL_LIQUID_GLASS
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.launch
@@ -599,7 +601,7 @@ private fun DisplayScreen(
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
         SectionLabel(stringResource(R.string.section_layout))
-        val displayFocusIds = remember(config.layout) {
+        val displayFocusIds = remember(config.layout, config.panelStyle) {
             buildList {
                 add(DisplaySettingIds.Layout)
                 if (config.layout != LAYOUT_DOCK) add(DisplaySettingIds.CategoryNames)
@@ -607,6 +609,16 @@ private fun DisplayScreen(
                 add(DisplaySettingIds.CornerRadius)
                 add(DisplaySettingIds.IconScale)
                 add(DisplaySettingIds.Spacing)
+                add(DisplaySettingIds.RowsTopMargin)
+                add(DisplaySettingIds.PanelStyle)
+                if (config.panelStyle != PANEL_CLEAR) {
+                    add(DisplaySettingIds.PanelOpacity)
+                    add(DisplaySettingIds.PanelTintHue)
+                    add(DisplaySettingIds.PanelTintSaturation)
+                    if (config.panelStyle == PANEL_LIQUID_GLASS) {
+                        add(DisplaySettingIds.PanelEffectStrength)
+                    }
+                }
             }
         }
         val focus = rememberSettingsFocusBindings(
@@ -695,7 +707,12 @@ private fun DisplayScreen(
                     debouncedWriter.submit(DisplaySettingDescriptors.Spacing.id) { it.copy(spacing = value) }
                 },
         )
-        PanelAppearanceSettings(config = config, store = store)
+        PanelAppearanceSettings(
+            config = config,
+            store = store,
+            debouncedWriter = debouncedWriter,
+            focus = focus,
+        )
     }
 }
 

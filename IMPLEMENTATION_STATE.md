@@ -12,7 +12,10 @@ Working branch: `aerialrows-development`.
 
 The active implementation phase is **Phase 6 — settings architecture**. Phases 0A/0B and implemented Phase 1–5 work are complete; do not restart them unless a regression specifically requires it.
 
-The first Phase 6 milestone — semantic settings navigation and shared choice controls — is merged at `891bcdb257110ddcad74312e54a07f7c8d704a51`.
+Merged Phase 6 milestones:
+
+- semantic settings navigation and shared choice controls: `891bcdb257110ddcad74312e54a07f7c8d704a51`;
+- debounced settings runtime, Display/Wallpaper semantic focus and CI/cache speed work: `d458d2ed92a8c820c8634bb7aca73984d6a0016b`.
 
 ## Phase 5 completion checkpoint
 
@@ -20,35 +23,29 @@ The merged wallpaper runtime has secure/typed Aerial playback, fair shuffle and 
 
 A meaningful Shield checkpoint for wallpaper/fallback/dock behavior is still useful, but it does not block Phase 6 coding.
 
-## Active Phase 6 runtime milestone
+## Active Phase 6 panel-settings milestone
 
-The current milestone batches runtime behavior and CI-speed work before one full merge gate:
+The current unopened milestone is rebased directly onto `d458d2ed92a8c820c8634bb7aca73984d6a0016b` and contains only the intended settings/runtime changes. Temporary materializer workflows have been removed.
 
-- semantic IDs expanded to Display and Wallpaper controls;
-- reusable semantic focus bindings for settings routes;
-- Display and Wallpaper restore the exact visible semantic setting rather than always jumping to row 1;
-- hidden conditional rows are excluded from the active focus-ID set so focus restoration cannot target an uncomposed option;
-- pure `SettingMutationBuffer` coalesces pending transforms by `SettingId` without overwriting unrelated config changes;
-- pure `SettingDebounceScheduler` owns debounce deadlines and explicit flush behavior;
-- `DebouncedSettingsWriter` applies captured mutations over the latest ConfigStore value;
-- rapid Display selectors and wallpaper dim/speed use optimistic local UI with coalesced persistence;
-- pending writes flush when Settings closes or HOME stops;
-- typed Display/Wallpaper descriptors define validation, persistence policy and effects;
-- stable setting/route identity uniqueness is regression-tested;
-- Gradle parallel execution and local build cache are enabled;
-- CI keeps a trusted `aerialrows-development` Gradle cache warm so later PRs can restore a base-branch cache instead of repeatedly starting cold;
-- benchmark APK compilation remains conditional while release/R8, unit tests, debug, device-test compile, lint and source-purity remain mandatory at milestone PR boundaries.
+Current work:
 
-Development validation for this milestone uses a cheap unit-test + Kotlin-compile check before opening the single full-CI PR.
+- stable `SettingId` for Sliding Rows top margin and existing panel appearance controls;
+- panel style stays immediate because it changes which controls are composed;
+- top margin, opacity, tint hue, tint saturation and glass-effect strength use validated debounced persistence;
+- `ExtraSelector` uses optimistic local selection so D-pad stepping remains visually instant while DataStore writes are coalesced;
+- Display focus restoration includes only panel controls currently visible for Clear/Solid/Liquid Glass state;
+- pending panel mutations feed the live panel preview immediately through Compose-observable preview state;
+- captured debounced mutations still persist non-cancellably once drained, preserving the runtime reliability invariant;
+- preview invalidation waits for persisted ConfigStore state after a write, avoiding a brief rollback/flicker to the old base value;
+- descriptor tests cover immediate panel style, debounced panel controls and the discrete top-margin value set.
 
 After this milestone, continue Phase 6 with:
 
-1. attach semantic focus/descriptors to remaining high-value settings screens (Status, Launcher, Apps/Channels where useful);
-2. move panel appearance sliders onto the same debounced writer;
-3. add explicit ON_CONFIRM/session preview adapters only where a setting genuinely needs them;
-4. progressively route setting effects (`RELOAD_APPS`, `RELOAD_TV_CONTENT`, `RELOAD_WALLPAPER`, recreate/restart) through one effect dispatcher;
-5. migrate remaining named multi-choice controls to the shared choice-dialog primitive;
-6. finish Phase 6 with a Shield D-pad/settings checkpoint before Phase 7 notifications/media work.
+1. semantic focus/descriptors for Status Bar and Launcher settings;
+2. explicit setting-effect dispatch (`RELOAD_APPS`, `RELOAD_TV_CONTENT`, `RELOAD_WALLPAPER`, recreate/restart) instead of ad-hoc reload callbacks;
+3. ON_CONFIRM/session-preview adapters only where a setting genuinely needs them;
+4. remaining named multi-choice controls migrated to the shared choice-dialog primitive where useful;
+5. a Shield D-pad/settings checkpoint before Phase 7 notifications/media work.
 
 ## Development / CI strategy
 
@@ -56,12 +53,21 @@ Use a **milestone workflow**, not one expensive full CI run per tiny slice:
 
 1. batch related work on one milestone branch;
 2. stage later work as unopened branches while the active milestone validates;
-3. use pure JVM tests, targeted review and a cheap compile/unit check during development;
+3. use pure JVM tests, targeted review and a cheap compile/unit check during development where it saves a full PR cycle;
 4. temporary one-shot materializers/check workflows are allowed only when they materially reduce time/risk and must be removed before review;
 5. open one product PR when the milestone is ready;
 6. run the Android/R8/lint/source-purity gate once at the milestone boundary;
 7. fix concrete failures on the same PR (superseded runs cancel automatically), then merge;
 8. use Shield testing at meaningful phase checkpoints rather than every slice.
+
+Current CI speed path:
+
+- Gradle parallel execution and local build cache are enabled;
+- pushes to `aerialrows-development` run a trusted compile/unit-test cache warmer;
+- the first post-merge cache warmer completed successfully after `d458d2e`;
+- PRs targeting `aerialrows-development` can restore that base-branch cache;
+- benchmark APKs are compiled only when benchmark/build configuration changes (and for tags);
+- release/R8, unit tests, debug build, device-test compilation, lint and source-purity stay mandatory for product PRs.
 
 ## Development process rules
 
