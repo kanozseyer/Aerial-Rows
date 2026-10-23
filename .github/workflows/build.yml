@@ -20,9 +20,10 @@ jobs:
 
       # assembleRelease is the F-Droid variant (unsigned, proguard + shrink) —
       # building it here catches any shrinker regression before submission.
+      # Macrobenchmark APKs are compiled here but executed only on a real device.
       # lintRelease gates real issues (e.g. InvalidVectorPath crash risks).
-      - name: Build (debug + unsigned release) and lint
-        run: ./gradlew assembleDebug assembleRelease lintRelease --no-daemon
+      - name: Test, build, compile benchmarks and lint
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleBenchmark :macrobenchmark:assembleBenchmark :app:lintRelease --no-daemon
 
       - name: Verify build does not mutate tracked source
         shell: bash
