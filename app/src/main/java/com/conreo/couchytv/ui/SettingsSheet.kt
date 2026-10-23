@@ -76,6 +76,8 @@ import com.conreo.couchytv.core.launch.LaunchOrigin
 import com.conreo.couchytv.core.launch.LaunchRequest
 import com.conreo.couchytv.core.launch.LaunchTarget
 import com.conreo.couchytv.core.model.AppId
+import com.conreo.couchytv.core.settings.AppSettingsIds
+import com.conreo.couchytv.core.settings.CategorySettingsIds
 import com.conreo.couchytv.core.settings.DisplaySettingDescriptors
 import com.conreo.couchytv.core.settings.DisplaySettingIds
 import com.conreo.couchytv.core.settings.MainSettingIds
@@ -91,7 +93,10 @@ import com.conreo.couchytv.R
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.AppRepository
 import com.conreo.couchytv.data.CategoryCfg
+import com.conreo.couchytv.data.ConfigDefaults
+import com.conreo.couchytv.data.ConfigImportResult
 import com.conreo.couchytv.data.ConfigStore
+import com.conreo.couchytv.data.ConfigTransfer
 import com.conreo.couchytv.data.DATE_FORMATS
 import com.conreo.couchytv.data.LAYOUT_DOCK
 import com.conreo.couchytv.data.LAYOUT_GRID
@@ -104,9 +109,7 @@ import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import kotlinx.serialization.json.Json
 
-private val format = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
 
 /**
  * Settings panel built entirely from focusable rows and buttons — every
@@ -331,6 +334,8 @@ fun SettingsSheet(
                     SettingsRoutes.Apps -> AppsScreen(
                         apps = apps,
                         config = config,
+                        rememberedFocus = navigation.rememberedFocus(SettingsRoutes.Apps),
+                        onFocus = { id -> navigation = navigation.rememberFocus(SettingsRoutes.Apps, id) },
                         onBack = { navigation = navigation.back() },
                         onLaunch = { pkg ->
                             launchDispatcher.dispatch(
@@ -353,11 +358,15 @@ fun SettingsSheet(
                     SettingsRoutes.Channels -> ChannelsSettingsScreen(
                         config = config,
                         store = store,
+                        rememberedFocus = navigation.rememberedFocus(SettingsRoutes.Channels),
+                        onFocus = { id -> navigation = navigation.rememberFocus(SettingsRoutes.Channels, id) },
                     )
                     SettingsRoutes.Categories -> CategoriesScreen(
                         config = config,
                         apps = apps,
                         store = store,
+                        rememberedFocus = navigation.rememberedFocus(SettingsRoutes.Categories),
+                        onFocus = { id -> navigation = navigation.rememberFocus(SettingsRoutes.Categories, id) },
                         onBack = { navigation = navigation.back() },
                     )
                     SettingsRoutes.About -> AboutScreen(
@@ -800,6 +809,8 @@ private fun SelectorRow(
 private fun AppsScreen(
     apps: List<AppEntry>,
     config: LauncherConfig,
+    rememberedFocus: SettingId?,
+    onFocus: (SettingId) -> Unit,
     onBack: () -> Unit,
     onLaunch: (String) -> Unit,
     onAppInfo: (String) -> Unit,
@@ -807,6 +818,15 @@ private fun AppsScreen(
     onToggleHide: (String) -> Unit,
 ) {
     val catNames = remember(config.categories) { config.categories.associate { it.id to it.name } }
+    val appFocusIds = remember(apps) { apps.map { AppSettingsIds.app(it.pkg, it.componentName) } }
+    val appFocus = appFocusIds.takeIf { it.isNotEmpty() }?.let { ids ->
+        rememberSettingsFocusBindings(
+            ids = ids,
+            rememberedFocus = rememberedFocus,
+            defaultFocus = ids.first(),
+            onFocused = onFocus,
+        )
+    }
 
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text(
@@ -820,7 +840,6 @@ private fun AppsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
-        val f = initialFocus()
         LazyColumn(
             Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -836,7 +855,7 @@ private fun AppsScreen(
                         SettingsItem(
                             selected = false,
                             onClick = { onLaunch(app.pkg) },
-                            modifier = if (i == 0) Modifier.focusRequester(f) else Modifier,
+                            modifier = appFocus?.modifier(AppSettingsIds.app(app.pkg, app.componentName)) ?: Modifier,
                             headlineContent = { Text(app.label) },
                             supportingContent = {
                                 val names = AppRepository.sectionsOf(app, config)
@@ -1001,16 +1020,23 @@ private fun LauncherSettingsSubscreen(
         return
     }
 
-    fun saveConfig() {
-        scope.launch {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                    dir.mkdirs()
-                    File(dir, "CouchyBackup.json").writeText(format.encodeToString(LauncherConfig.serializer(), config))
+    val savePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { writer ->
+                            writer.write(ConfigTransfer.encode(config))
+                        } ?: error("Could not open destination")
+                    }.isSuccess
                 }
+                Actions.toast(
+                    context,
+                    context.getString(if (saved) R.string.toast_config_saved else R.string.toast_config_save_failed),
+                )
             }
-            Actions.toast(context, "Saved to Downloads/CouchyBackup.json")
         }
     }
 
@@ -1026,18 +1052,26 @@ private fun LauncherSettingsSubscreen(
     ) { uri ->
         if (uri != null) {
             scope.launch {
-                val loaded = withContext(Dispatchers.IO) {
+                val imported = withContext(Dispatchers.IO) {
                     runCatching {
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            format.decodeFromString(LauncherConfig.serializer(), String(input.readBytes()))
-                        }
-                    }.getOrNull()
+                        val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                            ?: return@runCatching ConfigImportResult.Invalid
+                        ConfigTransfer.decodeForRestore(
+                            raw = raw,
+                            fallbackCategories = ConfigDefaults.defaultCategories(context),
+                            knownApps = config.knownApps,
+                        )
+                    }.getOrDefault(ConfigImportResult.Invalid)
                 }
-                if (loaded != null) {
-                    store.update { loaded.copy(knownApps = config.knownApps, setupDone = true) }
-                    Actions.toast(context, context.getString(R.string.toast_config_loaded))
-                } else {
-                    Actions.toast(context, context.getString(R.string.toast_config_bad))
+                when (imported) {
+                    is ConfigImportResult.Success -> {
+                        store.update { imported.config }
+                        Actions.toast(context, context.getString(R.string.toast_config_loaded))
+                    }
+                    is ConfigImportResult.UnsupportedSchema ->
+                        Actions.toast(context, context.getString(R.string.toast_config_newer))
+                    ConfigImportResult.Invalid ->
+                        Actions.toast(context, context.getString(R.string.toast_config_bad))
                 }
             }
         }
@@ -1062,7 +1096,10 @@ private fun LauncherSettingsSubscreen(
         )
         SettingsItem(
             selected = false,
-            onClick = { saveConfig() },
+            onClick = {
+                runCatching { savePicker.launch("AerialRowsConfig.json") }
+                    .onFailure { Actions.toast(context, context.getString(R.string.toast_no_picker)) }
+            },
             modifier = focus.modifier(LauncherSettingIds.SaveConfig),
             headlineContent = { Text(stringResource(R.string.item_save_config)) },
             supportingContent = { Text(stringResource(R.string.item_save_config_sub)) },
@@ -1287,11 +1324,27 @@ private fun CategoriesScreen(
     config: LauncherConfig,
     apps: List<AppEntry>,
     store: ConfigStore,
+    rememberedFocus: SettingId?,
+    onFocus: (SettingId) -> Unit,
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var renameFor by remember { mutableStateOf<CategoryCfg?>(null) }
     var appsFor by remember { mutableStateOf<CategoryCfg?>(null) }
+    val categoryFocusIds = remember(config.categories) {
+        buildList {
+            add(CategorySettingsIds.AllApps)
+            config.categories.filter { it.id != AppRepository.ALL_APPS_ID }
+                .forEach { add(CategorySettingsIds.category(it.id)) }
+            add(CategorySettingsIds.AddCategory)
+        }
+    }
+    val categoryFocus = rememberSettingsFocusBindings(
+        ids = categoryFocusIds,
+        rememberedFocus = rememberedFocus,
+        defaultFocus = CategorySettingsIds.AllApps,
+        onFocused = onFocus,
+    )
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -1302,7 +1355,6 @@ private fun CategoriesScreen(
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
-        val f = initialFocus()
         // Auto-filled "All apps" section: a single toggle, no per-app assignment.
         run {
             val hasAll = config.categories.any { it.id == AppRepository.ALL_APPS_ID }
@@ -1320,7 +1372,7 @@ private fun CategoriesScreen(
                         }
                     }
                 },
-                modifier = Modifier.focusRequester(f),
+                modifier = categoryFocus.modifier(CategorySettingsIds.AllApps),
                 headlineContent = { Text(allName) },
                 supportingContent = { Text(stringResource(R.string.all_apps_sub)) },
                 leadingContent = { Icon(AppIcons.Apps, contentDescription = null) },
@@ -1338,6 +1390,7 @@ private fun CategoriesScreen(
                     SettingsItem(
                         selected = false,
                         onClick = { appsFor = cat },
+                        modifier = categoryFocus.modifier(CategorySettingsIds.category(cat.id)),
                         headlineContent = { Text(cat.name) },
                         supportingContent = { Text(stringResource(R.string.section_row_sub)) },
                         leadingContent = { Icon(AppIcons.Folder, contentDescription = null) },
@@ -1386,6 +1439,7 @@ private fun CategoriesScreen(
                     }
                 }
             },
+            modifier = categoryFocus.modifier(CategorySettingsIds.AddCategory),
             headlineContent = { Text(stringResource(R.string.add_section)) },
             leadingContent = { Icon(AppIcons.Add, contentDescription = null) },
         )

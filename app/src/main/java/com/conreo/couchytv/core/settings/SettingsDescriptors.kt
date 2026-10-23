@@ -52,12 +52,12 @@ object WallpaperSettingDescriptors {
     val GradientPreset = intRange(
         WallpaperSettingIds.GradientPreset,
         0..4,
-        SettingEffect.RELOAD_WALLPAPER,
+        SettingEffect.RECOMPOSE,
     )
     val VideoSpeed = intRange(
         WallpaperSettingIds.VideoSpeed,
         0..3,
-        SettingEffect.RELOAD_WALLPAPER,
+        SettingEffect.RECOMPOSE,
     )
 
     private fun intRange(
