@@ -26,10 +26,32 @@ class ConfigPersistenceTest {
     }
 
     @Test
+    fun v1EnvelopeWithoutPolicyMigratesToBehaviorPreservingDefault() {
+        val v1 = """
+            {
+              "schemaVersion": 1,
+              "launcherConfig": {
+                "layout": $LAYOUT_SLIDING_ROWS,
+                "knownApps": ["com.example.old"]
+              }
+            }
+        """.trimIndent()
+
+        val result = ConfigCodec.decode(v1)
+
+        assertTrue(result is ConfigDecodeResult.Success)
+        result as ConfigDecodeResult.Success
+        assertEquals(CURRENT_CONFIG_SCHEMA_VERSION, result.envelope.schemaVersion)
+        assertEquals(NewInstallPolicy.FIRST_SECTION, result.envelope.launcherConfig.newInstallPolicy)
+        assertEquals(setOf("com.example.old"), result.envelope.launcherConfig.knownApps)
+    }
+
+    @Test
     fun encodedConfigRoundTripsInsideVersionedEnvelope() {
         val original = LauncherConfig(
             homeRowOrder = listOf("watch_next", "apps"),
             channelItemLimit = 20,
+            newInstallPolicy = NewInstallPolicy.AUTO_CATEGORY,
         )
 
         val result = ConfigCodec.decode(ConfigCodec.encode(original))

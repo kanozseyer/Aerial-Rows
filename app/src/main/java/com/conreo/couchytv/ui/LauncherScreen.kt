@@ -89,6 +89,7 @@ import com.conreo.couchytv.data.LAYOUT_GRID
 import com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS
 import com.conreo.couchytv.data.LauncherConfig
 import com.conreo.couchytv.data.NetStatus
+import com.conreo.couchytv.data.NewInstallAssignment
 import com.conreo.couchytv.data.networkStatusFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -344,7 +345,8 @@ fun LauncherApp(rescanTick: Int) {
         }
     }
 
-    // New installs are auto-added to the FIRST section.
+    // Establish the first scan as a baseline; later installs follow the explicit
+    // policy instead of embedding one assignment rule in the UI.
     LaunchedEffect(apps) {
         if (apps.isEmpty()) return@LaunchedEffect
         val current = apps.map { it.pkg }.toSet()
@@ -354,10 +356,17 @@ fun LauncherApp(rescanTick: Int) {
                 val added = current - cfg.knownApps
                 if (added.isEmpty() && current == cfg.knownApps) cfg
                 else {
-                    val first = cfg.categories.first().id
+                    val regularCategoryIds = cfg.categories
+                        .map { it.id }
+                        .filter { it != AppRepository.ALL_APPS_ID }
+                    val explicitSections = NewInstallAssignment.explicitSections(
+                        policy = cfg.newInstallPolicy,
+                        regularCategoryIds = regularCategoryIds,
+                    )
                     cfg.copy(
                         knownApps = current,
-                        sections = cfg.sections + added.associateWith { setOf(first) },
+                        sections = if (explicitSections == null) cfg.sections
+                        else cfg.sections + added.associateWith { explicitSections },
                     )
                 }
             }

@@ -29,8 +29,10 @@ data class LauncherConfig(
     /** category id -> explicit package order */
     val order: Map<String, List<String>> = emptyMap(),
     val hidden: Set<String> = emptySet(),
-    /** packages seen on the last scan — new installs are auto-added to the first section */
+    /** Packages seen on the last scan, used to identify genuinely new installs. */
     val knownApps: Set<String> = emptySet(),
+    /** Assignment behavior for apps first observed after the initial baseline scan. */
+    val newInstallPolicy: NewInstallPolicy = NewInstallPolicy.FIRST_SECTION,
     val wallpaper: Int = 1, // Aurora
     val useCustomWallpaper: Boolean = false,
     /** video wallpaper: persisted content-URI of a local video, looped muted */
