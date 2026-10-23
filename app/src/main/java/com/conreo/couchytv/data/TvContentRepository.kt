@@ -34,17 +34,34 @@ data class TvProgramItem(
 @Immutable
 data class TvChannelRow(
     val id: Long,
+    /** Stable provider identity when available, otherwise the legacy numeric key. */
     val key: String,
+    /** Previous package + provider-row-id identity kept as a compatibility alias. */
+    val legacyKey: String,
     val name: String,
     val packageName: String,
     val browsable: Boolean,
     val programs: List<TvProgramItem>,
-)
+) {
+    fun matchesStoredKey(storedKey: String): Boolean = storedKey == key || storedKey == legacyKey
+
+    fun isHiddenBy(hiddenKeys: Set<String>): Boolean =
+        key in hiddenKeys || legacyKey in hiddenKeys
+
+    fun configuredItemLimit(perChannelLimits: Map<String, Int>, defaultLimit: Int): Int =
+        perChannelLimits[key] ?: perChannelLimits[legacyKey] ?: defaultLimit
+}
 
 @Immutable
 data class TvContentRows(
     val watchNext: List<TvProgramItem> = emptyList(),
     val channels: List<TvChannelRow> = emptyList(),
+)
+
+@Immutable
+data class TvChannelIdentity(
+    val key: String,
+    val legacyKey: String,
 )
 
 enum class TvContentObservation {
@@ -68,6 +85,23 @@ fun tvContentObservationTargets(
         add(TvContentObservation.CHANNELS)
         add(TvContentObservation.PREVIEW_PROGRAMS)
     }
+}
+
+/**
+ * Prefer the provider's own logical channel ID because TvProvider row IDs can be
+ * recreated. The old package + numeric ID remains as an alias so existing config
+ * continues to match and can migrate lazily without a destructive schema rewrite.
+ */
+fun tvChannelIdentity(
+    packageName: String,
+    internalProviderId: String,
+    channelId: Long,
+): TvChannelIdentity {
+    val owner = packageName.ifBlank { "unknown" }
+    val legacyKey = "$owner:$channelId"
+    val providerId = internalProviderId.trim()
+    val key = if (providerId.isNotEmpty()) "$owner:provider:$providerId" else legacyKey
+    return TvChannelIdentity(key = key, legacyKey = legacyKey)
 }
 
 /**
@@ -199,8 +233,9 @@ object TvContentRepository {
         }.getOrDefault(false)
     }
 
+    /** Legacy key helper retained for config/backward-compatibility callers. */
     fun channelKey(packageName: String, channelId: Long): String =
-        "${packageName.ifBlank { "unknown" }}:$channelId"
+        tvChannelIdentity(packageName, internalProviderId = "", channelId = channelId).legacyKey
 
     @RequiresApi(26)
     private fun queryChannels(
@@ -215,6 +250,7 @@ object TvContentRepository {
             TvContract.Channels.COLUMN_DISPLAY_NAME,
             TvContract.Channels.COLUMN_BROWSABLE,
             TvContract.Channels.COLUMN_TYPE,
+            TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,
             "package_name",
         )
         val rows = mutableListOf<TvChannelRow>()
@@ -223,6 +259,7 @@ object TvContentRepository {
             val nameCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_DISPLAY_NAME)
             val browsableCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_BROWSABLE)
             val typeCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_TYPE)
+            val providerIdCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID)
             val pkgCol = cursor.getColumnIndex("package_name")
             while (cursor.moveToNext()) {
                 val id = if (idCol >= 0) cursor.getLong(idCol) else continue
@@ -238,10 +275,17 @@ object TvContentRepository {
                     cursor.getString(nameCol).orEmpty().ifBlank { "Channel" }
                 } else "Channel"
                 val packageName = if (pkgCol >= 0) cursor.getString(pkgCol).orEmpty() else ""
-                val key = channelKey(packageName, id)
-                if (key in hidden) continue
+                val internalProviderId = if (providerIdCol >= 0 && !cursor.isNull(providerIdCol)) {
+                    cursor.getString(providerIdCol).orEmpty()
+                } else ""
+                val identity = tvChannelIdentity(packageName, internalProviderId, id)
+                if (identity.key in hidden || identity.legacyKey in hidden) continue
 
-                val limit = (perChannelLimits[key] ?: defaultLimit).coerceIn(4, 30)
+                val limit = (
+                    perChannelLimits[identity.key]
+                        ?: perChannelLimits[identity.legacyKey]
+                        ?: defaultLimit
+                    ).coerceIn(4, 30)
                 val programs = runCatching {
                     queryPrograms(context, TvContract.buildPreviewProgramsUriForChannel(id), limit)
                 }.getOrDefault(emptyList())
@@ -249,7 +293,8 @@ object TvContentRepository {
 
                 rows += TvChannelRow(
                     id = id,
-                    key = key,
+                    key = identity.key,
+                    legacyKey = identity.legacyKey,
                     name = name,
                     packageName = packageName,
                     browsable = browsable,

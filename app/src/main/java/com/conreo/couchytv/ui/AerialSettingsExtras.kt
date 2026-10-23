@@ -123,7 +123,7 @@ fun ChannelsSettingsScreen(
             )
         } else {
             channels.forEach { channel ->
-                val hidden = channel.key in config.hiddenTvChannels
+                val hidden = channel.isHiddenBy(config.hiddenTvChannels)
                 val subtitle = when {
                     !channel.browsable -> {
                         val owner = channel.packageName.ifBlank { "Android TV channel" }
@@ -154,10 +154,13 @@ fun ChannelsSettingsScreen(
                         } else {
                             scope.launch {
                                 store.update { cfg ->
+                                    val aliases = setOf(channel.key, channel.legacyKey)
                                     cfg.copy(
-                                        hiddenTvChannels = if (channel.key in cfg.hiddenTvChannels)
-                                            cfg.hiddenTvChannels - channel.key
-                                        else cfg.hiddenTvChannels + channel.key
+                                        hiddenTvChannels = if (channel.isHiddenBy(cfg.hiddenTvChannels)) {
+                                            cfg.hiddenTvChannels - aliases
+                                        } else {
+                                            (cfg.hiddenTvChannels - channel.legacyKey) + channel.key
+                                        },
                                     )
                                 }
                             }
@@ -165,7 +168,10 @@ fun ChannelsSettingsScreen(
                     },
                 )
                 if (channel.browsable && !hidden && channel.programs.isNotEmpty()) {
-                    val value = config.channelItemLimits[channel.key] ?: config.channelItemLimit
+                    val value = channel.configuredItemLimit(
+                        config.channelItemLimits,
+                        config.channelItemLimit,
+                    )
                     val index = limits.indices.minByOrNull { kotlin.math.abs(limits[it] - value) } ?: current
                     ExtraSelector(
                         title = "↳ ${channel.name}: cards shown",
@@ -175,7 +181,10 @@ fun ChannelsSettingsScreen(
                         onSelect = { i ->
                             scope.launch {
                                 store.update { cfg ->
-                                    cfg.copy(channelItemLimits = cfg.channelItemLimits + (channel.key to limits[i]))
+                                    cfg.copy(
+                                        channelItemLimits = (cfg.channelItemLimits - channel.legacyKey) +
+                                            (channel.key to limits[i]),
+                                    )
                                 }
                             }
                         },

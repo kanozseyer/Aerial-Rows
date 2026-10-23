@@ -120,8 +120,14 @@ private fun categoryIcon(category: CategoryCfg): String {
     }
 }
 
-private fun normalizeHomeOrder(saved: List<String>, natural: List<String>): List<String> =
-    saved.filter { it in natural } + natural.filterNot { it in saved }
+private fun normalizeHomeOrder(
+    saved: List<String>,
+    natural: List<String>,
+    aliases: Map<String, String> = emptyMap(),
+): List<String> {
+    val migrated = saved.map { aliases[it] ?: it }
+    return migrated.filter { it in natural }.distinct() + natural.filterNot { it in migrated }
+}
 
 private fun appHomeItemId(app: AppEntry): HomeItemId =
     HomeItemId.App(
@@ -206,7 +212,14 @@ fun SlidingRowsArea(
         categorized.forEach { (category, apps) -> add(CategoryHomeRow(category, apps)) }
     }
     val naturalIds = naturalRows.map { it.id }
-    val normalizedOrder = normalizeHomeOrder(config.homeRowOrder, naturalIds)
+    val rowAliases = naturalRows
+        .filterIsInstance<ChannelHomeRow>()
+        .mapNotNull { row ->
+            val legacyId = "channel:${row.channel.legacyKey}"
+            if (legacyId == row.id) null else legacyId to row.id
+        }
+        .toMap()
+    val normalizedOrder = normalizeHomeOrder(config.homeRowOrder, naturalIds, rowAliases)
     val rank = normalizedOrder.withIndex().associate { (index, id) -> id to index }
     val rows = naturalRows.sortedBy { rank[it.id] ?: Int.MAX_VALUE }
     val rowSnapshots = remember(rows) { rows.map(HomeRowModel::toFocusSnapshot) }
@@ -243,7 +256,7 @@ fun SlidingRowsArea(
         if (from == to) return
         scope.launch {
             store.update { cfg ->
-                val order = normalizeHomeOrder(cfg.homeRowOrder, ids).toMutableList()
+                val order = normalizeHomeOrder(cfg.homeRowOrder, ids, rowAliases).toMutableList()
                 val current = order.indexOf(id)
                 if (current < 0) cfg
                 else {
