@@ -1,5 +1,7 @@
 package com.conreo.couchytv.core.settings
 
+import com.conreo.couchytv.core.model.AppId
+
 object SettingsRoutes {
     val Main = SettingsRoute.Root
     val Wallpaper = SettingsRoute("wallpaper")
@@ -141,4 +143,9 @@ object LauncherSettingIds {
         LoadConfig,
         RerunWizard,
     )
+}
+
+/** Semantic IDs for dynamic settings rows; never derive identity from list position. */
+object DynamicSettingIds {
+    fun app(appId: AppId): SettingId = SettingId("apps.app:${appId.stableKey}")
 }

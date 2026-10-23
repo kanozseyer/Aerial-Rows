@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
@@ -78,6 +79,7 @@ import com.conreo.couchytv.core.launch.LaunchTarget
 import com.conreo.couchytv.core.model.AppId
 import com.conreo.couchytv.core.settings.DisplaySettingDescriptors
 import com.conreo.couchytv.core.settings.DisplaySettingIds
+import com.conreo.couchytv.core.settings.DynamicSettingIds
 import com.conreo.couchytv.core.settings.MainSettingIds
 import com.conreo.couchytv.core.settings.LauncherSettingIds
 import com.conreo.couchytv.core.settings.StatusBarSettingDescriptors
@@ -331,6 +333,8 @@ fun SettingsSheet(
                     SettingsRoutes.Apps -> AppsScreen(
                         apps = apps,
                         config = config,
+                        rememberedFocus = navigation.rememberedFocus(SettingsRoutes.Apps),
+                        onFocus = { id -> navigation = navigation.rememberFocus(SettingsRoutes.Apps, id) },
                         onBack = { navigation = navigation.back() },
                         onLaunch = { pkg ->
                             launchDispatcher.dispatch(
@@ -800,6 +804,8 @@ private fun SelectorRow(
 private fun AppsScreen(
     apps: List<AppEntry>,
     config: LauncherConfig,
+    rememberedFocus: SettingId?,
+    onFocus: (SettingId) -> Unit,
     onBack: () -> Unit,
     onLaunch: (String) -> Unit,
     onAppInfo: (String) -> Unit,
@@ -807,6 +813,37 @@ private fun AppsScreen(
     onToggleHide: (String) -> Unit,
 ) {
     val catNames = remember(config.categories) { config.categories.associate { it.id to it.name } }
+    val appSettingIds = remember(apps) {
+        apps.map { app ->
+            DynamicSettingIds.app(
+                AppId(
+                    packageName = app.pkg,
+                    componentName = app.componentName,
+                ),
+            )
+        }
+    }
+    val listState = rememberLazyListState()
+    val requesters = remember(appSettingIds) {
+        appSettingIds.associateWith { FocusRequester() }
+    }
+    val targetIndex = rememberedFocus
+        ?.let(appSettingIds::indexOf)
+        ?.takeIf { it >= 0 }
+        ?: 0
+
+    LaunchedEffect(appSettingIds, rememberedFocus) {
+        if (appSettingIds.isEmpty()) return@LaunchedEffect
+        listState.scrollToItem(targetIndex)
+        withFrameNanos { }
+        val targetId = appSettingIds[targetIndex]
+        repeat(30) {
+            if (runCatching { requesters.getValue(targetId).requestFocus() }.isSuccess) {
+                return@LaunchedEffect
+            }
+            withFrameNanos { }
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text(
@@ -820,13 +857,14 @@ private fun AppsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
-        val f = initialFocus()
         LazyColumn(
             Modifier.fillMaxSize(),
+            state = listState,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(apps.size, key = { apps[it].pkg }) { i ->
                 val app = apps[i]
+                val appSettingId = appSettingIds[i]
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -836,7 +874,11 @@ private fun AppsScreen(
                         SettingsItem(
                             selected = false,
                             onClick = { onLaunch(app.pkg) },
-                            modifier = if (i == 0) Modifier.focusRequester(f) else Modifier,
+                            modifier = Modifier
+                                .focusRequester(requesters.getValue(appSettingId))
+                                .onFocusChanged { state ->
+                                    if (state.isFocused) onFocus(appSettingId)
+                                },
                             headlineContent = { Text(app.label) },
                             supportingContent = {
                                 val names = AppRepository.sectionsOf(app, config)
