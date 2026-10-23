@@ -16,7 +16,8 @@ Merged Phase 6 milestones:
 
 - semantic settings navigation and shared choice controls: `891bcdb257110ddcad74312e54a07f7c8d704a51`;
 - debounced settings runtime, Display/Wallpaper semantic focus and CI/cache speed work: `d458d2ed92a8c820c8634bb7aca73984d6a0016b`;
-- panel semantic focus, debounced panel controls and live optimistic preview: `177900956ac46c9e48526df1f019b7f55083bdcf`.
+- panel semantic focus, debounced panel controls and live optimistic preview: `177900956ac46c9e48526df1f019b7f55083bdcf`;
+- Status/Launcher semantic focus plus deterministic settings-effect policy: `ae8114d7e66bdbc924b595b062b4ce83e37ebe25`.
 
 ## Phase 5 completion checkpoint
 
@@ -24,29 +25,27 @@ The merged wallpaper runtime has secure/typed Aerial playback, fair shuffle and 
 
 A meaningful Shield checkpoint for wallpaper/fallback/dock behavior is still useful, but it does not block Phase 6 coding.
 
-## Active Phase 6 Status / Launcher / effects milestone
+## Active Phase 6 shared-choice milestone
 
-The current milestone is based directly on `177900956ac46c9e48526df1f019b7f55083bdcf` and has passed the cheap development gate (`:app:testDebugUnitTest :app:compileDebugKotlin`). Temporary materializer/check workflows are removed before review.
+The current staged milestone is based directly on `ae8114d7e66bdbc924b595b062b4ce83e37ebe25` and its app code has passed the cheap development gate (`:app:testDebugUnitTest :app:compileDebugKotlin`).
 
 Current work:
 
-- stable semantic IDs for Status Bar and Launcher-management rows;
-- Status Bar restores exact semantic focus and excludes the disabled VPN-app row from the active focus set;
-- Launcher settings restore focus across Language, Save, Load and Setup Wizard actions;
-- date format uses the shared named choice dialog and debounced persistence rather than one DataStore write per D-pad step;
-- typed Status descriptors define validation, persistence policy and RECOMPOSE effects;
-- date-format validation is regression-tested against the current `DATE_FORMATS` contract;
-- global setting-ID uniqueness now covers Main, Display, Wallpaper, Status and Launcher IDs;
-- a pure `SettingsEffectDispatcher` turns descriptor effect batches into deterministic external work order while keeping `NONE`/`RECOMPOSE` inside state-driven Compose;
-- dispatcher ordering/deduplication is JVM-tested.
+- extracts the named-choice dialog into one reusable `SettingsChoiceDialog` primitive;
+- Display/Wallpaper/Status selectors keep the same current-value-focused choice behavior through the shared primitive;
+- panel `ExtraSelector` keeps Left/Right instant stepping but OK now opens the full named choice list when options are available;
+- panel dialogs open focused on the optimistic/current value and return to the selector after selection/dismissal;
+- shared row/check primitives are internal to the settings UI package rather than duplicated;
+- introduces one permanent marker-triggered `Fast Check` workflow so later milestones no longer create/delete temporary YAML just to run unit tests + Kotlin compile;
+- the reusable fast check has concurrency cancellation, a 15-minute bound and a source-mutation check; deleting the marker becomes a checkout-only no-op.
 
 After this milestone, continue Phase 6 with:
 
 1. wire true external effects (`RELOAD_APPS`, `RELOAD_TV_CONTENT`, `RELOAD_WALLPAPER`, recreate/restart) to existing launcher/runtime invalidation seams only where config observation is insufficient;
-2. extract the shared named-choice primitive so panel `ExtraSelector` uses the same OK-to-open choice UI as Display/Status selectors;
-3. add ON_CONFIRM/session-preview adapters only where a setting genuinely needs them;
-4. add semantic restore to remaining dynamic settings surfaces where it materially improves TV navigation (Apps/Channels/Categories), using stable app/channel/category identities rather than list positions;
-5. run the Phase 6 Shield D-pad/settings checkpoint before Phase 7 notifications/media work.
+2. add ON_CONFIRM/session-preview adapters only where a setting genuinely needs them;
+3. add semantic restore to remaining dynamic settings surfaces where it materially improves TV navigation (Apps/Channels/Categories), using stable app/channel/category identities rather than list positions;
+4. run the Phase 6 Shield D-pad/settings checkpoint;
+5. then move to Phase 7 notifications/media/status cleanup.
 
 ## Development / CI strategy
 
@@ -54,8 +53,8 @@ Use a **milestone workflow**, not one expensive full CI run per tiny slice:
 
 1. batch related work on one milestone branch;
 2. stage later work as unopened branches while the active milestone validates;
-3. use pure JVM tests, targeted review and a cheap compile/unit check during development where it saves a full PR cycle;
-4. temporary one-shot materializers/check workflows are allowed only when they materially reduce time/risk and must be removed before review;
+3. use pure JVM tests, targeted review and the reusable marker-triggered fast check during development;
+4. temporary one-shot materializers are allowed only when they materially reduce time/risk and must be removed before review;
 5. open one product PR when the milestone is ready;
 6. run the Android/R8/lint/source-purity gate once at the milestone boundary;
 7. fix concrete failures on the same PR (superseded runs cancel automatically), then merge;
@@ -68,6 +67,7 @@ Current CI speed path:
 - post-merge cache warming is verified working;
 - PRs targeting `aerialrows-development` can restore that base-branch cache;
 - benchmark APKs are compiled only when benchmark/build configuration changes (and for tags);
+- reusable `.github/workflows/fast-check.yml` runs only when `.github/fast-check-trigger` is deliberately present/changed;
 - release/R8, unit tests, debug build, device-test compilation, lint and source-purity stay mandatory for product PRs.
 
 ## Development process rules

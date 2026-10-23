@@ -780,7 +780,7 @@ private fun SelectorRow(
         },
     )
     if (showChoices && validOptions != null) {
-        ChoiceDialog(
+        SettingsChoiceDialog(
             title = label,
             options = validOptions,
             current = displayedCurrent,
@@ -791,44 +791,6 @@ private fun SelectorRow(
             },
             onDismiss = { showChoices = false },
         )
-    }
-}
-
-@Composable
-private fun ChoiceDialog(
-    title: String,
-    options: List<String>,
-    current: Int,
-    onSelect: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.width(360.dp),
-        ) {
-            Column(
-                Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
-                )
-                val selectedFocus = initialFocus()
-                options.forEachIndexed { index, option ->
-                    SettingsItem(
-                        selected = index == current,
-                        onClick = { onSelect(index) },
-                        headlineContent = { Text(option) },
-                        trailingContent = { CheckMark(checked = index == current) },
-                        modifier = if (index == current) Modifier.focusRequester(selectedFocus) else Modifier,
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1739,7 +1701,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun CheckMark(checked: Boolean) {
+internal fun CheckMark(checked: Boolean) {
     Box(
         Modifier
             .size(22.dp)
@@ -1772,7 +1734,7 @@ private fun CheckMark(checked: Boolean) {
  * blurry on TV; the focused container colour alone signals selection.
  */
 @Composable
-private fun SettingsItem(
+internal fun SettingsItem(
     onClick: () -> Unit,
     headlineContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
