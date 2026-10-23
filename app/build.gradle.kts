@@ -15,6 +15,7 @@ android {
         targetSdk = 34
         versionCode = 8
         versionName = "1.1.0-ar-dev"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     val ciKeystore = System.getenv("KEYSTORE_FILE")
@@ -39,6 +40,11 @@ android {
                 project.hasProperty("localSign") -> signingConfigs.getByName("debug")
                 else -> null
             }
+        }
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
 
@@ -75,4 +81,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.4.1")
+
+    testImplementation("junit:junit:4.13.2")
+
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
 }

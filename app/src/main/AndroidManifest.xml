@@ -34,6 +34,11 @@
         android:theme="@style/Theme.LiteTV"
         android:supportsRtl="true">
 
+        <!-- Allows Macrobenchmark/Perfetto tracing without making production builds debuggable. -->
+        <profileable
+            android:shell="true"
+            tools:targetApi="29" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
