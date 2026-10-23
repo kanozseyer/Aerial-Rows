@@ -59,6 +59,33 @@ data class TvContentRows(
 )
 
 @Immutable
+data class TvProviderInfo(
+    val packageName: String,
+    val label: String,
+)
+
+@Immutable
+data class WatchNextProviderPolicy(
+    val maxItemsPerProvider: Int,
+    val excludedPackages: Set<String>,
+)
+
+class WatchNextProviderLimiter(policy: WatchNextProviderPolicy) {
+    private val maxItemsPerProvider = policy.maxItemsPerProvider.coerceIn(1, 30)
+    private val excludedPackages = policy.excludedPackages
+    private val acceptedByProvider = mutableMapOf<String, Int>()
+
+    fun allow(packageName: String): Boolean {
+        if (packageName in excludedPackages) return false
+        val providerKey = packageName.ifBlank { "<unknown>" }
+        val accepted = acceptedByProvider[providerKey] ?: 0
+        if (accepted >= maxItemsPerProvider) return false
+        acceptedByProvider[providerKey] = accepted + 1
+        return true
+    }
+}
+
+@Immutable
 data class TvChannelIdentity(
     val key: String,
     val legacyKey: String,
@@ -206,6 +233,10 @@ object TvContentRepository {
                     uri = TvContract.WatchNextPrograms.CONTENT_URI,
                     limit = defaultLimit,
                     kind = TvProgramQueryKind.WATCH_NEXT,
+                    watchNextPolicy = WatchNextProviderPolicy(
+                        maxItemsPerProvider = config.watchNextPerProviderLimit,
+                        excludedPackages = config.excludedWatchNextProviders,
+                    ),
                 )
             }.getOrDefault(emptyList())
         } else emptyList()
@@ -241,6 +272,38 @@ object TvContentRepository {
                 mode = TvChannelQueryMode.DISCOVERY,
             )
         }.getOrDefault(emptyList())
+    }
+
+    /** Discover all provider packages currently contributing Watch Next items. */
+    suspend fun discoverWatchNextProviders(context: Context): List<TvProviderInfo> = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < 26) return@withContext emptyList()
+        val packages = linkedSetOf<String>()
+        runCatching {
+            context.contentResolver.query(
+                TvContract.WatchNextPrograms.CONTENT_URI,
+                arrayOf("package_name"),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val packageCol = cursor.getColumnIndex("package_name")
+                while (cursor.moveToNext()) {
+                    if (packageCol < 0 || cursor.isNull(packageCol)) continue
+                    cursor.getString(packageCol).orEmpty().trim()
+                        .takeIf(String::isNotEmpty)
+                        ?.let(packages::add)
+                }
+            }
+        }
+        val pm = context.packageManager
+        packages.map { packageName ->
+            val label = runCatching {
+                @Suppress("DEPRECATION")
+                val info = pm.getApplicationInfo(packageName, 0)
+                pm.getApplicationLabel(info).toString().ifBlank { packageName }
+            }.getOrDefault(packageName)
+            TvProviderInfo(packageName = packageName, label = label)
+        }.sortedBy { it.label.lowercase() }
     }
 
     /** Ask Android TV to approve a preview channel for home-screen browsing. */
@@ -335,6 +398,7 @@ object TvContentRepository {
         uri: Uri,
         limit: Int,
         kind: TvProgramQueryKind,
+        watchNextPolicy: WatchNextProviderPolicy? = null,
     ): List<TvProgramItem> {
         // Shared preview/watch-next column names. Using literal provider names
         // avoids Kotlin/JVM inherited-static binding differences across SDKs.
@@ -363,6 +427,7 @@ object TvContentRepository {
         }.getOrNull() ?: return emptyList()
 
         val result = ArrayList<TvProgramItem>(limit)
+        val watchNextLimiter = watchNextPolicy?.let(::WatchNextProviderLimiter)
         cursor.use {
             fun text(name: String): String {
                 val i = it.getColumnIndex(name)
@@ -378,13 +443,15 @@ object TvContentRepository {
                 if (browsableCol >= 0 && it.getInt(browsableCol) == 0) continue
                 val title = text("title")
                 if (title.isBlank()) continue
+                val packageName = text("package_name")
+                if (watchNextLimiter != null && !watchNextLimiter.allow(packageName)) continue
                 result += TvProgramItem(
                     id = if (idCol >= 0) it.getLong(idCol) else result.size.toLong(),
                     title = title,
                     subtitle = text("episode_title").ifBlank { text("short_description") },
                     artworkUri = text("poster_art_uri").ifBlank { text("thumbnail_uri") },
                     intentUri = text("intent_uri"),
-                    packageName = text("package_name"),
+                    packageName = packageName,
                     durationMs = long("duration_millis"),
                     playbackPositionMs = long("last_playback_position_millis"),
                 )

@@ -6,7 +6,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 
-const val CURRENT_CONFIG_SCHEMA_VERSION = 2
+const val CURRENT_CONFIG_SCHEMA_VERSION = 3
 
 @Serializable
 data class ConfigEnvelope(
@@ -42,10 +42,18 @@ private object V1ToV2Migration : ConfigMigration {
     override fun migrate(config: LauncherConfig): LauncherConfig = config
 }
 
+/** Schema v3 adds Watch Next provider caps/exclusions with safe defaults. */
+private object V2ToV3Migration : ConfigMigration {
+    override val fromVersion: Int = 2
+    override val toVersion: Int = 3
+    override fun migrate(config: LauncherConfig): LauncherConfig = config
+}
+
 object MigrationRegistry {
     private val migrations: Map<Int, ConfigMigration> = listOf(
         LegacyToV1Migration,
         V1ToV2Migration,
+        V2ToV3Migration,
     ).associateBy { it.fromVersion }
 
     fun migrate(envelope: ConfigEnvelope): ConfigEnvelope {

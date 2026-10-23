@@ -47,6 +47,26 @@ class ConfigPersistenceTest {
     }
 
     @Test
+    fun v2EnvelopeMigratesToWatchNextProviderDefaults() {
+        val v2 = """
+            {
+              "schemaVersion": 2,
+              "launcherConfig": {
+                "layout": $LAYOUT_SLIDING_ROWS
+              }
+            }
+        """.trimIndent()
+
+        val result = ConfigCodec.decode(v2)
+
+        assertTrue(result is ConfigDecodeResult.Success)
+        result as ConfigDecodeResult.Success
+        assertEquals(CURRENT_CONFIG_SCHEMA_VERSION, result.envelope.schemaVersion)
+        assertEquals(4, result.envelope.launcherConfig.watchNextPerProviderLimit)
+        assertTrue(result.envelope.launcherConfig.excludedWatchNextProviders.isEmpty())
+    }
+
+    @Test
     fun encodedConfigRoundTripsInsideVersionedEnvelope() {
         val original = LauncherConfig(
             homeRowOrder = listOf("watch_next", "apps"),

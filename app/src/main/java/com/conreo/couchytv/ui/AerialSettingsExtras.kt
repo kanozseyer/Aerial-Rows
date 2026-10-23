@@ -58,6 +58,9 @@ fun ChannelsSettingsScreen(
     val channels by produceState(emptyList<TvChannelRow>(), channelRefresh) {
         value = TvContentRepository.discoverChannels(context)
     }
+    val watchNextProviders by produceState(emptyList<com.conreo.couchytv.data.TvProviderInfo>(), channelRefresh) {
+        value = TvContentRepository.discoverWatchNextProviders(context)
+    }
 
     Column(
         Modifier
@@ -87,6 +90,50 @@ fun ChannelsSettingsScreen(
                 scope.launch { store.update { it.copy(showWatchNext = !it.showWatchNext) } }
             },
         )
+        if (config.showWatchNext) {
+            val providerCaps = listOf(1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 30)
+            val capIndex = providerCaps.indices.minByOrNull {
+                kotlin.math.abs(providerCaps[it] - config.watchNextPerProviderLimit)
+            } ?: 3
+            ExtraSelector(
+                title = "Watch Next cards per app",
+                subtitle = "Stops one provider from filling the entire Watch Next row",
+                value = providerCaps[capIndex].toString(),
+                steps = providerCaps.size,
+                current = capIndex,
+                onSelect = { i ->
+                    scope.launch { store.update { it.copy(watchNextPerProviderLimit = providerCaps[i]) } }
+                },
+            )
+            if (watchNextProviders.isNotEmpty()) {
+                Text(
+                    "WATCH NEXT APPS",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp),
+                )
+                watchNextProviders.forEach { provider ->
+                    val enabled = provider.packageName !in config.excludedWatchNextProviders
+                    ExtraSettingRow(
+                        title = provider.label,
+                        subtitle = provider.packageName,
+                        checked = enabled,
+                        onClick = {
+                            scope.launch {
+                                store.update { cfg ->
+                                    cfg.copy(
+                                        excludedWatchNextProviders = if (provider.packageName in cfg.excludedWatchNextProviders)
+                                            cfg.excludedWatchNextProviders - provider.packageName
+                                        else cfg.excludedWatchNextProviders + provider.packageName
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
         ExtraSettingRow(
             title = "App preview channels",
             subtitle = "Master switch for browsable channels published by installed TV apps",

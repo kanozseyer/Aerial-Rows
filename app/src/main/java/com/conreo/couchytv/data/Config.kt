@@ -54,6 +54,10 @@ data class LauncherConfig(
     // ----- Android TV content rows -----
     /** System Watch Next / Play Next content, when the device exposes it. */
     val showWatchNext: Boolean = true,
+    /** Maximum Watch Next cards accepted from any one provider package. */
+    val watchNextPerProviderLimit: Int = 4,
+    /** Provider packages excluded from the Watch Next row. */
+    val excludedWatchNextProviders: Set<String> = emptySet(),
     /** App-published Android TV preview channels. */
     val showPreviewChannels: Boolean = true,
     /** Maximum cards loaded from each TV channel row unless overridden per channel. */
