@@ -42,7 +42,7 @@ jobs:
           elif [[ "$EVENT_NAME" == "pull_request" ]]; then
             CHANGED="$(git diff --name-only "$BASE_SHA"...HEAD)"
             printf '%s\n' "$CHANGED"
-            if grep -Eq '^(.github/workflows/build\.yml|macrobenchmark/|app/build\.gradle\.kts|build\.gradle\.kts|settings\.gradle\.kts|gradle/|gradle\.properties|app/proguard-rules\.pro|app/src/main/AndroidManifest\.xml)' <<<"$CHANGED"; then
+            if grep -Eq '^(\.github/workflows/build\.yml|macrobenchmark/|app/src/benchmark/|app/build\.gradle\.kts|build\.gradle\.kts|settings\.gradle\.kts|gradle/|gradle\.properties|app/proguard-rules\.pro|app/src/main/AndroidManifest\.xml|app/src/main/baseline-prof\.txt)' <<<"$CHANGED"; then
               extended=true
             fi
           else
