@@ -44,6 +44,7 @@ import com.conreo.couchytv.data.PANEL_LIQUID_GLASS
 import com.conreo.couchytv.data.PANEL_SOLID
 import com.conreo.couchytv.data.TvChannelRow
 import com.conreo.couchytv.data.TvContentRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -53,7 +54,8 @@ fun ChannelsSettingsScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val channels by produceState(emptyList<TvChannelRow>()) {
+    var channelRefresh by remember { mutableStateOf(0) }
+    val channels by produceState(emptyList<TvChannelRow>(), channelRefresh) {
         value = TvContentRepository.discoverChannels(context)
     }
 
@@ -122,23 +124,47 @@ fun ChannelsSettingsScreen(
         } else {
             channels.forEach { channel ->
                 val hidden = channel.key in config.hiddenTvChannels
+                val subtitle = when {
+                    !channel.browsable -> {
+                        val owner = channel.packageName.ifBlank { "Android TV channel" }
+                        "$owner · Not approved for TV home — press OK to request"
+                    }
+                    channel.programs.isEmpty() -> {
+                        val owner = channel.packageName.ifBlank { "Android TV channel" }
+                        "$owner · No programmes currently published"
+                    }
+                    else -> channel.packageName.ifBlank { "Android TV channel" }
+                }
                 ExtraSettingRow(
                     title = channel.name,
-                    subtitle = channel.packageName.ifBlank { "Android TV channel" },
-                    checked = !hidden,
+                    subtitle = subtitle,
+                    checked = channel.browsable && !hidden,
                     onClick = {
-                        scope.launch {
-                            store.update { cfg ->
-                                cfg.copy(
-                                    hiddenTvChannels = if (channel.key in cfg.hiddenTvChannels)
-                                        cfg.hiddenTvChannels - channel.key
-                                    else cfg.hiddenTvChannels + channel.key
-                                )
+                        if (!channel.browsable) {
+                            if (TvContentRepository.requestChannelBrowsable(context, channel.id)) {
+                                // The platform updates COLUMN_BROWSABLE asynchronously.
+                                // Refresh once shortly after the system request so the
+                                // Settings row reflects the approved state without the
+                                // user having to leave/re-enter this screen.
+                                scope.launch {
+                                    delay(750L)
+                                    channelRefresh++
+                                }
+                            }
+                        } else {
+                            scope.launch {
+                                store.update { cfg ->
+                                    cfg.copy(
+                                        hiddenTvChannels = if (channel.key in cfg.hiddenTvChannels)
+                                            cfg.hiddenTvChannels - channel.key
+                                        else cfg.hiddenTvChannels + channel.key
+                                    )
+                                }
                             }
                         }
                     },
                 )
-                if (!hidden) {
+                if (channel.browsable && !hidden && channel.programs.isNotEmpty()) {
                     val value = config.channelItemLimits[channel.key] ?: config.channelItemLimit
                     val index = limits.indices.minByOrNull { kotlin.math.abs(limits[it] - value) } ?: current
                     ExtraSelector(

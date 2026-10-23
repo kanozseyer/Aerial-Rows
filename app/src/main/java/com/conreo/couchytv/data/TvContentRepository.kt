@@ -37,6 +37,7 @@ data class TvChannelRow(
     val key: String,
     val name: String,
     val packageName: String,
+    val browsable: Boolean,
     val programs: List<TvProgramItem>,
 )
 
@@ -52,6 +53,11 @@ enum class TvContentObservation {
     PREVIEW_PROGRAMS,
 }
 
+enum class TvChannelQueryMode {
+    HOME,
+    DISCOVERY,
+}
+
 /** Pure demand-driven observation plan; useful for regression testing without Android provider state. */
 fun tvContentObservationTargets(
     showWatchNext: Boolean,
@@ -62,6 +68,20 @@ fun tvContentObservationTargets(
         add(TvContentObservation.CHANNELS)
         add(TvContentObservation.PREVIEW_PROGRAMS)
     }
+}
+
+/**
+ * Home only renders browsable channels that currently contain cards. Settings
+ * discovery deliberately keeps every readable preview channel so the user can
+ * request a non-browsable channel and still see an empty provider row.
+ */
+fun shouldIncludeTvChannel(
+    mode: TvChannelQueryMode,
+    browsable: Boolean,
+    hasPrograms: Boolean,
+): Boolean = when (mode) {
+    TvChannelQueryMode.HOME -> browsable && hasPrograms
+    TvChannelQueryMode.DISCOVERY -> true
 }
 
 /** Reads and observes Android TV's system Watch Next row and app-published preview channels. */
@@ -144,6 +164,7 @@ object TvContentRepository {
                     defaultLimit = defaultLimit,
                     hidden = config.hiddenTvChannels,
                     perChannelLimits = config.channelItemLimits,
+                    mode = TvChannelQueryMode.HOME,
                 )
             }.getOrDefault(emptyList())
         } else emptyList()
@@ -152,9 +173,9 @@ object TvContentRepository {
     }
 
     /**
-     * Settings uses this to show every readable channel, including channels the
-     * user has hidden from the home screen. Only a few programs are loaded for
-     * the preview so this remains cheap.
+     * Settings shows every readable preview channel, including non-browsable and
+     * currently empty rows. This is intentionally broader than the home query so
+     * the user can request Android TV to approve a channel before it is visible.
      */
     suspend fun discoverChannels(context: Context): List<TvChannelRow> = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < 26) return@withContext emptyList()
@@ -164,8 +185,18 @@ object TvContentRepository {
                 defaultLimit = 4,
                 hidden = emptySet(),
                 perChannelLimits = emptyMap(),
+                mode = TvChannelQueryMode.DISCOVERY,
             )
         }.getOrDefault(emptyList())
+    }
+
+    /** Ask Android TV to approve a preview channel for home-screen browsing. */
+    fun requestChannelBrowsable(context: Context, channelId: Long): Boolean {
+        if (Build.VERSION.SDK_INT < 26) return false
+        return runCatching {
+            TvContract.requestChannelBrowsable(context, channelId)
+            true
+        }.getOrDefault(false)
     }
 
     fun channelKey(packageName: String, channelId: Long): String =
@@ -177,6 +208,7 @@ object TvContentRepository {
         defaultLimit: Int,
         hidden: Set<String>,
         perChannelLimits: Map<String, Int>,
+        mode: TvChannelQueryMode,
     ): List<TvChannelRow> {
         val projection = arrayOf(
             BaseColumns._ID,
@@ -196,7 +228,11 @@ object TvContentRepository {
                 val id = if (idCol >= 0) cursor.getLong(idCol) else continue
                 val type = if (typeCol >= 0) cursor.getString(typeCol).orEmpty() else ""
                 if (type != TvContract.Channels.TYPE_PREVIEW) continue
-                if (browsableCol >= 0 && cursor.getInt(browsableCol) == 0) continue
+
+                val browsable = browsableCol < 0 || cursor.getInt(browsableCol) != 0
+                // Avoid an unnecessary program query for a channel that cannot
+                // appear on Home anyway. Discovery deliberately continues.
+                if (mode == TvChannelQueryMode.HOME && !browsable) continue
 
                 val name = if (nameCol >= 0) {
                     cursor.getString(nameCol).orEmpty().ifBlank { "Channel" }
@@ -209,13 +245,14 @@ object TvContentRepository {
                 val programs = runCatching {
                     queryPrograms(context, TvContract.buildPreviewProgramsUriForChannel(id), limit)
                 }.getOrDefault(emptyList())
-                if (programs.isEmpty()) continue
+                if (!shouldIncludeTvChannel(mode, browsable, programs.isNotEmpty())) continue
 
                 rows += TvChannelRow(
                     id = id,
                     key = key,
                     name = name,
                     packageName = packageName,
+                    browsable = browsable,
                     programs = programs,
                 )
             }
