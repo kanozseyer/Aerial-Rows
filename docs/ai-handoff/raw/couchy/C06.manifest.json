@@ -1,0 +1,25 @@
+{
+  "report": "C06",
+  "source_file": "couchy_group06.md",
+  "source_sha256": "0bf49b7fed0fa4fee3abe2c86f133c3f62fb1eba708821c4b2cebf12cba37b18",
+  "source_size": 27847,
+  "chunking": "UTF-8 byte-preserving; every intermediate part ends on a non-newline byte; the complete newline run at the boundary starts the next part; concat is exact",
+  "parts": [
+    {
+      "name": "C06.part00.md",
+      "size": 13938,
+      "sha256": "d2f08a160f3b3f40db6034ec11743009408090c599b41b629febdc3e912b8575",
+      "git_blob_sha1": "37cd26bf580aaad5b027db76f0b8aab59d7f82f7",
+      "starts_with_newline": false,
+      "ends_with_newline": false
+    },
+    {
+      "name": "C06.part01.md",
+      "size": 13909,
+      "sha256": "4c64c6c8f65b9e225bce3b2f8025be295dec7009f0a3f4505edfa91dba3f4280",
+      "git_blob_sha1": "2faf6edb83e7d05cee8a135c0f901cff8c2b09c4",
+      "starts_with_newline": true,
+      "ends_with_newline": true
+    }
+  ]
+}
