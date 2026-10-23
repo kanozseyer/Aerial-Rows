@@ -97,14 +97,43 @@ Every GitHub C04 part blob was compared with its local Git blob hash. Part 2 ini
 
 ## E3 — Couchy raw reports C5–C8
 
-Status: **PENDING**
+Status: **IN PROGRESS**
 
 For safer recovery, E3 is subdivided further:
 
-- **E3a — C5 only**
-- **E3b — C6 only**
-- **E3c — C7 only**
-- **E3d — C8 only**
+### E3a — C5 only
+
+Status: **COMPLETE**
+
+Committed as ordered parts:
+
+- `C05.part00.md`
+- `C05.part01.md`
+- `C05.part02.md`
+
+Original report SHA-256:
+
+`e7603080accb1bdb90cf2672048f647276671649d3cfc61c4712130950bd4b78`
+
+The initial local split reconstructed exactly to that SHA. GitHub normalized one boundary newline at the end of part 0, so the exact newline was moved to the beginning of part 1. Final remote/local Git blob identities for the adjusted chunks are:
+
+- `C05.part00.md` -> `b070d6ee9f4f750af992fa5d2365cd8fb8acc90b`
+- `C05.part01.md` -> `cfcb9271732b13927eacf401f15fe8a489ed1ad5`
+- `C05.part02.md` -> `71d0a7067a812110ba9285e4d94f7fc818ebf12f`
+
+Concatenating those adjusted chunks still reproduces the original report byte-for-byte and yields the original SHA-256 `e7603080accb1bdb90cf2672048f647276671649d3cfc61c4712130950bd4b78`.
+
+### E3b — C6 only
+
+Status: **PENDING**
+
+### E3c — C7 only
+
+Status: **PENDING**
+
+### E3d — C8 only
+
+Status: **PENDING**
 
 Each oversized report must use numbered parts and exact SHA reassembly verification.
 
@@ -178,10 +207,11 @@ If a tool call, conversation, or environment fails mid-subgroup:
 - use small GitHub Contents API writes rather than one giant archive/blob;
 - verify concatenated SHA before marking a split report complete;
 - compare remote Git blob SHA with local `git hash-object` for every part when possible;
+- if GitHub normalizes a boundary newline, move that newline to the adjacent chunk boundary and re-verify the reconstructed whole-file SHA;
 - never wait until the end of the whole export to commit progress.
 
 ## Current continuation point
 
-**Next subgroup: E3a — raw Couchy C5 only.**
+**Next subgroup: E3b — raw Couchy C6 only.**
 
 Do not begin Phase 0A implementation until the user either finishes E2–E9 or explicitly chooses to pause the export and start coding.
