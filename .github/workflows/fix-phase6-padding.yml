@@ -1,0 +1,32 @@
+name: Fix Phase 6 Padding
+
+on:
+  push:
+    branches: [phase6-settings-milestone]
+    paths: ['.github/workflows/fix-phase6-padding.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: phase6-settings-milestone
+      - name: Patch SettingsSheet padding overload
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='app/src/main/java/com/conreo/couchytv/ui/SettingsSheet.kt'
+          OLD='Modifier.padding(horizontal = 8.dp, bottom = 8.dp)'
+          NEW='Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp)'
+          grep -F "$OLD" "$FILE"
+          sed -i "s/$OLD/$NEW/" "$FILE"
+          grep -F "$NEW" "$FILE"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$FILE"
+          git commit -m 'Fix settings choice title padding overload'
+          git push origin HEAD:phase6-settings-milestone
