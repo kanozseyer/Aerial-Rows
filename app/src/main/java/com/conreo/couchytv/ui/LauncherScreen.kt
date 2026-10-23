@@ -377,7 +377,8 @@ fun LauncherApp(rescanTick: Int) {
     var menuFor by remember { mutableStateOf<AppEntry?>(null) }
     var movePkg by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
-    var wallpaperVersion by remember { mutableIntStateOf(0) }
+    var photoVersion by remember { mutableIntStateOf(0) }
+    var aerialVersion by remember { mutableIntStateOf(0) }
 
     // Drop empty sections: an empty row is dead space AND a focus trap that
     // stops D-pad navigation from reaching the section below it.
@@ -542,7 +543,7 @@ fun LauncherApp(rescanTick: Int) {
     // blurred, and crossfading it in costs one texture blend per frame
     // instead of a full-screen RenderEffect blur (heavy on TV GPUs). -----
     val wallpaperPair by produceState<Pair<ImageBitmap?, ImageBitmap?>>(
-        initialValue = null to null, config.useCustomWallpaper, wallpaperVersion
+        initialValue = null to null, config.useCustomWallpaper, photoVersion
     ) {
         value = if (!config.useCustomWallpaper) null to null
         else withContext(Dispatchers.IO) {
@@ -571,7 +572,7 @@ fun LauncherApp(rescanTick: Int) {
     val aerialFailures = remember { com.conreo.couchytv.data.AerialFailureTracker() }
     val aerialWallpaper by produceState<com.conreo.couchytv.data.AerialItem?>(
         initialValue = null,
-        config.useBuiltinAerials, config.builtinSources, wallpaperVersion,
+        config.useBuiltinAerials, config.builtinSources, aerialVersion,
     ) {
         if (!config.useBuiltinAerials) {
             value = null
@@ -592,7 +593,7 @@ fun LauncherApp(rescanTick: Int) {
             value = null
             val retryDelay = aerialFailures.retryDelayMs(aerials) ?: return@produceState
             delay(retryDelay.coerceAtLeast(1_000L))
-            wallpaperVersion++
+            aerialVersion++
             return@produceState
         }
         // A source-set or quarantine change rebuilds the bag for the currently
@@ -601,7 +602,7 @@ fun LauncherApp(rescanTick: Int) {
         // Clip end advances immediately; the timer is only a safety cap for very
         // long clips. Every eligible clip is consumed before the bag refills.
         delay(10 * 60_000L)
-        wallpaperVersion++
+        aerialVersion++
     }
 
     // Aerials stream from a CDN. Right after the TV powers on, the network/DNS
@@ -613,7 +614,7 @@ fun LauncherApp(rescanTick: Int) {
         if (!aerialError) return@LaunchedEffect
         delay(if (net.connected) 2500L else 6000L)
         aerialError = false
-        wallpaperVersion++
+        aerialVersion++
     }
 
     val corner: Dp = CORNER_RADII[config.cornerRadius.coerceIn(0, CORNER_RADII.size - 1)]
@@ -668,7 +669,7 @@ fun LauncherApp(rescanTick: Int) {
                     // aerialError, instead of sitting on the gradient cover.
                     onEnded = {
                         aerialWallpaper?.let { aerialFailures.recordSuccess(it.id) }
-                        wallpaperVersion++
+                        aerialVersion++
                     },
                     onError = {
                         // Player error + stall watchdog can both fire for one load.
@@ -956,7 +957,7 @@ fun LauncherApp(rescanTick: Int) {
                     store = store,
                     launchDispatcher = launchDispatcher,
                     onDismiss = { showSettings = false },
-                    onWallpaperChanged = { wallpaperVersion++ },
+                    onWallpaperChanged = { photoVersion++ },
                     // Runs on LauncherApp's scope, which survives the dialog
                     // teardown — otherwise the setupDone write gets cancelled.
                     onRerunWizard = {
