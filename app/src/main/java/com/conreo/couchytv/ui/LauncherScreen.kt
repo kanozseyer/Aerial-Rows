@@ -1,6 +1,5 @@
 package com.conreo.couchytv.ui
 
-import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -58,8 +57,6 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -83,6 +80,7 @@ import com.conreo.couchytv.core.model.AppId
 import com.conreo.couchytv.feature.wallpaper.VideoWallpaper
 import com.conreo.couchytv.feature.wallpaper.AerialProviderResult
 import com.conreo.couchytv.feature.wallpaper.createBuiltinAerialProvider
+import com.conreo.couchytv.feature.wallpaper.createLocalPhotoProvider
 import com.conreo.couchytv.integration.android.createDefaultLaunchDispatcher
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.AppRepository
@@ -99,7 +97,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -540,31 +537,15 @@ fun LauncherApp(rescanTick: Int) {
         if (movePkg != null) runCatching { moveFocus.requestFocus() }
     }
 
-    // ----- wallpaper: decoded off the main thread, downsampled, cached.
-    // A ~100px copy is decoded alongside: upscaled by the GPU it looks
-    // blurred, and crossfading it in costs one texture blend per frame
-    // instead of a full-screen RenderEffect blur (heavy on TV GPUs). -----
-    val wallpaperPair by produceState<Pair<ImageBitmap?, ImageBitmap?>>(
-        initialValue = null to null, config.useCustomWallpaper, photoVersion
+    // ----- Custom photo: provider owns IO decode/downsample/prepareToDraw. -----
+    val photoProvider = remember(context) { createLocalPhotoProvider(context) }
+    val photoAsset by produceState<com.conreo.couchytv.feature.wallpaper.PhotoWallpaperAsset?>(
+        initialValue = null, config.useCustomWallpaper, photoVersion,
     ) {
-        value = if (!config.useCustomWallpaper) null to null
-        else withContext(Dispatchers.IO) {
-            val f = File(context.filesDir, "wallpaper.jpg")
-            if (!f.exists()) null to null
-            else runCatching {
-                // 1280px is indistinguishable as a scrimmed background but the
-                // texture is ~2.3× smaller than 1920 — TV GPUs choke on the
-                // first upload of full-res textures. prepareToDraw() moves the
-                // upload off the first visible frame.
-                val sharp = decodeDownsampled(f, maxWidth = 1280)
-                    ?.also { it.prepareToDraw() }?.asImageBitmap()
-                val blurred = decodeDownsampled(f, maxWidth = 96)
-                    ?.also { it.prepareToDraw() }?.asImageBitmap()
-                sharp to blurred
-            }.getOrDefault(null to null)
-        }
+        value = if (!config.useCustomWallpaper) null else photoProvider.load()
     }
-    val (wallpaperSharp, wallpaperBlurred) = wallpaperPair
+    val wallpaperSharp = photoAsset?.sharp
+    val wallpaperBlurred = photoAsset?.blurred
     val presetBrush = remember(config.wallpaper) {
         WALLPAPERS[config.wallpaper.coerceIn(0, WALLPAPERS.size - 1)].brush()
     }
@@ -1420,18 +1401,4 @@ private fun LoadingScreen() {
                 .graphicsLayer { scaleX = scale; scaleY = scale },
         )
     }
-}
-
-/** Decodes a bitmap with an inSampleSize so its width stays near [maxWidth]. */
-private fun decodeDownsampled(file: File, maxWidth: Int): android.graphics.Bitmap? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeFile(file.absolutePath, bounds)
-    if (bounds.outWidth <= 0) return null
-    var sample = 1
-    while (bounds.outWidth / (sample * 2) >= maxWidth) sample *= 2
-    val opts = BitmapFactory.Options().apply {
-        inSampleSize = sample
-        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-    }
-    return BitmapFactory.decodeFile(file.absolutePath, opts)
 }
