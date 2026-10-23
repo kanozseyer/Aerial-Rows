@@ -59,8 +59,13 @@ class SettingsModelTest {
     }
 
     @Test
-    fun routeAndRootSettingCatalogsUseUniqueSemanticIds() {
+    fun semanticCatalogsUseUniqueIds() {
         assertEquals(SettingsRoutes.all.size, SettingsRoutes.all.map { it.value }.toSet().size)
         assertEquals(MainSettingIds.all.size, MainSettingIds.all.map { it.value }.toSet().size)
+        assertEquals(DisplaySettingIds.all.size, DisplaySettingIds.all.map { it.value }.toSet().size)
+        assertEquals(WallpaperSettingIds.all.size, WallpaperSettingIds.all.map { it.value }.toSet().size)
+
+        val allSettings = MainSettingIds.all + DisplaySettingIds.all + WallpaperSettingIds.all
+        assertEquals(allSettings.size, allSettings.map { it.value }.toSet().size)
     }
 }
