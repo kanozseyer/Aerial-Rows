@@ -1376,24 +1376,13 @@ private fun PeekStrip(app: AppEntry, cardWidth: Dp, cardHeight: Dp, peekH: Dp) {
 }
 
 /**
- * Shared OkHttp client (built once, lazily) that accepts any TLS cert — used
- * ONLY to stream decorative aerial video. Apple's sylvan.apple.com serves a
- * chain many Android-TV trust stores reject, so normal validation kills the
- * wallpaper. No credentials or private data ever go over this client, so
- * skipping validation is acceptable. One instance for the whole app lifetime —
- * OkHttpDataSource never closes it, so sharing is safe.
+ * Shared Aerial HTTP client. Keep Android/OkHttp's normal certificate-chain and
+ * hostname verification: decorative media is still untrusted network input and
+ * must not weaken TLS for the video pipeline. One instance is reused for the
+ * app lifetime because OkHttpDataSource does not own/close the client.
  */
-private val trustAllHttpClient: okhttp3.OkHttpClient by lazy {
-    val trustAll = object : javax.net.ssl.X509TrustManager {
-        override fun checkClientTrusted(c: Array<java.security.cert.X509Certificate>?, a: String?) {}
-        override fun checkServerTrusted(c: Array<java.security.cert.X509Certificate>?, a: String?) {}
-        override fun getAcceptedIssuers() = arrayOf<java.security.cert.X509Certificate>()
-    }
-    val ctx = javax.net.ssl.SSLContext.getInstance("TLS")
-    ctx.init(null, arrayOf<javax.net.ssl.TrustManager>(trustAll), java.security.SecureRandom())
+private val aerialHttpClient: okhttp3.OkHttpClient by lazy {
     okhttp3.OkHttpClient.Builder()
-        .sslSocketFactory(ctx.socketFactory, trustAll)
-        .hostnameVerifier { _, _ -> true }
         .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
         .build()
@@ -1437,12 +1426,9 @@ private fun VideoWallpaper(
         fun build(): androidx.media3.exoplayer.ExoPlayer {
             val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(context)
                 .setEnableDecoderFallback(true) // fall back to SW decoder on odd clips
-            // Stream through a trust-all OkHttp client: Apple's sylvan.apple.com
-            // serves a cert chain many TV trust stores can't validate ("Trust
-            // anchor not found"), which fails the TLS handshake → the aerial never
-            // loads (black). Scoped to the wallpaper player only; it fetches
-            // nothing but decorative public video, so there's no data to protect.
-            val http = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(trustAllHttpClient)
+            // Use the platform/OkHttp trust store and normal hostname verification.
+            // Invalid TLS endpoints fail closed and are handled by the wallpaper fallback path.
+            val http = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(aerialHttpClient)
             val dataSource = androidx.media3.datasource.DefaultDataSource.Factory(context, http)
             val sourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSource)
             return androidx.media3.exoplayer.ExoPlayer.Builder(context)
