@@ -72,3 +72,32 @@ object WallpaperSettingDescriptors {
         validator = { value: Int -> value in range },
     )
 }
+
+/** Status controls are cheap toggles except date format, which is commonly stepped rapidly. */
+object StatusBarSettingDescriptors {
+    val Enabled = toggle(StatusBarSettingIds.Enabled)
+    val Glass = toggle(StatusBarSettingIds.Glass)
+    val Clock24h = toggle(StatusBarSettingIds.Clock24h)
+    val DateFormat = SettingDescriptor(
+        id = StatusBarSettingIds.DateFormat,
+        route = SettingsRoutes.StatusBar,
+        persistence = PersistencePolicy.DEBOUNCED,
+        effect = SettingEffect.RECOMPOSE,
+        // Mirrors the seven stable DATE_FORMATS entries (0 = off).
+        validator = { value: Int -> value in 0..6 },
+    )
+    val VpnButton = toggle(StatusBarSettingIds.VpnButton)
+    val VpnApp = SettingDescriptor<String>(
+        id = StatusBarSettingIds.VpnApp,
+        route = SettingsRoutes.StatusBar,
+        persistence = PersistencePolicy.IMMEDIATE,
+        effect = SettingEffect.RECOMPOSE,
+    )
+
+    private fun toggle(id: SettingId) = SettingDescriptor<Boolean>(
+        id = id,
+        route = SettingsRoutes.StatusBar,
+        persistence = PersistencePolicy.IMMEDIATE,
+        effect = SettingEffect.RECOMPOSE,
+    )
+}

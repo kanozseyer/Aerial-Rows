@@ -1,5 +1,6 @@
 package com.conreo.couchytv.core.settings
 
+import com.conreo.couchytv.data.DATE_FORMATS
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -49,6 +50,30 @@ class SettingsDescriptorsTest {
         ).forEach { descriptor ->
             assertEquals(PersistencePolicy.DEBOUNCED, descriptor.persistence)
             assertEquals(SettingEffect.RELOAD_WALLPAPER, descriptor.effect)
+        }
+    }
+
+    @Test
+    fun statusDateFormatTracksConfiguredFormatCountAndDebounces() {
+        DATE_FORMATS.indices.forEach { index ->
+            assertTrue(StatusBarSettingDescriptors.DateFormat.accepts(index))
+        }
+        assertFalse(StatusBarSettingDescriptors.DateFormat.accepts(-1))
+        assertFalse(StatusBarSettingDescriptors.DateFormat.accepts(DATE_FORMATS.size))
+        assertEquals(PersistencePolicy.DEBOUNCED, StatusBarSettingDescriptors.DateFormat.persistence)
+        assertEquals(SettingEffect.RECOMPOSE, StatusBarSettingDescriptors.DateFormat.effect)
+    }
+
+    @Test
+    fun statusVisibilityTogglesStayImmediate() {
+        listOf(
+            StatusBarSettingDescriptors.Enabled,
+            StatusBarSettingDescriptors.Glass,
+            StatusBarSettingDescriptors.Clock24h,
+            StatusBarSettingDescriptors.VpnButton,
+        ).forEach { descriptor ->
+            assertEquals(PersistencePolicy.IMMEDIATE, descriptor.persistence)
+            assertEquals(SettingEffect.RECOMPOSE, descriptor.effect)
         }
     }
 

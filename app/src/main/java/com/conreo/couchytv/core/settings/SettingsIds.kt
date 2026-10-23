@@ -108,3 +108,37 @@ object WallpaperSettingIds {
         VideoSpeed,
     )
 }
+
+/** Stable identities for status-bar controls and the conditional VPN target row. */
+object StatusBarSettingIds {
+    val Enabled = SettingId("status.enabled")
+    val Glass = SettingId("status.glass")
+    val Clock24h = SettingId("status.clock_24h")
+    val DateFormat = SettingId("status.date_format")
+    val VpnButton = SettingId("status.vpn_button")
+    val VpnApp = SettingId("status.vpn_app")
+
+    val all: List<SettingId> = listOf(
+        Enabled,
+        Glass,
+        Clock24h,
+        DateFormat,
+        VpnButton,
+        VpnApp,
+    )
+}
+
+/** Stable identities for launcher-management actions. */
+object LauncherSettingIds {
+    val Language = SettingId("launcher.language")
+    val SaveConfig = SettingId("launcher.save_config")
+    val LoadConfig = SettingId("launcher.load_config")
+    val RerunWizard = SettingId("launcher.rerun_wizard")
+
+    val all: List<SettingId> = listOf(
+        Language,
+        SaveConfig,
+        LoadConfig,
+        RerunWizard,
+    )
+}

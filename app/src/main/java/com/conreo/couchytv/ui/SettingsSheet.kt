@@ -79,6 +79,9 @@ import com.conreo.couchytv.core.model.AppId
 import com.conreo.couchytv.core.settings.DisplaySettingDescriptors
 import com.conreo.couchytv.core.settings.DisplaySettingIds
 import com.conreo.couchytv.core.settings.MainSettingIds
+import com.conreo.couchytv.core.settings.LauncherSettingIds
+import com.conreo.couchytv.core.settings.StatusBarSettingDescriptors
+import com.conreo.couchytv.core.settings.StatusBarSettingIds
 import com.conreo.couchytv.core.settings.WallpaperSettingDescriptors
 import com.conreo.couchytv.core.settings.WallpaperSettingIds
 import com.conreo.couchytv.core.settings.SettingId
@@ -320,6 +323,9 @@ fun SettingsSheet(
                         config = config,
                         apps = apps,
                         store = store,
+                        debouncedWriter = debouncedWriter,
+                        rememberedFocus = navigation.rememberedFocus(SettingsRoutes.StatusBar),
+                        onFocus = { id -> navigation = navigation.rememberFocus(SettingsRoutes.StatusBar, id) },
                         onBack = { navigation = navigation.back() },
                     )
                     SettingsRoutes.Apps -> AppsScreen(
@@ -360,6 +366,8 @@ fun SettingsSheet(
                     SettingsRoutes.Launcher -> LauncherSettingsSubscreen(
                         config = config,
                         store = store,
+                        rememberedFocus = navigation.rememberedFocus(SettingsRoutes.Launcher),
+                        onFocus = { id -> navigation = navigation.rememberFocus(SettingsRoutes.Launcher, id) },
                         onBack = { navigation = navigation.back() },
                         onRerunWizard = onRerunWizard,
                     )
@@ -1017,6 +1025,8 @@ private fun SectionAppsDialog(
 private fun LauncherSettingsSubscreen(
     config: LauncherConfig,
     store: ConfigStore,
+    rememberedFocus: SettingId?,
+    onFocus: (SettingId) -> Unit,
     onBack: () -> Unit,
     onRerunWizard: () -> Unit,
 ) {
@@ -1041,6 +1051,13 @@ private fun LauncherSettingsSubscreen(
             Actions.toast(context, "Saved to Downloads/CouchyBackup.json")
         }
     }
+
+    val focus = rememberSettingsFocusBindings(
+        ids = LauncherSettingIds.all,
+        rememberedFocus = rememberedFocus,
+        defaultFocus = LauncherSettingIds.Language,
+        onFocused = onFocus,
+    )
 
     val loadPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -1076,6 +1093,7 @@ private fun LauncherSettingsSubscreen(
         SettingsItem(
             selected = false,
             onClick = { langScreen = true },
+            modifier = focus.modifier(LauncherSettingIds.Language),
             headlineContent = { Text(stringResource(R.string.item_language)) },
             supportingContent = { Text(stringResource(R.string.item_language_sub)) },
             leadingContent = { Icon(AppIcons.Language, contentDescription = null) },
@@ -1083,6 +1101,7 @@ private fun LauncherSettingsSubscreen(
         SettingsItem(
             selected = false,
             onClick = { saveConfig() },
+            modifier = focus.modifier(LauncherSettingIds.SaveConfig),
             headlineContent = { Text(stringResource(R.string.item_save_config)) },
             supportingContent = { Text(stringResource(R.string.item_save_config_sub)) },
             leadingContent = { Icon(AppIcons.Save, contentDescription = null) },
@@ -1090,6 +1109,7 @@ private fun LauncherSettingsSubscreen(
         SettingsItem(
             selected = false,
             onClick = { runCatching { loadPicker.launch(arrayOf("application/json", "*/*")) }.onFailure { Actions.toast(context, context.getString(R.string.toast_no_picker)) } },
+            modifier = focus.modifier(LauncherSettingIds.LoadConfig),
             headlineContent = { Text(stringResource(R.string.item_load_config)) },
             supportingContent = { Text(stringResource(R.string.item_load_config_sub)) },
             leadingContent = { Icon(AppIcons.Folder, contentDescription = null) },
@@ -1097,6 +1117,7 @@ private fun LauncherSettingsSubscreen(
         SettingsItem(
             selected = false,
             onClick = onRerunWizard,
+            modifier = focus.modifier(LauncherSettingIds.RerunWizard),
             headlineContent = { Text(stringResource(R.string.rerun_wizard)) },
             supportingContent = { Text(stringResource(R.string.rerun_wizard_sub)) },
             leadingContent = { Icon(AppIcons.Play, contentDescription = null) },
@@ -1151,11 +1172,30 @@ private fun StatusBarScreen(
     config: LauncherConfig,
     apps: List<AppEntry>,
     store: ConfigStore,
+    debouncedWriter: DebouncedSettingsWriter,
+    rememberedFocus: SettingId?,
+    onFocus: (SettingId) -> Unit,
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var pickVpn by remember { mutableStateOf(false) }
     val vpnLabel = apps.firstOrNull { it.pkg == config.vpnApp }?.label ?: stringResource(R.string.vpn_system)
+    val statusFocusIds = remember(config.showVpnButton) {
+        buildList {
+            add(StatusBarSettingIds.Enabled)
+            add(StatusBarSettingIds.Glass)
+            add(StatusBarSettingIds.Clock24h)
+            add(StatusBarSettingIds.DateFormat)
+            add(StatusBarSettingIds.VpnButton)
+            if (config.showVpnButton) add(StatusBarSettingIds.VpnApp)
+        }
+    }
+    val focus = rememberSettingsFocusBindings(
+        ids = statusFocusIds,
+        rememberedFocus = rememberedFocus,
+        defaultFocus = StatusBarSettingIds.Enabled,
+        onFocused = onFocus,
+    )
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -1166,11 +1206,10 @@ private fun StatusBarScreen(
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
-        val f = initialFocus()
         SettingsItem(
             selected = false,
             onClick = { scope.launch { store.update { it.copy(showStatusBar = !it.showStatusBar) } } },
-            modifier = Modifier.focusRequester(f),
+            modifier = focus.modifier(StatusBarSettingIds.Enabled),
             headlineContent = { Text(stringResource(R.string.show_statusbar)) },
             supportingContent = { Text(stringResource(R.string.show_statusbar_sub)) },
             trailingContent = { CheckMark(checked = config.showStatusBar) },
@@ -1178,6 +1217,7 @@ private fun StatusBarScreen(
         SettingsItem(
             selected = false,
             onClick = { scope.launch { store.update { it.copy(statusBarGlass = !it.statusBarGlass) } } },
+            modifier = focus.modifier(StatusBarSettingIds.Glass),
             headlineContent = { Text(stringResource(R.string.statusbar_glass)) },
             supportingContent = { Text(stringResource(R.string.statusbar_glass_sub)) },
             trailingContent = { CheckMark(checked = config.statusBarGlass) },
@@ -1185,25 +1225,36 @@ private fun StatusBarScreen(
         SettingsItem(
             selected = false,
             onClick = { scope.launch { store.update { it.copy(h24 = !it.h24) } } },
+            modifier = focus.modifier(StatusBarSettingIds.Clock24h),
             headlineContent = { Text(stringResource(R.string.clock_24h)) },
             trailingContent = { CheckMark(checked = config.h24) },
         )
         run {
             val idx = config.dateFormat.coerceIn(0, DATE_FORMATS.size - 1)
+            val today = java.util.Date()
+            val dateOptions = DATE_FORMATS.mapIndexed { optionIndex, pattern ->
+                if (optionIndex == 0) stringResource(R.string.off)
+                else java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault()).format(today)
+            }
             SelectorRow(
+                modifier = focus.modifier(StatusBarSettingIds.DateFormat),
                 label = stringResource(R.string.date_label),
-                // Live preview of today's date in the selected format
-                value = if (idx == 0) stringResource(R.string.off)
-                else java.text.SimpleDateFormat(DATE_FORMATS[idx], java.util.Locale.getDefault())
-                    .format(java.util.Date()),
+                value = dateOptions[idx],
+                options = dateOptions,
                 steps = DATE_FORMATS.size,
                 current = idx,
-                onSelect = { v -> scope.launch { store.update { it.copy(dateFormat = v) } } },
+                onSelect = { v ->
+                    val value = StatusBarSettingDescriptors.DateFormat.requireValid(v)
+                    debouncedWriter.submit(StatusBarSettingDescriptors.DateFormat.id) {
+                        it.copy(dateFormat = value)
+                    }
+                },
             )
         }
         SettingsItem(
             selected = false,
             onClick = { scope.launch { store.update { it.copy(showVpnButton = !it.showVpnButton) } } },
+            modifier = focus.modifier(StatusBarSettingIds.VpnButton),
             headlineContent = { Text(stringResource(R.string.show_vpn_button)) },
             leadingContent = { Icon(AppIcons.Vpn, contentDescription = null) },
             trailingContent = { CheckMark(checked = config.showVpnButton) },
@@ -1213,6 +1264,7 @@ private fun StatusBarScreen(
             selected = false,
             enabled = config.showVpnButton,
             onClick = { pickVpn = true },
+            modifier = if (config.showVpnButton) focus.modifier(StatusBarSettingIds.VpnApp) else Modifier,
             headlineContent = { Text(stringResource(R.string.vpn_opens)) },
             supportingContent = { Text(vpnLabel) },
             leadingContent = { Icon(AppIcons.Vpn, contentDescription = null) },

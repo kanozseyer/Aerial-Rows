@@ -6,7 +6,11 @@ import org.junit.Test
 class SettingsIdsTest {
     @Test
     fun stableSettingIdsAreGloballyUnique() {
-        val ids = MainSettingIds.all + DisplaySettingIds.all + WallpaperSettingIds.all
+        val ids = MainSettingIds.all +
+            DisplaySettingIds.all +
+            WallpaperSettingIds.all +
+            StatusBarSettingIds.all +
+            LauncherSettingIds.all
         assertEquals(ids.size, ids.map { it.value }.toSet().size)
     }
 
