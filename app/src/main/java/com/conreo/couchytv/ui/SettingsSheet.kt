@@ -30,8 +30,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -74,7 +76,11 @@ import com.conreo.couchytv.core.launch.LaunchOrigin
 import com.conreo.couchytv.core.launch.LaunchRequest
 import com.conreo.couchytv.core.launch.LaunchTarget
 import com.conreo.couchytv.core.model.AppId
+import com.conreo.couchytv.core.settings.DisplaySettingDescriptors
+import com.conreo.couchytv.core.settings.DisplaySettingIds
 import com.conreo.couchytv.core.settings.MainSettingIds
+import com.conreo.couchytv.core.settings.WallpaperSettingDescriptors
+import com.conreo.couchytv.core.settings.WallpaperSettingIds
 import com.conreo.couchytv.core.settings.SettingId
 import com.conreo.couchytv.core.settings.SettingsNavigationState
 import com.conreo.couchytv.core.settings.SettingsRoutes
@@ -114,7 +120,26 @@ fun SettingsSheet(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val debouncedWriter = remember(store, scope) { DebouncedSettingsWriter(store, scope) }
     var navigation by remember { mutableStateOf(SettingsNavigationState()) }
+
+    fun closeSettings() {
+        scope.launch {
+            debouncedWriter.flush()
+            onDismiss()
+        }
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, debouncedWriter) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && debouncedWriter.hasPending) {
+                scope.launch { debouncedWriter.flush() }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Same document-picker flow as videos: opens the system file manager,
     // works with USB drives and network storage providers.
@@ -168,7 +193,7 @@ fun SettingsSheet(
 
     Dialog(
         onDismissRequest = {
-            if (navigation.canGoBack) navigation = navigation.back() else onDismiss()
+            if (navigation.canGoBack) navigation = navigation.back() else closeSettings()
         },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
@@ -225,6 +250,8 @@ fun SettingsSheet(
                     )
                     SettingsRoutes.Wallpaper -> WallpaperScreen(
                         config = config,
+                        rememberedFocus = navigation.rememberedFocus(SettingsRoutes.Wallpaper),
+                        onFocus = { id -> navigation = navigation.rememberFocus(SettingsRoutes.Wallpaper, id) },
                         onSelectBuiltinAerials = {
                             scope.launch {
                                 store.update {
@@ -247,10 +274,16 @@ fun SettingsSheet(
                             }
                         },
                         onSetScrim = { v ->
-                            scope.launch { store.update { it.copy(scrimMode = v) } }
+                            val value = WallpaperSettingDescriptors.Scrim.requireValid(v)
+                            debouncedWriter.submit(WallpaperSettingDescriptors.Scrim.id) {
+                                it.copy(scrimMode = value)
+                            }
                         },
                         onSetSpeed = { v ->
-                            scope.launch { store.update { it.copy(videoSpeed = v) } }
+                            val value = WallpaperSettingDescriptors.VideoSpeed.requireValid(v)
+                            debouncedWriter.submit(WallpaperSettingDescriptors.VideoSpeed.id) {
+                                it.copy(videoSpeed = value)
+                            }
                         },
                         onPreset = { i ->
                             scope.launch {
@@ -275,7 +308,10 @@ fun SettingsSheet(
                     )
                     SettingsRoutes.Display -> DisplayScreen(
                         config = config,
+                        rememberedFocus = navigation.rememberedFocus(SettingsRoutes.Display),
+                        onFocus = { id -> navigation = navigation.rememberFocus(SettingsRoutes.Display, id) },
                         store = store,
+                        debouncedWriter = debouncedWriter,
                         onBack = { navigation = navigation.back() },
                     )
                     SettingsRoutes.StatusBar -> StatusBarScreen(
@@ -544,6 +580,9 @@ private fun AboutScreen(
 private fun DisplayScreen(
     config: LauncherConfig,
     store: ConfigStore,
+    debouncedWriter: DebouncedSettingsWriter,
+    rememberedFocus: SettingId?,
+    onFocus: (SettingId) -> Unit,
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -560,9 +599,24 @@ private fun DisplayScreen(
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
         SectionLabel(stringResource(R.string.section_layout))
-        val f = initialFocus()
+        val displayFocusIds = remember(config.layout) {
+            buildList {
+                add(DisplaySettingIds.Layout)
+                if (config.layout != LAYOUT_DOCK) add(DisplaySettingIds.CategoryNames)
+                add(DisplaySettingIds.UiScale)
+                add(DisplaySettingIds.CornerRadius)
+                add(DisplaySettingIds.IconScale)
+                add(DisplaySettingIds.Spacing)
+            }
+        }
+        val focus = rememberSettingsFocusBindings(
+            ids = displayFocusIds,
+            rememberedFocus = rememberedFocus,
+            defaultFocus = DisplaySettingIds.Layout,
+            onFocused = onFocus,
+        )
         SelectorRow(
-            modifier = Modifier.focusRequester(f),
+            modifier = focus.modifier(DisplaySettingIds.Layout),
             label = stringResource(R.string.view_mode),
             value = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock), stringResource(R.string.mode_sliding_rows))[config.layout.coerceIn(0, 3)],
             options = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock), stringResource(R.string.mode_sliding_rows)),
@@ -582,6 +636,7 @@ private fun DisplayScreen(
             SettingsItem(
                 selected = false,
                 onClick = { update { it.copy(showCategoryNames = !it.showCategoryNames) } },
+                modifier = focus.modifier(DisplaySettingIds.CategoryNames),
                 headlineContent = { Text(stringResource(R.string.section_names_label)) },
                 trailingContent = { CheckMark(checked = config.showCategoryNames) },
             )
@@ -591,38 +646,54 @@ private fun DisplayScreen(
             val labels = listOf(stringResource(R.string.scale_auto), "75%", "90%", "100%", "115%", "130%")
             val idx = config.uiScale.coerceIn(0, labels.size - 1)
             SelectorRow(
+                modifier = focus.modifier(DisplaySettingIds.UiScale),
                 label = stringResource(R.string.ui_scale),
                 value = labels[idx],
                 options = labels,
                 description = if (idx == 0) stringResource(R.string.ui_scale_auto_sub) else null,
                 steps = labels.size,
                 current = idx,
-                onSelect = { v -> update { it.copy(uiScale = v) } },
+                onSelect = { v ->
+                    val value = DisplaySettingDescriptors.UiScale.requireValid(v)
+                    debouncedWriter.submit(DisplaySettingDescriptors.UiScale.id) { it.copy(uiScale = value) }
+                },
             )
         }
         SelectorRow(
+            modifier = focus.modifier(DisplaySettingIds.CornerRadius),
             label = stringResource(R.string.roundness),
             value = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl))[config.cornerRadius.coerceIn(0, 4)],
             options = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl)),
             steps = 5,
             current = config.cornerRadius.coerceIn(0, 4),
-            onSelect = { v -> update { it.copy(cornerRadius = v) } },
+            onSelect = { v ->
+                    val value = DisplaySettingDescriptors.CornerRadius.requireValid(v)
+                    debouncedWriter.submit(DisplaySettingDescriptors.CornerRadius.id) { it.copy(cornerRadius = value) }
+                },
         )
         SelectorRow(
+            modifier = focus.modifier(DisplaySettingIds.IconScale),
             label = stringResource(R.string.icon_size),
             value = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl))[config.iconScale.coerceIn(0, 4)],
             options = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl)),
             steps = 5,
             current = config.iconScale.coerceIn(0, 4),
-            onSelect = { v -> update { it.copy(iconScale = v) } },
+            onSelect = { v ->
+                    val value = DisplaySettingDescriptors.IconScale.requireValid(v)
+                    debouncedWriter.submit(DisplaySettingDescriptors.IconScale.id) { it.copy(iconScale = value) }
+                },
         )
         SelectorRow(
+            modifier = focus.modifier(DisplaySettingIds.Spacing),
             label = stringResource(R.string.spacing),
             value = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl))[config.spacing.coerceIn(0, 4)],
             options = listOf(stringResource(R.string.size_xs), stringResource(R.string.size_s), stringResource(R.string.size_n), stringResource(R.string.size_l), stringResource(R.string.size_xl)),
             steps = 5,
             current = config.spacing.coerceIn(0, 4),
-            onSelect = { v -> update { it.copy(spacing = v) } },
+            onSelect = { v ->
+                    val value = DisplaySettingDescriptors.Spacing.requireValid(v)
+                    debouncedWriter.submit(DisplaySettingDescriptors.Spacing.id) { it.copy(spacing = value) }
+                },
         )
         PanelAppearanceSettings(config = config, store = store)
     }
@@ -644,7 +715,11 @@ private fun SelectorRow(
     options: List<String>? = null,
 ) {
     var showChoices by remember { mutableStateOf(false) }
+    var optimisticCurrent by remember { mutableIntStateOf(current) }
+    LaunchedEffect(current) { optimisticCurrent = current }
     val validOptions = options?.takeIf { it.size == steps }
+    val displayedCurrent = optimisticCurrent.coerceIn(0, steps - 1)
+    val displayedValue = validOptions?.getOrNull(displayedCurrent) ?: value
     SettingsItem(
         selected = false,
         onClick = {
@@ -656,15 +731,25 @@ private fun SelectorRow(
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("◄", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(value)
+                Text(displayedValue)
                 Text(if (validOptions != null) "▾" else "►", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         modifier = modifier.onPreviewKeyEvent { e ->
             if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             when (e.key) {
-                Key.DirectionLeft -> { onSelect((current - 1 + steps) % steps); true }
-                Key.DirectionRight -> { onSelect((current + 1) % steps); true }
+                Key.DirectionLeft -> {
+                    val next = (displayedCurrent - 1 + steps) % steps
+                    optimisticCurrent = next
+                    onSelect(next)
+                    true
+                }
+                Key.DirectionRight -> {
+                    val next = (displayedCurrent + 1) % steps
+                    optimisticCurrent = next
+                    onSelect(next)
+                    true
+                }
                 else -> false
             }
         },
@@ -673,8 +758,9 @@ private fun SelectorRow(
         ChoiceDialog(
             title = label,
             options = validOptions,
-            current = current,
+            current = displayedCurrent,
             onSelect = { index ->
+                optimisticCurrent = index
                 onSelect(index)
                 showChoices = false
             },
@@ -1366,6 +1452,8 @@ private fun RenameDialog(
 @Composable
 private fun WallpaperScreen(
     config: LauncherConfig,
+    rememberedFocus: SettingId?,
+    onFocus: (SettingId) -> Unit,
     onSelectBuiltinAerials: () -> Unit,
     onSelectBuiltinSource: (Int) -> Unit,
     onSetScrim: (Int) -> Unit,
@@ -1383,9 +1471,31 @@ private fun WallpaperScreen(
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
-        val f = initialFocus()
         val staticActive = !config.useBuiltinAerials &&
             !config.useVideoWallpaper && !config.useCustomWallpaper
+        val wallpaperFocusIds = remember(staticActive, config.useBuiltinAerials) {
+            buildList {
+                add(WallpaperSettingIds.Scrim)
+                add(WallpaperSettingIds.GradientMode)
+                if (staticActive) add(WallpaperSettingIds.GradientPreset)
+                add(WallpaperSettingIds.CustomPhoto)
+                add(WallpaperSettingIds.BuiltinAerials)
+                if (config.useBuiltinAerials) {
+                    add(WallpaperSettingIds.AerialApple)
+                    add(WallpaperSettingIds.AerialAmazon)
+                    add(WallpaperSettingIds.AerialCommunity1)
+                    add(WallpaperSettingIds.AerialCommunity2)
+                }
+                add(WallpaperSettingIds.LocalVideo)
+                add(WallpaperSettingIds.VideoSpeed)
+            }
+        }
+        val focus = rememberSettingsFocusBindings(
+            ids = wallpaperFocusIds,
+            rememberedFocus = rememberedFocus,
+            defaultFocus = WallpaperSettingIds.Scrim,
+            onFocused = onFocus,
+        )
 
         // Dimming — how much the wallpaper is darkened for icon readability.
         // Applies to any background; "Top & bottom" keeps the centre clear.
@@ -1399,9 +1509,10 @@ private fun WallpaperScreen(
             )
             val idx = config.scrimMode.coerceIn(0, names.size - 1)
             SelectorRow(
-                modifier = Modifier.focusRequester(f),
+                modifier = focus.modifier(WallpaperSettingIds.Scrim),
                 label = stringResource(R.string.dim_label),
                 value = names[idx],
+                options = names,
                 steps = names.size,
                 current = idx,
                 onSelect = { v -> onSetScrim(v) },
@@ -1416,6 +1527,7 @@ private fun WallpaperScreen(
         val presetIdx = config.wallpaper.coerceIn(0, WALLPAPERS.size - 1)
         SettingsItem(
             selected = false, onClick = { onPreset(presetIdx) },
+            modifier = focus.modifier(WallpaperSettingIds.GradientMode),
             headlineContent = { Text(stringResource(R.string.color_gradient)) },
             leadingContent = { Icon(AppIcons.Palette, contentDescription = null) },
             trailingContent = { CheckMark(checked = staticActive) },
@@ -1429,6 +1541,7 @@ private fun WallpaperScreen(
                 stringResource(R.string.wp_charcoal),
             )
             SelectorRow(
+                modifier = focus.modifier(WallpaperSettingIds.GradientPreset),
                 label = stringResource(R.string.preset_label),
                 value = presetNames[presetIdx],
                 options = presetNames,
@@ -1441,6 +1554,7 @@ private fun WallpaperScreen(
         // A photo of your own
         SettingsItem(
             selected = false, onClick = onPickPhoto,
+            modifier = focus.modifier(WallpaperSettingIds.CustomPhoto),
             headlineContent = { Text(stringResource(R.string.pick_photo)) },
             supportingContent = { Text(stringResource(R.string.pick_photo_sub)) },
             leadingContent = { Icon(AppIcons.Image, contentDescription = null) },
@@ -1453,6 +1567,7 @@ private fun WallpaperScreen(
         // Built-in aerial videos
         SettingsItem(
             selected = false, onClick = onSelectBuiltinAerials,
+            modifier = focus.modifier(WallpaperSettingIds.BuiltinAerials),
             headlineContent = { Text(stringResource(R.string.builtin_aerials)) },
             supportingContent = { Text(stringResource(R.string.builtin_aerials_sub)) },
             leadingContent = { Icon(AppIcons.Play, contentDescription = null) },
@@ -1468,24 +1583,28 @@ private fun WallpaperScreen(
             SettingsItem(
                 selected = false,
                 onClick = { onSelectBuiltinSource(1) },
+                modifier = focus.modifier(WallpaperSettingIds.AerialApple),
                 headlineContent = { Text(stringResource(R.string.aerial_src_apple)) },
                 trailingContent = { CheckMark(checked = "A" in config.builtinSources) },
             )
             SettingsItem(
                 selected = false,
                 onClick = { onSelectBuiltinSource(2) },
+                modifier = focus.modifier(WallpaperSettingIds.AerialAmazon),
                 headlineContent = { Text(stringResource(R.string.aerial_src_amazon)) },
                 trailingContent = { CheckMark(checked = "Z" in config.builtinSources) },
             )
             SettingsItem(
                 selected = false,
                 onClick = { onSelectBuiltinSource(3) },
+                modifier = focus.modifier(WallpaperSettingIds.AerialCommunity1),
                 headlineContent = { Text(stringResource(R.string.aerial_src_comm1)) },
                 trailingContent = { CheckMark(checked = "C1" in config.builtinSources) },
             )
             SettingsItem(
                 selected = false,
                 onClick = { onSelectBuiltinSource(4) },
+                modifier = focus.modifier(WallpaperSettingIds.AerialCommunity2),
                 headlineContent = { Text(stringResource(R.string.aerial_src_comm2)) },
                 trailingContent = { CheckMark(checked = "C2" in config.builtinSources) },
             )
@@ -1494,6 +1613,7 @@ private fun WallpaperScreen(
         // A video file of your own
         SettingsItem(
             selected = false, onClick = onPickVideo,
+            modifier = focus.modifier(WallpaperSettingIds.LocalVideo),
             headlineContent = { Text(stringResource(R.string.pick_video)) },
             supportingContent = { Text(stringResource(R.string.pick_video_sub)) },
             leadingContent = { Icon(AppIcons.Image, contentDescription = null) },
@@ -1505,6 +1625,7 @@ private fun WallpaperScreen(
             val labels = listOf("0.25×", "0.5×", "0.75×", "1×")
             val idx = config.videoSpeed.coerceIn(0, labels.size - 1)
             SelectorRow(
+                modifier = focus.modifier(WallpaperSettingIds.VideoSpeed),
                 label = stringResource(R.string.speed_label),
                 value = labels[idx],
                 options = labels,
