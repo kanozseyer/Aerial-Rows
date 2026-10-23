@@ -1,72 +1,52 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "archive_name": "Aerial-Rows AI handoff raw research archive",
-  "purpose": "Machine-readable completion and integrity index for the raw AI handoff research corpus.",
+  "catalog": "SOURCE_CATALOG.json",
   "validation_command": "python docs/ai-handoff/tools/validate_archive.py",
   "collections": {
     "couchy": {
-      "C01": {
-        "status": "complete",
-        "manifest": "couchy/C01.manifest.json",
-        "source_sha256": "c85c2188906a849854865fc549e1f62c697899d7a648d05fb3f1fd6954e88cea"
-      },
-      "C02": {
-        "status": "complete",
-        "manifest": "couchy/C02.manifest.json",
-        "source_sha256": "2c9732f438cdfc075239ba4c06754821d09846e4d706fbf7dc181dc480e0e381"
-      },
-      "C03": {
-        "status": "complete",
-        "manifest": "couchy/C03.manifest.json",
-        "source_sha256": "c756b965caa99ac016eb312a9828be05cfcd6618d666c5b41b1ca333c6761f03"
-      },
-      "C04": {
-        "status": "complete",
-        "manifest": "couchy/C04.manifest.json",
-        "source_sha256": "935945ec232fe56e6e64e2112eb19179a3297e6194594234d239b9cde5ebd297"
-      },
-      "C05": {
-        "status": "complete",
-        "manifest": "couchy/C05.manifest.json",
-        "source_sha256": "e7603080accb1bdb90cf2672048f647276671649d3cfc61c4712130950bd4b78"
-      },
-      "C06": {
-        "status": "complete",
-        "manifest": "couchy/C06.manifest.json",
-        "source_sha256": "0bf49b7fed0fa4fee3abe2c86f133c3f62fb1eba708821c4b2cebf12cba37b18"
-      },
-      "C07": {
-        "status": "pending",
-        "manifest": "couchy/C07.manifest.json"
-      },
-      "C08": {
-        "status": "pending",
-        "manifest": "couchy/C08.manifest.json"
-      },
-      "C09": {
-        "status": "pending",
-        "manifest": "couchy/C09.manifest.json"
-      },
-      "C10": {
-        "status": "pending",
-        "manifest": "couchy/C10.manifest.json"
-      },
-      "C11": {
-        "status": "pending",
-        "manifest": "couchy/C11.manifest.json"
-      },
-      "C12": {
-        "status": "pending",
-        "manifest": "couchy/C12.manifest.json"
-      }
+      "C01":{"status":"complete","manifest":"couchy/C01.manifest.json","source_sha256":"c85c2188906a849854865fc549e1f62c697899d7a648d05fb3f1fd6954e88cea"},
+      "C02":{"status":"complete","manifest":"couchy/C02.manifest.json","source_sha256":"2c9732f438cdfc075239ba4c06754821d09846e4d706fbf7dc181dc480e0e381"},
+      "C03":{"status":"complete","manifest":"couchy/C03.manifest.json","source_sha256":"c756b965caa99ac016eb312a9828be05cfcd6618d666c5b41b1ca333c6761f03"},
+      "C04":{"status":"complete","manifest":"couchy/C04.manifest.json","source_sha256":"935945ec232fe56e6e64e2112eb19179a3297e6194594234d239b9cde5ebd297"},
+      "C05":{"status":"complete","manifest":"couchy/C05.manifest.json","source_sha256":"e7603080accb1bdb90cf2672048f647276671649d3cfc61c4712130950bd4b78"},
+      "C06":{"status":"complete","manifest":"couchy/C06.manifest.json","source_sha256":"0bf49b7fed0fa4fee3abe2c86f133c3f62fb1eba708821c4b2cebf12cba37b18"},
+      "C07":{"status":"pending","manifest":"couchy/C07.manifest.json","source_sha256":"3947a7627f2fed66747704557066a7c81894f94399f12116370342663c94be3c"},
+      "C08":{"status":"pending","manifest":"couchy/C08.manifest.json","source_sha256":"1b5d4ac78301cc6a635d9554cdde44ae61e607fc8857044c391779ed18f5019b"},
+      "C09":{"status":"pending","manifest":"couchy/C09.manifest.json","source_sha256":"1234bd850995ccecefa08d8c78316de1da403f439e2f0e898f3b70540141be2c"},
+      "C10":{"status":"pending","manifest":"couchy/C10.manifest.json","source_sha256":"e08ee8ae66118f595cba576834cb3b95f70827508729395a4d2a05b31a32be54"},
+      "C11":{"status":"pending","manifest":"couchy/C11.manifest.json","source_sha256":"20c18dd880f8ea15ce0ffa92aa08c9c5fcc38bb686897e9eb6b46342e14dc5f1"},
+      "C12":{"status":"pending","manifest":"couchy/C12.manifest.json","source_sha256":"c0b2ccf993f1333426aae1cd55507b0f31cf8955c1243c4dac13850c22a5a68a"}
     },
     "projectivy": {
-      "status": "pending",
-      "note": "Original Groups 1-12 plus final post-closure/corrected audits; tracked in EXPORT_STATUS.md until individual manifests are added."
+      "G01_ORIGINAL":{"status":"pending","manifest":"projectivy/G01_ORIGINAL.manifest.json","source_sha256":"8776c66d67db00866b28c25c7b43b48daf4076c174709df88bd7f0a1c3df3f7d"},
+      "G01_POST":{"status":"pending","manifest":"projectivy/G01_POST.manifest.json","source_sha256":"9fc4b5dea909163b704bb88c678059fdb88807062cc00fd64f32446e43e08770"},
+      "G02_ORIGINAL":{"status":"pending","manifest":"projectivy/G02_ORIGINAL.manifest.json","source_sha256":"82ff747a7ddd4d9e14293cd8459685e1bc41e16f1c3a24ca07234580a3e47b55"},
+      "G02_POST":{"status":"pending","manifest":"projectivy/G02_POST.manifest.json","source_sha256":"61cbbc67441bed68d7d837fc1f43d1f3ca22ae8eeb9b7c860ae9a7bf853cd373"},
+      "G03_ORIGINAL":{"status":"pending","manifest":"projectivy/G03_ORIGINAL.manifest.json","source_sha256":"d3beda827648c7612494e1e97c5898255af840efdab91b71fbc352ddfc50afc9"},
+      "G03_POST":{"status":"pending","manifest":"projectivy/G03_POST.manifest.json","source_sha256":"b7bbc6d739a90bc64f3c52f8d56551d670ea9a126d8769726fe02734923339f3"},
+      "G04_ORIGINAL":{"status":"pending","manifest":"projectivy/G04_ORIGINAL.manifest.json","source_sha256":"1ef505a55393f1952896cdd6c11e398df3e8e380593360662ad1617a71377de3"},
+      "G04_POST":{"status":"pending","manifest":"projectivy/G04_POST.manifest.json","source_sha256":"25e6fcdb32775249e577abe8b55108ae0521647bde50225e2bb170b56f86aa9d"},
+      "G05_ORIGINAL":{"status":"pending","manifest":"projectivy/G05_ORIGINAL.manifest.json","source_sha256":"20e6be9fd02df485749cac62ae4b9826177cf5997b370b02206cc6cab6e5113f"},
+      "G05_POST":{"status":"pending","manifest":"projectivy/G05_POST.manifest.json","source_sha256":"eee0869a2988ab51be75410059dec13f1a7d7fa5bc0a2c4ba3e2b953be96734a"},
+      "G06_ORIGINAL":{"status":"pending","manifest":"projectivy/G06_ORIGINAL.manifest.json","source_sha256":"a227c5e9a123244f2383b45b30337692457562891deba97194bb5dc2edacc5fd"},
+      "G06_POST":{"status":"pending","manifest":"projectivy/G06_POST.manifest.json","source_sha256":"cc6046f4661d9ddeb468103cecb161433c427e55665d1b9c71efb1f6122afed2"},
+      "G07_ORIGINAL":{"status":"pending","manifest":"projectivy/G07_ORIGINAL.manifest.json","source_sha256":"2bbd244f3113dbd3854ce3ef1d555027d5d00eda1cd23080acbc4153c74eba5d"},
+      "G07_POST":{"status":"pending","manifest":"projectivy/G07_POST.manifest.json","source_sha256":"1c10815c1f2cc0de9cc26395ff902d488a017ab1d5cb1da6d19f928e5b7cbdc1"},
+      "G08_ORIGINAL":{"status":"pending","manifest":"projectivy/G08_ORIGINAL.manifest.json","source_sha256":"668b12eba61d08be0d7e74904b3e60c6ae035f37c775db152e03747bc983f98e"},
+      "G08_POST_V2":{"status":"pending","manifest":"projectivy/G08_POST_V2.manifest.json","source_sha256":"0ba786c46fd5e6aa19f1266e7b434d2739bb73b4e8e74ff6953aa05007d8a3b3"},
+      "G09_ORIGINAL":{"status":"pending","manifest":"projectivy/G09_ORIGINAL.manifest.json","source_sha256":"a5b966da60c9a9d6940e0d4669176be500681c75764c4999d28e9bdf0eb74aa4"},
+      "G09_POST_V3":{"status":"pending","manifest":"projectivy/G09_POST_V3.manifest.json","source_sha256":"81fee3e161b399cd24836408bfb508473402040e70deef4604ab983ac4aec07d"},
+      "G10_ORIGINAL":{"status":"pending","manifest":"projectivy/G10_ORIGINAL.manifest.json","source_sha256":"bbdd9ea9811e69e96e1e78b725cac9b7cdc75fee1793c02a2829a291d68c8a3c"},
+      "G10_POST_V2":{"status":"pending","manifest":"projectivy/G10_POST_V2.manifest.json","source_sha256":"d75640cc4a23d2a7d392ee3322a50d59c942fad9c09094b4e38a58c130d2c126"},
+      "G11_ORIGINAL":{"status":"pending","manifest":"projectivy/G11_ORIGINAL.manifest.json","source_sha256":"4f9c9bd36edba833c20b7964a12aae1182396ebde85e74aceca3da7396c4caca"},
+      "G11_POST_V2":{"status":"pending","manifest":"projectivy/G11_POST_V2.manifest.json","source_sha256":"a875f79d450182038e6a0763ac320a870acb016da456a757d1e73b72b79890e1"},
+      "G12_ORIGINAL":{"status":"pending","manifest":"projectivy/G12_ORIGINAL.manifest.json","source_sha256":"6f066515287480a1666edd4a73b49be233d57592d267049a78dc60561f8bf8b6"},
+      "G12_POST_V2":{"status":"pending","manifest":"projectivy/G12_POST_V2.manifest.json","source_sha256":"55b146b0bc63bbd0436039be1774c88438b88e97cd0c4d41f86f213c5ea0753c"}
     },
     "process": {
-      "status": "pending",
-      "note": "Audit process/tooling history and reproducibility notes."
+      "AUDIT_CONTRACT_V18":{"status":"reference","reference_sha256":"052e739b2bb985c6cccc6693ee474d89439623c0f1cf181e8257e8225eb203ef","description":"Final audit process contract v18 reference hash"},
+      "PROCESS_BUNDLE_V18":{"status":"reference","reference_sha256":"251521a123ba52f3b497a6743448b77f17ead8b388a3727f1af4907f6bfd4b12","description":"Final process/tool bundle reference hash"}
     }
   }
 }

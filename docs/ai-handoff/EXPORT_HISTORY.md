@@ -1,67 +1,21 @@
 # AI Handoff Export History
 
-This records how the repository handoff was created so a future model can understand both the archive and the reliability fixes applied to it.
+The user requested a project/chat export inside Aerial-Rows detailed enough for a fresh ChatGPT conversation or another AI model to continue equivalently, and repeatedly asked that failed/stuck work be inspected, made smaller/resumable, and improved for reliability, efficiency and speed.
 
-## User requirement
+## Initial orientation handoff
 
-The user requested an export of the project conversation inside Aerial-Rows that contains enough detail for a fresh ChatGPT conversation or another AI model to continue the project as effectively as the current conversation. The user explicitly asked to preserve every little detail, put the necessary files in GitHub, inspect failures, improve the process, and divide work into small resumable groups.
+Commit `b34d295407845ff1cb08e17d93875e888d3bbe24` added the orientation layer but not every raw report.
 
-## Initial handoff commit
+## Early raw export problems
 
-The first export attempt did not fail completely. It produced:
+Large one-shot work could look stuck; many tiny Contents-API commits were slow; newline chunk boundaries were easy to mishandle; C4/C5 needed boundary repair; and a later audit found C3 part 3 one byte short despite a prior prose claim of exact reconstruction.
 
-`b34d295407845ff1cb08e17d93875e888d3bbe24` — `Add complete AI project handoff and research context`
+## v3
 
-That commit added the orientation layer:
+v3 moved to exact Git blobs, per-report manifests, master archive manifest, automated validation, atomic trees/commits and compare-and-swap branch updates. It repaired C3 and standardized C1–C6. Checkpoint `f4997de730d869bc951c7ba25d8e61249ad7c38d` validated successfully in GitHub Actions.
 
-- `AGENTS.md`
-- `AI_PROJECT_CONTEXT.md`
-- `docs/ai-handoff/README.md`
-- `C12_FINAL_BLUEPRINT.md`
-- `CHAT_EXPORT.md`
-- `COUCHY_DETAILED_FINDINGS.md`
-- `PROJECTIVY_DETAILED_FINDINGS.md`
-- `PROCESS_STATE.md`
-- `RESEARCH_INDEX.md`
+## v4
 
-It did not yet include every raw research report.
+The remaining weakness was coverage definition. v4 adds `raw/SOURCE_CATALOG.json` with authoritative SHA-256 values for every Couchy C1–C12 and required Projectivy original/post-closure report; machine-catalogs the final audit contract/process-bundle reference hashes; makes validation reject missing/unknown IDs and wrong source hashes; adds `--require-complete` for final closure; and adds `package_report.py`, which verifies a source against the catalog before writing archive output and updates local archive state automatically.
 
-## Resumable raw export
-
-The raw export was then divided into groups E0–E9. Early raw Couchy reports used the GitHub Contents API with small files and frequent checkpoints.
-
-Completed before the v3 retrofit:
-
-- E2a: C1–C2
-- E2b: C3
-- E2c: C4
-- E3a: C5
-- E3b: C6
-
-## Problems discovered
-
-1. Large one-shot payloads could truncate or look stuck.
-2. Many tiny Contents API commits were reliable but inefficient.
-3. Chunk-boundary newlines were easy to mishandle manually.
-4. C4 part 2 needed a one-byte repair during initial export.
-5. C5 needed its chunk-boundary newline redistributed while preserving the full report SHA.
-6. During the v3 retrofit audit, C3 part 3 was found to be one byte short on GitHub (`3844` bytes) versus the exact source chunk (`3845` bytes). This proved that prose claims of successful reassembly were not sufficient on their own.
-
-## Process v3
-
-The process was upgraded to raw Git objects + manifests + automated validation:
-
-- exact report parts generated locally;
-- exact Git blob SHA values precomputed;
-- one manifest per report;
-- one master raw archive manifest;
-- reusable chunk and validation tools;
-- GitHub Action validation;
-- one atomic tree/commit per batch;
-- branch ref updated with an `expected_sha` compare-and-swap lease.
-
-The v3 retrofit repairs the C3 byte defect and standardizes C1–C6 without changing application source.
-
-## Continuation
-
-After the retrofit, raw Couchy C7 is the next pending report (E3c), followed by C8, C9–C12, Projectivy raw reports, process history, and final archive coverage validation.
+The v4 bootstrap itself used a few small documentation commits while the new tooling was being installed; raw report publication remains the place where atomic Git-object publication is mandatory. C07 is the first report to use the complete catalog-aware v4 workflow.
