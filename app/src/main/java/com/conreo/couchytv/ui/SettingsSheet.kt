@@ -704,7 +704,7 @@ private fun ChoiceDialog(
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(horizontal = 8.dp, bottom = 8.dp),
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
                 )
                 val selectedFocus = initialFocus()
                 options.forEachIndexed { index, option ->
