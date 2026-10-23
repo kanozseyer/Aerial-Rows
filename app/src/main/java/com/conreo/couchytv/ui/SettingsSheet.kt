@@ -1053,7 +1053,7 @@ private fun LauncherSettingsSubscreen(
                 val saved = withContext(Dispatchers.IO) {
                     runCatching {
                         val payload = format.encodeToString(LauncherConfig.serializer(), config)
-                        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { writer ->
+                        context.contentResolver.openOutputStream(uri, "w")?.bufferedWriter()?.use { writer ->
                             writer.write(payload)
                         } ?: error("Could not open backup destination")
                     }.isSuccess
