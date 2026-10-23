@@ -11,7 +11,7 @@
       "C04":{"status":"complete","manifest":"couchy/C04.manifest.json","source_sha256":"935945ec232fe56e6e64e2112eb19179a3297e6194594234d239b9cde5ebd297"},
       "C05":{"status":"complete","manifest":"couchy/C05.manifest.json","source_sha256":"e7603080accb1bdb90cf2672048f647276671649d3cfc61c4712130950bd4b78"},
       "C06":{"status":"complete","manifest":"couchy/C06.manifest.json","source_sha256":"0bf49b7fed0fa4fee3abe2c86f133c3f62fb1eba708821c4b2cebf12cba37b18"},
-      "C07":{"status":"pending","manifest":"couchy/C07.manifest.json","source_sha256":"3947a7627f2fed66747704557066a7c81894f94399f12116370342663c94be3c"},
+      "C07":{"status":"complete","manifest":"couchy/C07.manifest.json","source_sha256":"3947a7627f2fed66747704557066a7c81894f94399f12116370342663c94be3c"},
       "C08":{"status":"pending","manifest":"couchy/C08.manifest.json","source_sha256":"1b5d4ac78301cc6a635d9554cdde44ae61e607fc8857044c391779ed18f5019b"},
       "C09":{"status":"pending","manifest":"couchy/C09.manifest.json","source_sha256":"1234bd850995ccecefa08d8c78316de1da403f439e2f0e898f3b70540141be2c"},
       "C10":{"status":"pending","manifest":"couchy/C10.manifest.json","source_sha256":"e08ee8ae66118f595cba576834cb3b95f70827508729395a4d2a05b31a32be54"},

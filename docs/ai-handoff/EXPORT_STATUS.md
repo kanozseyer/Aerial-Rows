@@ -7,9 +7,7 @@ Validator: `python docs/ai-handoff/tools/validate_archive.py`
 
 ## Current format
 
-**Export Process v4** is authoritative.
-
-Machine validation covers byte-exact integrity and expected-corpus coverage. Prose checkpoints are secondary.
+**Export Process v4** is authoritative. Machine validation covers byte-exact integrity and complete expected-corpus coverage through `SOURCE_CATALOG.json`. Prose checkpoints are secondary.
 
 ## Orientation/context layer
 
@@ -23,7 +21,7 @@ Machine validation covers byte-exact integrity and expected-corpus coverage. Pro
 - C04 — COMPLETE / manifested / cataloged
 - C05 — COMPLETE / manifested / cataloged
 - C06 — COMPLETE / manifested / cataloged
-- C07 — PENDING
+- C07 — COMPLETE / manifested / cataloged
 - C08 — PENDING
 - C09 — PENDING
 - C10 — PENDING
@@ -32,7 +30,7 @@ Machine validation covers byte-exact integrity and expected-corpus coverage. Pro
 
 ## Projectivy raw archive
 
-**PENDING**. `SOURCE_CATALOG.json` already enumerates every required original and authoritative post-closure report so none can be silently forgotten.
+**PENDING.** `SOURCE_CATALOG.json` enumerates every required original and authoritative post-closure report.
 
 ## Audit-process/tooling archive
 
@@ -40,10 +38,10 @@ Machine validation covers byte-exact integrity and expected-corpus coverage. Pro
 
 ## Final E9 validation
 
-Run `python docs/ai-handoff/tools/validate_archive.py --require-complete`, then verify process-history coverage and documentation-only diff versus the pre-export app-source baseline before marking export complete.
+Run `python docs/ai-handoff/tools/validate_archive.py --require-complete`, verify process-history coverage and documentation-only diff versus the pre-export app-source baseline, then mark `HANDOFF_MANIFEST.json` complete.
 
 ## Current continuation point
 
-**Next subgroup: E3c — raw Couchy C07 only.**
+**Next subgroup: E3d — raw Couchy C08 only.**
 
 Do not begin Phase 0A implementation until the user either completes this export or explicitly pauses it.

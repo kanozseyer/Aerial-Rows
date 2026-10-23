@@ -1,0 +1,17 @@
+{
+  "schema_version": 4,
+  "report_id": "C07",
+  "collection": "couchy",
+  "catalog": "../SOURCE_CATALOG.json",
+  "source_filename": "couchy_group07.md",
+  "source_size_bytes": 29775,
+  "source_sha256": "3947a7627f2fed66747704557066a7c81894f94399f12116370342663c94be3c",
+  "encoding": "utf-8",
+  "reassembly": "concatenate parts in listed order with no separator",
+  "verified_exact_reassembly": true,
+  "parts": [
+    {"path":"C07.part00.md","size_bytes":9964,"sha256":"0b32315f52f9ecdf5cc6c618febb9987a7595b3f850321d82fc668e9f206e3b8","git_blob_sha1":"3af8cee52c7c3f74b17a1d363b3a4292f74ed42a"},
+    {"path":"C07.part01.md","size_bytes":9993,"sha256":"0e08e99187687ba684018c6261a1eb1780577317042970edc573f78f8e28ae71","git_blob_sha1":"461c1167a0bf22de52655ce5b761abb3bd11cd46"},
+    {"path":"C07.part02.md","size_bytes":9818,"sha256":"810b04fc55d858473940f3f4b33894aee1cff4d3b614ff7eba6bd32150331f8e","git_blob_sha1":"57da1cd806cfb3dcb985613d2ce5232136279e31"}
+  ]
+}

@@ -5,7 +5,7 @@
   "research_baseline_commit": "3c1cfd56234f1d386f4553dd6c69523670500d70",
   "current_export_state": "in_progress",
   "export_process_version": 4,
-  "next_export_subgroup": "E3c / Couchy C07",
+  "next_export_subgroup": "E3d / Couchy C08",
   "read_order": ["AGENTS.md","AI_PROJECT_CONTEXT.md","docs/ai-handoff/C12_FINAL_BLUEPRINT.md","docs/ai-handoff/CHAT_EXPORT.md","docs/ai-handoff/CHAT_EXPORT_APPENDIX_EXPORT_PROCESS.md","docs/ai-handoff/EXPORT_STATUS.md","docs/ai-handoff/raw/SOURCE_CATALOG.json","docs/ai-handoff/raw/ARCHIVE_MANIFEST.json","docs/ai-handoff/COUCHY_DETAILED_FINDINGS.md","docs/ai-handoff/PROJECTIVY_DETAILED_FINDINGS.md","docs/ai-handoff/RESEARCH_INDEX.md","docs/ai-handoff/PROCESS_STATE.md"],
   "validation": {"process":"docs/ai-handoff/EXPORT_PROCESS.md","history":"docs/ai-handoff/EXPORT_HISTORY.md","source_catalog":"docs/ai-handoff/raw/SOURCE_CATALOG.json","archive_manifest":"docs/ai-handoff/raw/ARCHIVE_MANIFEST.json","command":"python docs/ai-handoff/tools/validate_archive.py","final_command":"python docs/ai-handoff/tools/validate_archive.py --require-complete","workflow":".github/workflows/validate-ai-handoff.yml"}
 }
