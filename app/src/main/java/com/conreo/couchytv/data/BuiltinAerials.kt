@@ -4,10 +4,40 @@ import android.content.Context
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
+/** Stable typed metadata for one built-in Aerial clip. */
+data class AerialItem(
+    val id: String,
+    val title: String,
+    val sourceId: String,
+    val uri: String,
+)
+
+/**
+ * Build a typed Aerial item from the compact asset fields. The URI remains the
+ * durable semantic identity inside its source collection; visible titles are
+ * metadata only and can change without changing the clip identity.
+ */
+internal fun aerialItem(
+    sourceId: String,
+    title: String,
+    uri: String,
+): AerialItem? {
+    val source = sourceId.trim()
+    val mediaUri = uri.trim()
+    if (source.isEmpty() || mediaUri.isEmpty()) return null
+    return AerialItem(
+        id = "$source:$mediaUri",
+        title = title.trim().ifBlank { "Aerial" },
+        sourceId = source,
+        uri = mediaUri,
+    )
+}
+
 /**
  * Built-in aerial-video wallpaper sources bundled with Couchy/Aerial Rows.
  * Collections can be combined freely: Apple, Amazon Fire TV, Community 1 and
- * Community 2. The player receives one merged list from the selected sources.
+ * Community 2. Typed items retain the title/source metadata from the asset;
+ * legacy URL-only loaders remain available while playback migrates separately.
  */
 object BuiltinAerials {
 
@@ -20,11 +50,10 @@ object BuiltinAerials {
     @Serializable
     private data class Entry(val t: String = "", val u: String, val s: String = SOURCE_APPLE)
 
-    // source-key -> video URI
     @Volatile
-    private var cache: List<Pair<String, String>>? = null
+    private var cache: List<AerialItem>? = null
 
-    private fun loadAll(context: Context): List<Pair<String, String>> {
+    private fun loadAll(context: Context): List<AerialItem> {
         cache?.let { return it }
         val list = runCatching {
             val json = context.assets.open("aerials.json")
@@ -33,23 +62,26 @@ object BuiltinAerials {
                 .decodeFromString<List<Entry>>(json)
                 .asSequence()
                 .filter { it.s in SOURCES }
-                .map { it.s to it.u }
+                .mapNotNull { aerialItem(sourceId = it.s, title = it.t, uri = it.u) }
                 .toList()
         }.getOrDefault(emptyList())
         cache = list
         return list
     }
 
-    /** Returns a merged playlist from every enabled source. */
-    fun load(context: Context, selectedSources: Set<String>): List<String> {
+    /** Returns typed metadata for every clip from the enabled sources. */
+    fun loadItems(context: Context, selectedSources: Set<String>): List<AerialItem> {
         val selected = selectedSources.filter { it in SOURCES }.toSet()
         if (selected.isEmpty()) return emptyList()
         return loadAll(context)
             .asSequence()
-            .filter { it.first in selected }
-            .map { it.second }
+            .filter { it.sourceId in selected }
             .toList()
     }
+
+    /** URL-only compatibility surface used by the current wallpaper player. */
+    fun load(context: Context, selectedSources: Set<String>): List<String> =
+        loadItems(context, selectedSources).map(AerialItem::uri)
 
     /** Legacy overload retained for compatibility with older code/backups. */
     fun load(context: Context, sourceIndex: Int = 0): List<String> {

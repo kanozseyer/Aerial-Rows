@@ -1,5 +1,6 @@
 package com.conreo.couchytv.data
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -33,6 +34,8 @@ data class ArtworkVariant(
 @Immutable
 data class AppEntry(
     val pkg: String,
+    /** Exact launch activity selected by discovery; null only for legacy/test entries. */
+    val componentName: String? = null,
     val label: String,
     /** 16:9 leanback banner if the app ships one, pre-rasterized (drawable released) */
     val banner: ImageBitmap?,
@@ -135,16 +138,20 @@ object AppRepository {
         val entries = candidates.map { (pkg, ri) ->
             async(scanDispatcher) {
                 val ai = ri.activityInfo
+                val componentName = ComponentName(ai.packageName, ai.name).flattenToString()
                 val pkgInfo = runCatching { pm.getPackageInfo(pkg, 0) }.getOrNull()
                 val stamp = pkgInfo?.lastUpdateTime ?: 0L
                 val firstInstall = pkgInfo?.firstInstallTime ?: 0L
                 // Size is baked into the name: a density change (or the earlier
                 // fixed-size caches) regenerates instead of loading a stale size.
-                val bannerName = "$pkg-$stamp-v${artworkVariant.cacheSchemaVersion}-b${artworkVariant.bannerWidthPx}.webp"
-                val iconName = "$pkg-$stamp-v${artworkVariant.cacheSchemaVersion}-i${artworkVariant.iconSizePx}.webp"
+                val componentCacheKey = java.lang.Integer.toHexString(componentName.hashCode())
+                val bannerName = "$pkg-$componentCacheKey-$stamp-v${artworkVariant.cacheSchemaVersion}-b${artworkVariant.bannerWidthPx}.webp"
+                val iconName = "$pkg-$componentCacheKey-$stamp-v${artworkVariant.cacheSchemaVersion}-i${artworkVariant.iconSizePx}.webp"
 
                 previous?.get(pkg)?.takeIf {
-                    it.stamp == stamp && it.artworkVariant == artworkVariant
+                    it.stamp == stamp &&
+                        it.artworkVariant == artworkVariant &&
+                        it.componentName == componentName
                 }?.let { cached ->
                     if (cached.banner != null) validCacheNames.add(bannerName)
                     if (cached.icon != null) validCacheNames.add(iconName)
@@ -184,6 +191,7 @@ object AppRepository {
                 val tile = tileColor(pkg)
                 AppEntry(
                     pkg = pkg,
+                    componentName = componentName,
                     label = runCatching { ri.loadLabel(pm)?.toString() }.getOrNull() ?: pkg,
                     banner = banner?.asImageBitmap(),
                     icon = icon?.asImageBitmap(),
