@@ -1,0 +1,19 @@
+{
+  "schema_version": 3,
+  "report_id": "C01",
+  "collection": "couchy-comparison",
+  "source_filename": "couchy_group01.md",
+  "source_size_bytes": 5320,
+  "source_sha256": "c85c2188906a849854865fc549e1f62c697899d7a648d05fb3f1fd6954e88cea",
+  "encoding": "utf-8",
+  "reassembly": "concatenate parts in listed order with no separator",
+  "verified_exact_reassembly": true,
+  "parts": [
+    {
+      "path": "C01.md",
+      "size_bytes": 5320,
+      "sha256": "c85c2188906a849854865fc549e1f62c697899d7a648d05fb3f1fd6954e88cea",
+      "git_blob_sha1": "c98afd56b72ed95549f84bce32be2702c3072df3"
+    }
+  ]
+}

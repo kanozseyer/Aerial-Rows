@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "project": "Aerial-Rows / Launcher",
+  "purpose": "Durable AI continuation handoff",
+  "research_baseline_commit": "3c1cfd56234f1d386f4553dd6c69523670500d70",
+  "current_export_state": "in_progress",
+  "next_export_subgroup": "E3c / Couchy C07",
+  "read_order": [
+    "AGENTS.md",
+    "AI_PROJECT_CONTEXT.md",
+    "docs/ai-handoff/C12_FINAL_BLUEPRINT.md",
+    "docs/ai-handoff/CHAT_EXPORT.md",
+    "docs/ai-handoff/EXPORT_STATUS.md",
+    "docs/ai-handoff/raw/ARCHIVE_MANIFEST.json",
+    "docs/ai-handoff/COUCHY_DETAILED_FINDINGS.md",
+    "docs/ai-handoff/PROJECTIVY_DETAILED_FINDINGS.md",
+    "docs/ai-handoff/RESEARCH_INDEX.md",
+    "docs/ai-handoff/PROCESS_STATE.md"
+  ],
+  "validation": {
+    "process": "docs/ai-handoff/EXPORT_PROCESS.md",
+    "history": "docs/ai-handoff/EXPORT_HISTORY.md",
+    "command": "python docs/ai-handoff/tools/validate_archive.py",
+    "workflow": ".github/workflows/validate-ai-handoff.yml"
+  },
+  "raw_archive_manifest": "docs/ai-handoff/raw/ARCHIVE_MANIFEST.json"
+}

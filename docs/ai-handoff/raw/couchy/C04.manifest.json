@@ -1,0 +1,49 @@
+{
+  "schema_version": 3,
+  "report_id": "C04",
+  "collection": "couchy-comparison",
+  "source_filename": "couchy_group04.md",
+  "source_size_bytes": 25474,
+  "source_sha256": "935945ec232fe56e6e64e2112eb19179a3297e6194594234d239b9cde5ebd297",
+  "encoding": "utf-8",
+  "reassembly": "concatenate parts in listed order with no separator",
+  "verified_exact_reassembly": true,
+  "parts": [
+    {
+      "path": "C04.part01.md",
+      "size_bytes": 4518,
+      "sha256": "e062c3d2f23c62620c7a61e4f11be3ab29d190c22230a914b0c9e5ae9d262412",
+      "git_blob_sha1": "7f3e747669ada0b5900ec4842466f128def3d302"
+    },
+    {
+      "path": "C04.part02.md",
+      "size_bytes": 3619,
+      "sha256": "425e044b3259a72434a2147d25febd7ae657546f04481edc3706beaf2505b61e",
+      "git_blob_sha1": "8c72aaa4e6df764703fbe397a28f672414ed4252"
+    },
+    {
+      "path": "C04.part03.md",
+      "size_bytes": 3896,
+      "sha256": "51063dd3024e1b76c5d05792529ba35ace9d697a98907e508dedff607ce4f0a8",
+      "git_blob_sha1": "9c3b08703d1a80ecce1639ab7baa7673b321055a"
+    },
+    {
+      "path": "C04.part04.md",
+      "size_bytes": 3573,
+      "sha256": "f7e69efd3f4f3aaa1ec581b7603f002c20458abfbe17e0a063ad459862f22ccc",
+      "git_blob_sha1": "9472a53869fa46bccd1a35cf1bde9b67749fdce1"
+    },
+    {
+      "path": "C04.part05.md",
+      "size_bytes": 4123,
+      "sha256": "3195a8a3a666d72029767c8661516605e773333f2f15f7f2751b9c8326acf5d4",
+      "git_blob_sha1": "e2f9b4c12cc6f38a42199a0ea93728a128001970"
+    },
+    {
+      "path": "C04.part06.md",
+      "size_bytes": 5745,
+      "sha256": "545e46aa91c810a3da852b5da9418440df95d4106f2db3029ed687b3d17476b4",
+      "git_blob_sha1": "f530a1779f4bb317ab03220184a0f6def387fff2"
+    }
+  ]
+}

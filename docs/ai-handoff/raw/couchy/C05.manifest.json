@@ -1,0 +1,31 @@
+{
+  "schema_version": 3,
+  "report_id": "C05",
+  "collection": "couchy-comparison",
+  "source_filename": "couchy_group05.md",
+  "source_size_bytes": 13613,
+  "source_sha256": "e7603080accb1bdb90cf2672048f647276671649d3cfc61c4712130950bd4b78",
+  "encoding": "utf-8",
+  "reassembly": "concatenate parts in listed order with no separator",
+  "verified_exact_reassembly": true,
+  "parts": [
+    {
+      "path": "C05.part00.md",
+      "size_bytes": 4949,
+      "sha256": "63160a2ce8f592a6f1c002f3bfc45a2d5a0a83dcb2f81170688e4ba4e1a5f992",
+      "git_blob_sha1": "b070d6ee9f4f750af992fa5d2365cd8fb8acc90b"
+    },
+    {
+      "path": "C05.part01.md",
+      "size_bytes": 4297,
+      "sha256": "bc8e95fad3f282e7aacf7249b0d06f5bd44b906c8cf0b71df5196157bbf490b7",
+      "git_blob_sha1": "cfcb9271732b13927eacf401f15fe8a489ed1ad5"
+    },
+    {
+      "path": "C05.part02.md",
+      "size_bytes": 4367,
+      "sha256": "9b7441720bcbe4629ee9ea4fbf0d00c2874b2b25c64eba5730abc24bacdcabe5",
+      "git_blob_sha1": "71d0a7067a812110ba9285e4d94f7fc818ebf12f"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "schema_version": 3,
+  "archive_name": "Aerial-Rows AI handoff raw research archive",
+  "purpose": "Machine-readable completion and integrity index for the raw AI handoff research corpus.",
+  "validation_command": "python docs/ai-handoff/tools/validate_archive.py",
+  "collections": {
+    "couchy": {
+      "C01": {
+        "status": "complete",
+        "manifest": "couchy/C01.manifest.json",
+        "source_sha256": "c85c2188906a849854865fc549e1f62c697899d7a648d05fb3f1fd6954e88cea"
+      },
+      "C02": {
+        "status": "complete",
+        "manifest": "couchy/C02.manifest.json",
+        "source_sha256": "2c9732f438cdfc075239ba4c06754821d09846e4d706fbf7dc181dc480e0e381"
+      },
+      "C03": {
+        "status": "complete",
+        "manifest": "couchy/C03.manifest.json",
+        "source_sha256": "c756b965caa99ac016eb312a9828be05cfcd6618d666c5b41b1ca333c6761f03"
+      },
+      "C04": {
+        "status": "complete",
+        "manifest": "couchy/C04.manifest.json",
+        "source_sha256": "935945ec232fe56e6e64e2112eb19179a3297e6194594234d239b9cde5ebd297"
+      },
+      "C05": {
+        "status": "complete",
+        "manifest": "couchy/C05.manifest.json",
+        "source_sha256": "e7603080accb1bdb90cf2672048f647276671649d3cfc61c4712130950bd4b78"
+      },
+      "C06": {
+        "status": "complete",
+        "manifest": "couchy/C06.manifest.json",
+        "source_sha256": "0bf49b7fed0fa4fee3abe2c86f133c3f62fb1eba708821c4b2cebf12cba37b18"
+      },
+      "C07": {
+        "status": "pending",
+        "manifest": "couchy/C07.manifest.json"
+      },
+      "C08": {
+        "status": "pending",
+        "manifest": "couchy/C08.manifest.json"
+      },
+      "C09": {
+        "status": "pending",
+        "manifest": "couchy/C09.manifest.json"
+      },
+      "C10": {
+        "status": "pending",
+        "manifest": "couchy/C10.manifest.json"
+      },
+      "C11": {
+        "status": "pending",
+        "manifest": "couchy/C11.manifest.json"
+      },
+      "C12": {
+        "status": "pending",
+        "manifest": "couchy/C12.manifest.json"
+      }
+    },
+    "projectivy": {
+      "status": "pending",
+      "note": "Original Groups 1-12 plus final post-closure/corrected audits; tracked in EXPORT_STATUS.md until individual manifests are added."
+    },
+    "process": {
+      "status": "pending",
+      "note": "Audit process/tooling history and reproducibility notes."
+    }
+  }
+}
