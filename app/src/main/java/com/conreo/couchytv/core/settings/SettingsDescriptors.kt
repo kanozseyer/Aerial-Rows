@@ -13,7 +13,17 @@ object DisplaySettingDescriptors {
     val CornerRadius = intRange(DisplaySettingIds.CornerRadius, 0..4)
     val IconScale = intRange(DisplaySettingIds.IconScale, 0..4)
     val Spacing = intRange(DisplaySettingIds.Spacing, 0..4)
-    val PanelStyle = intRange(DisplaySettingIds.PanelStyle, 0..2)
+    val RowsTopMargin = allowedValues(
+        DisplaySettingIds.RowsTopMargin,
+        setOf(0, 3, 6, 9, 12, 15, 20, 25, 30, 40, 50),
+    )
+    val PanelStyle = SettingDescriptor(
+        id = DisplaySettingIds.PanelStyle,
+        route = SettingsRoutes.Display,
+        persistence = PersistencePolicy.IMMEDIATE,
+        effect = SettingEffect.RECOMPOSE,
+        validator = { value: Int -> value in 0..2 },
+    )
     val PanelOpacity = intRange(DisplaySettingIds.PanelOpacity, 0..10)
     val PanelTintHue = intRange(DisplaySettingIds.PanelTintHue, 0..12)
     val PanelTintSaturation = intRange(DisplaySettingIds.PanelTintSaturation, 0..5)
@@ -25,6 +35,14 @@ object DisplaySettingDescriptors {
         persistence = PersistencePolicy.DEBOUNCED,
         effect = SettingEffect.RECOMPOSE,
         validator = { value: Int -> value in range },
+    )
+
+    private fun allowedValues(id: SettingId, values: Set<Int>) = SettingDescriptor(
+        id = id,
+        route = SettingsRoutes.Display,
+        persistence = PersistencePolicy.DEBOUNCED,
+        effect = SettingEffect.RECOMPOSE,
+        validator = { value: Int -> value in values },
     )
 }
 

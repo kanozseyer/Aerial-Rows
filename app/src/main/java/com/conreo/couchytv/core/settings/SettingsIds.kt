@@ -57,6 +57,7 @@ object DisplaySettingIds {
     val CornerRadius = SettingId("display.corner_radius")
     val IconScale = SettingId("display.icon_scale")
     val Spacing = SettingId("display.spacing")
+    val RowsTopMargin = SettingId("display.rows_top_margin")
     val PanelStyle = SettingId("display.panel_style")
     val PanelOpacity = SettingId("display.panel_opacity")
     val PanelTintHue = SettingId("display.panel_tint_hue")
@@ -70,6 +71,7 @@ object DisplaySettingIds {
         CornerRadius,
         IconScale,
         Spacing,
+        RowsTopMargin,
         PanelStyle,
         PanelOpacity,
         PanelTintHue,

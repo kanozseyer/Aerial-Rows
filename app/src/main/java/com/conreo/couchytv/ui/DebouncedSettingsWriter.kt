@@ -1,6 +1,9 @@
 package com.conreo.couchytv.ui
 
 import android.os.SystemClock
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import com.conreo.couchytv.core.settings.SettingDebounceScheduler
 import com.conreo.couchytv.core.settings.SettingId
 import com.conreo.couchytv.data.ConfigStore
@@ -30,16 +33,24 @@ internal class DebouncedSettingsWriter(
     private val scheduler = SettingDebounceScheduler<LauncherConfig>(delayMs)
     private var job: Job? = null
 
+    // Read by preview() from composition so pending mutations can drive live
+    // preview UI immediately without waiting for the DataStore round-trip.
+    private var previewRevision by mutableIntStateOf(0)
+
     val hasPending: Boolean
         get() = !scheduler.isEmpty
 
-    fun preview(base: LauncherConfig): LauncherConfig = scheduler.preview(base)
+    fun preview(base: LauncherConfig): LauncherConfig {
+        previewRevision // snapshot read: invalidates callers when pending state changes
+        return scheduler.preview(base)
+    }
 
     fun submit(
         id: SettingId,
         transform: (LauncherConfig) -> LauncherConfig,
     ) {
         scheduler.put(id, nowMs(), transform)
+        previewRevision++
         scheduleFlush()
     }
 
@@ -51,6 +62,10 @@ internal class DebouncedSettingsWriter(
                 delay((deadline - nowMs()).coerceAtLeast(0L))
                 val batch = scheduler.drainIfDue(nowMs()) ?: continue
                 persistCaptured(batch)
+                // Do not invalidate preview here. ConfigStore's state update will
+                // recompose with the persisted value; forcing an earlier snapshot
+                // read could briefly render the old base value after the scheduler
+                // has already drained its pending transform.
                 return@launch
             }
         }
@@ -75,5 +90,6 @@ internal class DebouncedSettingsWriter(
         job?.cancel()
         job = null
         scheduler.clear()
+        previewRevision++
     }
 }
