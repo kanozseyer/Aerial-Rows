@@ -24,6 +24,15 @@ jobs:
       - name: Build (debug + unsigned release) and lint
         run: ./gradlew assembleDebug assembleRelease lintRelease --no-daemon
 
+      - name: Verify build does not mutate tracked source
+        shell: bash
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::Gradle build mutated tracked repository files"
+            git status --short
+            exit 1
+          fi
+
       # Tagged push → decode the keystore, sign, upload to the Release page.
       - name: Decode keystore
         if: startsWith(github.ref, 'refs/tags/v')

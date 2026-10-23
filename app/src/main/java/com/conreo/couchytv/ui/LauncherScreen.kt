@@ -81,6 +81,7 @@ import com.conreo.couchytv.data.AppRepository
 import com.conreo.couchytv.data.ConfigStore
 import com.conreo.couchytv.data.LAYOUT_DOCK
 import com.conreo.couchytv.data.LAYOUT_GRID
+import com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS
 import com.conreo.couchytv.data.LauncherConfig
 import com.conreo.couchytv.data.NetStatus
 import com.conreo.couchytv.data.networkStatusFlow
@@ -545,7 +546,7 @@ fun LauncherApp(rescanTick: Int) {
         // changes, the previous video keeps playing until the new one is
         // picked, instead of flashing back to the preset background.
         val aerials = withContext(Dispatchers.IO) {
-            com.conreo.couchytv.data.BuiltinAerials.load(context, config.builtinSource)
+            com.conreo.couchytv.data.BuiltinAerials.load(context, config.builtinSources)
         }
         if (aerials.isEmpty()) return@produceState
         // Pick one, different from the current so the uri always changes (which
@@ -718,6 +719,22 @@ fun LauncherApp(rescanTick: Int) {
                     )
                 }
                 when (config.layout) {
+                    LAYOUT_SLIDING_ROWS -> SlidingRowsArea(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        categorized = categorized,
+                        allApps = apps,
+                        config = config,
+                        store = store,
+                        accent = accent,
+                        movePkg = movePkg,
+                        moveFocus = moveFocus,
+                        cardWidth = cardWidth,
+                        gap = gap,
+                        onLaunch = { app -> if (movePkg == null) Actions.launchApp(context, app.pkg) },
+                        onMenu = { app -> if (movePkg == null) menuFor = app },
+                        onSettings = { showSettings = true },
+                        onAndroidSettings = { Actions.openSystemSettings(context) },
+                    )
                     LAYOUT_DOCK -> DockArea(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         apps = dockApps,
@@ -1249,13 +1266,12 @@ private fun DockGlassPanel(
                 slideOutVertically(tween(340, easing = FastOutSlowInEasing)) { it },
             modifier = Modifier.matchParentSize(),
         ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .clip(SmoothCornerShape(LocalCornerRadius.current + 14.dp))
-                    .background(Color(0xB3121418))
-                    .background(Color.White.copy(alpha = 0.06f))
-            )
+            // Aerial Rows customizable dock panel
+            AerialPanel(
+                config = config,
+                shape = SmoothCornerShape(LocalCornerRadius.current + 14.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {}
         }
         // Icons — on OPEN they vanish almost instantly (the rising grid takes
         // over); on CLOSE they wait for the grid to sink back before fading in.
