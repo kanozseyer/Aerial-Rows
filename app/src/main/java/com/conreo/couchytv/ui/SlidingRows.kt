@@ -123,7 +123,12 @@ private fun normalizeHomeOrder(saved: List<String>, natural: List<String>): List
     saved.filter { it in natural } + natural.filterNot { it in saved }
 
 private fun appHomeItemId(app: AppEntry): HomeItemId =
-    HomeItemId.App(AppId(packageName = app.pkg))
+    HomeItemId.App(
+        AppId(
+            packageName = app.pkg,
+            componentName = app.componentName,
+        ),
+    )
 
 private fun tvHomeItemId(item: TvProgramItem, ownerFallback: String): HomeItemId =
     HomeItemId.TvProgram(
@@ -560,7 +565,7 @@ private fun AppCategoryRow(
             ) {
                 itemsIndexed(
                     items = row.apps,
-                    key = { _, app -> "${row.category.id}:${app.pkg}" },
+                    key = { _, app -> "${row.category.id}:${app.pkg}:${app.componentName.orEmpty()}" },
                 ) { appIndex, app ->
                     val firstInRow = appIndex == 0
                     val itemId = itemIds[appIndex]

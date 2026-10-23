@@ -213,10 +213,19 @@ fun LauncherApp(rescanTick: Int) {
     val scope = rememberCoroutineScope()
     val launchDispatcher = remember(context) { createDefaultLaunchDispatcher(context) }
 
-    fun dispatchApp(packageName: String, origin: LaunchOrigin) {
+    fun dispatchApp(
+        packageName: String,
+        origin: LaunchOrigin,
+        componentName: String? = null,
+    ) {
         launchDispatcher.dispatch(
             LaunchRequest(
-                target = LaunchTarget.App(AppId(packageName = packageName)),
+                target = LaunchTarget.App(
+                    AppId(
+                        packageName = packageName,
+                        componentName = componentName,
+                    ),
+                ),
                 origin = origin,
             ),
         )
@@ -746,7 +755,7 @@ fun LauncherApp(rescanTick: Int) {
                         moveFocus = moveFocus,
                         cardWidth = cardWidth,
                         gap = gap,
-                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
+                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD, app.componentName) },
                         onMenu = { app -> if (movePkg == null) menuFor = app },
                         onSettings = { showSettings = true },
                         onAndroidSettings = { Actions.openSystemSettings(context) },
@@ -763,7 +772,7 @@ fun LauncherApp(rescanTick: Int) {
                         intro = introShown,
                         expanded = dockExpanded,
                         onExpandChange = { dockExpanded = it },
-                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
+                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD, app.componentName) },
                         onMenu = { app -> if (movePkg == null) menuFor = app },
                     )
                     else -> {
@@ -867,14 +876,14 @@ fun LauncherApp(rescanTick: Int) {
                                     GridSection(
                                         catApps, config, accent, movePkg, moveFocus,
                                         cardWidth, gap, introShown,
-                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
+                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD, app.componentName) },
                                         onMenu = { app -> if (movePkg == null) menuFor = app },
                                     )
                                 } else {
                                     CarouselSection(
                                         catApps, config, accent, movePkg, moveFocus,
                                         cardWidth, gap,
-                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
+                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD, app.componentName) },
                                         onMenu = { app -> if (movePkg == null) menuFor = app },
                                     )
                                 }
@@ -892,7 +901,7 @@ fun LauncherApp(rescanTick: Int) {
                     app = app,
                     isHidden = app.pkg in config.hidden,
                     onDismiss = { menuFor = null },
-                    onOpen = { menuFor = null; dispatchApp(app.pkg, LaunchOrigin.CONTEXT_MENU) },
+                    onOpen = { menuFor = null; dispatchApp(app.pkg, LaunchOrigin.CONTEXT_MENU, app.componentName) },
                     onMove = { menuFor = null; movePkg = app.pkg },
                     onToggleHide = {
                         menuFor = null
