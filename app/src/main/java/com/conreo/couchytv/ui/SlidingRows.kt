@@ -29,6 +29,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -56,6 +57,13 @@ import com.conreo.couchytv.core.launch.LaunchDispatcher
 import com.conreo.couchytv.core.launch.LaunchOrigin
 import com.conreo.couchytv.core.launch.LaunchRequest
 import com.conreo.couchytv.core.launch.LaunchTarget
+import com.conreo.couchytv.core.home.HomeFocusState
+import com.conreo.couchytv.core.home.HomeFocusTarget
+import com.conreo.couchytv.core.home.HomeRailState
+import com.conreo.couchytv.core.home.HomeRowSnapshot
+import com.conreo.couchytv.core.model.AppId
+import com.conreo.couchytv.core.model.HomeItemId
+import com.conreo.couchytv.core.model.RowId
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.CategoryCfg
 import com.conreo.couchytv.data.ConfigStore
@@ -114,6 +122,32 @@ private fun categoryIcon(category: CategoryCfg): String {
 private fun normalizeHomeOrder(saved: List<String>, natural: List<String>): List<String> =
     saved.filter { it in natural } + natural.filterNot { it in saved }
 
+private fun appHomeItemId(app: AppEntry): HomeItemId =
+    HomeItemId.App(AppId(packageName = app.pkg))
+
+private fun tvHomeItemId(item: TvProgramItem, ownerFallback: String): HomeItemId =
+    HomeItemId.TvProgram(
+        providerPackage = item.packageName.ifBlank { ownerFallback },
+        programKey = item.id.toString(),
+    )
+
+private fun HomeRowModel.toFocusSnapshot(): HomeRowSnapshot = when (this) {
+    is WatchNextHomeRow -> HomeRowSnapshot(
+        id = RowId(id),
+        itemIds = programs.map { tvHomeItemId(it, "watch_next") },
+    )
+    is ChannelHomeRow -> HomeRowSnapshot(
+        id = RowId(id),
+        itemIds = channel.programs.map {
+            tvHomeItemId(it, channel.packageName.ifBlank { "channel:${channel.key}" })
+        },
+    )
+    is CategoryHomeRow -> HomeRowSnapshot(
+        id = RowId(id),
+        itemIds = apps.map(::appHomeItemId),
+    )
+}
+
 /**
  * Projectivy-inspired layout: vertically stacked sections, each one a normal
  * horizontally sliding LazyRow. Watch Next, Android TV channels and app
@@ -140,10 +174,12 @@ fun SlidingRowsArea(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val verticalState = rememberLazyListState()
-    var railVisible by remember { mutableStateOf(false) }
-    var activeRowId by remember { mutableStateOf<String?>(null) }
+    var focusState by remember { mutableStateOf(HomeFocusState()) }
+    var pendingRestore by remember { mutableStateOf<HomeFocusTarget?>(null) }
     var editingRowId by remember { mutableStateOf<String?>(null) }
     val railFocus = remember { FocusRequester() }
+    val activeRowId = focusState.activeRowId?.value
+    val railVisible = focusState.railState != HomeRailState.HIDDEN
 
     val tvContent by produceState(
         TvContentRows(),
@@ -166,19 +202,26 @@ fun SlidingRowsArea(
     val rank = normalizedOrder.withIndex().associate { (index, id) -> id to index }
     val rows = naturalRows.sortedBy { rank[it.id] ?: Int.MAX_VALUE }
     val rowIds = rows.map { it.id }
-    val firstRowFocus = remember(rowIds) { rowIds.associateWith { FocusRequester() } }
+    val rowSnapshots = remember(rows) { rows.map(HomeRowModel::toFocusSnapshot) }
 
-    LaunchedEffect(rowIds) {
-        if (activeRowId !in rowIds) activeRowId = rowIds.firstOrNull()
+    LaunchedEffect(rowSnapshots) {
+        val reconciled = focusState.reconcile(rowSnapshots)
+        focusState = reconciled
+        pendingRestore = pendingRestore?.let { pending ->
+            val row = rowSnapshots.firstOrNull { it.id == pending.rowId }
+            if (row != null && pending.itemId in row.itemIds) pending
+            else reconciled.restoreTarget(rowSnapshots)
+        }
     }
 
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
     val topPadding = (screenHeightDp * config.rowsTopMarginPercent.coerceIn(0, 50) / 100f).dp
 
     fun revealRail(): Boolean {
-        if (!railVisible) {
-            railVisible = true
+        if (focusState.railState == HomeRailState.HIDDEN) {
+            focusState = focusState.revealRail()
         } else {
+            focusState = focusState.focusRail()
             runCatching { railFocus.requestFocus() }
         }
         return true
@@ -231,8 +274,12 @@ fun SlidingRowsArea(
                         accent = accent,
                         cardWidth = cardWidth,
                         gap = gap,
-                        firstFocus = firstRowFocus.getValue(row.id),
-                        onFocused = { activeRowId = row.id },
+                        rowId = RowId(row.id),
+                        restoreItemId = pendingRestore?.takeIf { it.rowId.value == row.id }?.itemId,
+                        onRestoreHandled = { target -> if (pendingRestore == target) pendingRestore = null },
+                        onFocused = { itemId ->
+                            focusState = focusState.onItemFocused(RowId(row.id), itemId)
+                        },
                         onFirstLeft = { revealRail() },
                         onLaunch = { item ->
                             launchDispatcher.dispatch(
@@ -255,8 +302,13 @@ fun SlidingRowsArea(
                         accent = accent,
                         cardWidth = cardWidth,
                         gap = gap,
-                        firstFocus = firstRowFocus.getValue(row.id),
-                        onFocused = { activeRowId = row.id },
+                        rowId = RowId(row.id),
+                        programOwnerFallback = row.channel.packageName.ifBlank { "channel:${row.channel.key}" },
+                        restoreItemId = pendingRestore?.takeIf { it.rowId.value == row.id }?.itemId,
+                        onRestoreHandled = { target -> if (pendingRestore == target) pendingRestore = null },
+                        onFocused = { itemId ->
+                            focusState = focusState.onItemFocused(RowId(row.id), itemId)
+                        },
                         onFirstLeft = { revealRail() },
                         onLaunch = { item ->
                             launchDispatcher.dispatch(
@@ -279,8 +331,12 @@ fun SlidingRowsArea(
                         moveFocus = moveFocus,
                         cardWidth = cardWidth,
                         gap = gap,
-                        firstFocus = firstRowFocus.getValue(row.id),
-                        onFocused = { activeRowId = row.id },
+                        rowId = RowId(row.id),
+                        restoreItemId = pendingRestore?.takeIf { it.rowId.value == row.id }?.itemId,
+                        onRestoreHandled = { target -> if (pendingRestore == target) pendingRestore = null },
+                        onFocused = { itemId ->
+                            focusState = focusState.onItemFocused(RowId(row.id), itemId)
+                        },
                         onFirstLeft = { revealRail() },
                         onLaunch = onLaunch,
                         onMenu = onMenu,
@@ -305,10 +361,9 @@ fun SlidingRowsArea(
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (event.key) {
                             Key.DirectionRight, Key.Back, Key.Escape -> {
-                                railVisible = false
-                                activeRowId?.let { id ->
-                                    firstRowFocus[id]?.let { requester -> runCatching { requester.requestFocus() } }
-                                }
+                                val next = focusState.hideRail()
+                                focusState = next
+                                pendingRestore = next.restoreTarget(rowSnapshots)
                                 true
                             }
                             else -> false
@@ -346,12 +401,12 @@ fun SlidingRowsArea(
                                 selected = row.id == activeRowId,
                                 modifier = if (row.id == activeRowId) Modifier.focusRequester(railFocus) else Modifier,
                                 onClick = {
-                                    activeRowId = row.id
+                                    val next = focusState.selectRow(RowId(row.id)).hideRail()
+                                    focusState = next
                                     scope.launch {
                                         verticalState.animateScrollToItem(index)
-                                        railVisible = false
                                         delay(60)
-                                        firstRowFocus[row.id]?.let { runCatching { it.requestFocus() } }
+                                        pendingRestore = next.restoreTarget(rowSnapshots)
                                     }
                                 },
                             )
@@ -442,12 +497,28 @@ private fun AppCategoryRow(
     moveFocus: FocusRequester,
     cardWidth: Dp,
     gap: Dp,
-    firstFocus: FocusRequester,
-    onFocused: () -> Unit,
+    rowId: RowId,
+    restoreItemId: HomeItemId?,
+    onRestoreHandled: (HomeFocusTarget) -> Unit,
+    onFocused: (HomeItemId) -> Unit,
     onFirstLeft: () -> Boolean,
     onLaunch: (AppEntry) -> Unit,
     onMenu: (AppEntry) -> Unit,
 ) {
+    val itemIds = remember(row.apps) { row.apps.map(::appHomeItemId) }
+    val itemFocus = remember(rowId, itemIds) { itemIds.associateWith { FocusRequester() } }
+    val horizontalState = rememberLazyListState()
+
+    LaunchedEffect(restoreItemId, itemIds) {
+        val target = restoreItemId ?: return@LaunchedEffect
+        val index = itemIds.indexOf(target)
+        if (index < 0) return@LaunchedEffect
+        horizontalState.scrollToItem(index)
+        withFrameNanos { }
+        runCatching { itemFocus.getValue(target).requestFocus() }
+        onRestoreHandled(HomeFocusTarget(rowId, target))
+    }
+
     AerialPanel(
         config = config,
         shape = SmoothCornerShape(LocalCornerRadius.current + 12.dp),
@@ -482,6 +553,7 @@ private fun AppCategoryRow(
             }
 
             LazyRow(
+                state = horizontalState,
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(start = 24.dp, end = 44.dp, top = 4.dp, bottom = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(gap),
@@ -491,17 +563,18 @@ private fun AppCategoryRow(
                     key = { _, app -> "${row.category.id}:${app.pkg}" },
                 ) { appIndex, app ->
                     val firstInRow = appIndex == 0
-                    var cardModifier: Modifier = Modifier.onFocusChanged {
-                        if (it.hasFocus) onFocused()
-                    }
+                    val itemId = itemIds[appIndex]
+                    var cardModifier: Modifier = Modifier
+                        .focusRequester(itemFocus.getValue(itemId))
+                        .onFocusChanged {
+                            if (it.hasFocus) onFocused(itemId)
+                        }
                     if (firstInRow) {
-                        cardModifier = cardModifier
-                            .focusRequester(firstFocus)
-                            .onPreviewKeyEvent { event ->
-                                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
-                                    onFirstLeft()
-                                } else false
-                            }
+                        cardModifier = cardModifier.onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                                onFirstLeft()
+                            } else false
+                        }
                     }
                     if (movePkg == app.pkg) cardModifier = cardModifier.focusRequester(moveFocus)
 
@@ -531,11 +604,30 @@ private fun TvContentRow(
     accent: Color,
     cardWidth: Dp,
     gap: Dp,
-    firstFocus: FocusRequester,
-    onFocused: () -> Unit,
+    rowId: RowId,
+    programOwnerFallback: String = "watch_next",
+    restoreItemId: HomeItemId?,
+    onRestoreHandled: (HomeFocusTarget) -> Unit,
+    onFocused: (HomeItemId) -> Unit,
     onFirstLeft: () -> Boolean,
     onLaunch: (TvProgramItem) -> Unit,
 ) {
+    val itemIds = remember(programs, programOwnerFallback) {
+        programs.map { tvHomeItemId(it, programOwnerFallback) }
+    }
+    val itemFocus = remember(rowId, itemIds) { itemIds.associateWith { FocusRequester() } }
+    val horizontalState = rememberLazyListState()
+
+    LaunchedEffect(restoreItemId, itemIds) {
+        val target = restoreItemId ?: return@LaunchedEffect
+        val index = itemIds.indexOf(target)
+        if (index < 0) return@LaunchedEffect
+        horizontalState.scrollToItem(index)
+        withFrameNanos { }
+        runCatching { itemFocus.getValue(target).requestFocus() }
+        onRestoreHandled(HomeFocusTarget(rowId, target))
+    }
+
     AerialPanel(
         config = config,
         shape = SmoothCornerShape(LocalCornerRadius.current + 12.dp),
@@ -567,18 +659,20 @@ private fun TvContentRow(
                 )
             }
             LazyRow(
+                state = horizontalState,
                 contentPadding = PaddingValues(start = 24.dp, end = 44.dp, top = 4.dp, bottom = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
                 itemsIndexed(programs, key = { _, item -> item.id }) { index, item ->
-                    var nav = Modifier.onFocusChanged { if (it.hasFocus) onFocused() }
+                    val itemId = itemIds[index]
+                    var nav = Modifier
+                        .focusRequester(itemFocus.getValue(itemId))
+                        .onFocusChanged { if (it.hasFocus) onFocused(itemId) }
                     if (index == 0) {
-                        nav = nav
-                            .focusRequester(firstFocus)
-                            .onPreviewKeyEvent { event ->
-                                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) onFirstLeft()
-                                else false
-                            }
+                        nav = nav.onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) onFirstLeft()
+                            else false
+                        }
                     }
                     TvProgramCard(
                         item = item,
