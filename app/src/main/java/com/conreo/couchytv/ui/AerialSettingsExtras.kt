@@ -404,6 +404,7 @@ private fun ExtraSelector(
     options: List<String>? = null,
 ) {
     var optimisticCurrent by remember { mutableIntStateOf(current) }
+    var showChoices by remember { mutableStateOf(false) }
     LaunchedEffect(current) { optimisticCurrent = current }
     val validOptions = options?.takeIf { it.size == steps }
     val displayedCurrent = optimisticCurrent.coerceIn(0, steps - 1)
@@ -427,17 +428,32 @@ private fun ExtraSelector(
                 else -> false
             }
         },
-        onClick = { select((displayedCurrent + 1) % steps) },
+        onClick = {
+            if (validOptions != null) showChoices = true
+            else select((displayedCurrent + 1) % steps)
+        },
         title = title,
         subtitle = subtitle,
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("◄", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(displayedValue)
-                Text("►", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (validOptions != null) "▾" else "►", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
     )
+    if (showChoices && validOptions != null) {
+        SettingsChoiceDialog(
+            title = title,
+            options = validOptions,
+            current = displayedCurrent,
+            onSelect = { index ->
+                select(index)
+                showChoices = false
+            },
+            onDismiss = { showChoices = false },
+        )
+    }
 }
 
 @Composable

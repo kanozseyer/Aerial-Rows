@@ -1,0 +1,42 @@
+name: Fast Check
+
+on:
+  push:
+    paths:
+      - '.github/fast-check-trigger'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fast-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Detect active trigger
+        id: trigger
+        shell: bash
+        run: |
+          if [[ -f .github/fast-check-trigger ]]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-java@v6
+        if: steps.trigger.outputs.run == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+        if: steps.trigger.outputs.run == 'true'
+      - name: Unit tests and Kotlin compile
+        if: steps.trigger.outputs.run == 'true'
+        run: ./gradlew :app:testDebugUnitTest :app:compileDebugKotlin --no-daemon --parallel --build-cache
+      - name: Verify fast check does not mutate tracked source
+        if: steps.trigger.outputs.run == 'true'
+        run: git diff --exit-code
