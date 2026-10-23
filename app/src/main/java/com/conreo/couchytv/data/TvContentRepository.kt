@@ -75,6 +75,11 @@ enum class TvChannelQueryMode {
     DISCOVERY,
 }
 
+enum class TvProgramQueryKind {
+    WATCH_NEXT,
+    PREVIEW_CHANNEL,
+}
+
 /** Pure demand-driven observation plan; useful for regression testing without Android provider state. */
 fun tvContentObservationTargets(
     showWatchNext: Boolean,
@@ -102,6 +107,15 @@ fun tvChannelIdentity(
     val providerId = internalProviderId.trim()
     val key = if (providerId.isNotEmpty()) "$owner:provider:$providerId" else legacyKey
     return TvChannelIdentity(key = key, legacyKey = legacyKey)
+}
+
+/**
+ * Android TV exposes different ordering hints for these two provider surfaces.
+ * A deterministic row-id tie-break keeps equal-priority results stable.
+ */
+fun tvProgramSortOrder(kind: TvProgramQueryKind): String = when (kind) {
+    TvProgramQueryKind.WATCH_NEXT -> "last_engagement_time_utc_millis DESC, _id DESC"
+    TvProgramQueryKind.PREVIEW_CHANNEL -> "weight DESC, _id ASC"
 }
 
 /**
@@ -187,7 +201,12 @@ object TvContentRepository {
         val defaultLimit = config.channelItemLimit.coerceIn(4, 30)
         val watchNext = if (config.showWatchNext) {
             runCatching {
-                queryPrograms(context, TvContract.WatchNextPrograms.CONTENT_URI, defaultLimit)
+                queryPrograms(
+                    context = context,
+                    uri = TvContract.WatchNextPrograms.CONTENT_URI,
+                    limit = defaultLimit,
+                    kind = TvProgramQueryKind.WATCH_NEXT,
+                )
             }.getOrDefault(emptyList())
         } else emptyList()
 
@@ -287,7 +306,12 @@ object TvContentRepository {
                         ?: defaultLimit
                     ).coerceIn(4, 30)
                 val programs = runCatching {
-                    queryPrograms(context, TvContract.buildPreviewProgramsUriForChannel(id), limit)
+                    queryPrograms(
+                        context = context,
+                        uri = TvContract.buildPreviewProgramsUriForChannel(id),
+                        limit = limit,
+                        kind = TvProgramQueryKind.PREVIEW_CHANNEL,
+                    )
                 }.getOrDefault(emptyList())
                 if (!shouldIncludeTvChannel(mode, browsable, programs.isNotEmpty())) continue
 
@@ -306,7 +330,12 @@ object TvContentRepository {
     }
 
     @RequiresApi(26)
-    private fun queryPrograms(context: Context, uri: Uri, limit: Int): List<TvProgramItem> {
+    private fun queryPrograms(
+        context: Context,
+        uri: Uri,
+        limit: Int,
+        kind: TvProgramQueryKind,
+    ): List<TvProgramItem> {
         // Shared preview/watch-next column names. Using literal provider names
         // avoids Kotlin/JVM inherited-static binding differences across SDKs.
         val projection = arrayOf(
@@ -322,24 +351,35 @@ object TvContentRepository {
             "last_playback_position_millis",
             "browsable",
         )
+        val resolver = context.contentResolver
+        val preferredOrder = tvProgramSortOrder(kind)
+        // TvProvider implementations vary: use the platform ordering hint when
+        // supported, but retry without SQL sort syntax rather than losing a row
+        // entirely on an OEM/provider that rejects the sort-order argument.
+        val cursor = runCatching {
+            resolver.query(uri, projection, null, null, preferredOrder)
+        }.getOrNull() ?: runCatching {
+            resolver.query(uri, projection, null, null, null)
+        }.getOrNull() ?: return emptyList()
+
         val result = ArrayList<TvProgramItem>(limit)
-        context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+        cursor.use {
             fun text(name: String): String {
-                val i = cursor.getColumnIndex(name)
-                return if (i >= 0 && !cursor.isNull(i)) cursor.getString(i).orEmpty() else ""
+                val i = it.getColumnIndex(name)
+                return if (i >= 0 && !it.isNull(i)) it.getString(i).orEmpty() else ""
             }
             fun long(name: String): Long {
-                val i = cursor.getColumnIndex(name)
-                return if (i >= 0 && !cursor.isNull(i)) cursor.getLong(i) else 0L
+                val i = it.getColumnIndex(name)
+                return if (i >= 0 && !it.isNull(i)) it.getLong(i) else 0L
             }
-            val idCol = cursor.getColumnIndex(BaseColumns._ID)
-            val browsableCol = cursor.getColumnIndex("browsable")
-            while (cursor.moveToNext() && result.size < limit) {
-                if (browsableCol >= 0 && cursor.getInt(browsableCol) == 0) continue
+            val idCol = it.getColumnIndex(BaseColumns._ID)
+            val browsableCol = it.getColumnIndex("browsable")
+            while (it.moveToNext() && result.size < limit) {
+                if (browsableCol >= 0 && it.getInt(browsableCol) == 0) continue
                 val title = text("title")
                 if (title.isBlank()) continue
                 result += TvProgramItem(
-                    id = if (idCol >= 0) cursor.getLong(idCol) else result.size.toLong(),
+                    id = if (idCol >= 0) it.getLong(idCol) else result.size.toLong(),
                     title = title,
                     subtitle = text("episode_title").ifBlank { text("short_description") },
                     artworkUri = text("poster_art_uri").ifBlank { text("thumbnail_uri") },
