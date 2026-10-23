@@ -77,6 +77,7 @@ import com.conreo.couchytv.data.ConfigStore
 import com.conreo.couchytv.data.DATE_FORMATS
 import com.conreo.couchytv.data.LAYOUT_DOCK
 import com.conreo.couchytv.data.LAYOUT_GRID
+import com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS
 import com.conreo.couchytv.data.LauncherConfig
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.withFrameNanos
@@ -87,7 +88,7 @@ import kotlinx.serialization.json.Json
 
 private val format = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
 
-private enum class SettingsScreen { Main, Wallpaper, Display, StatusBar, Apps, Categories, Launcher, About }
+private enum class SettingsScreen { Main, Wallpaper, Display, StatusBar, Apps, Channels, Categories, Launcher, About }
 
 /**
  * Settings panel built entirely from focusable rows and buttons — every
@@ -206,6 +207,7 @@ fun SettingsSheet(
                         onDisplay = { screen = SettingsScreen.Display },
                         onStatusBar = { screen = SettingsScreen.StatusBar },
                         onApps = { screen = SettingsScreen.Apps },
+                        onChannels = { screen = SettingsScreen.Channels },
                         onCategories = { screen = SettingsScreen.Categories },
                         onLauncher = { screen = SettingsScreen.Launcher },
                         onAndroidSettings = { Actions.openSystemSettings(context) },
@@ -225,7 +227,14 @@ fun SettingsSheet(
                             }
                         },
                         onSelectBuiltinSource = { v ->
-                            scope.launch { store.update { it.copy(builtinSource = v) } }
+                            val key = listOf("A", "Z", "C1", "C2").getOrNull(v - 1)
+                            if (key != null) scope.launch {
+                                store.update { cfg ->
+                                    val next = if (key in cfg.builtinSources) cfg.builtinSources - key
+                                    else cfg.builtinSources + key
+                                    if (next.isEmpty()) cfg else cfg.copy(builtinSources = next)
+                                }
+                            }
                         },
                         onSetScrim = { v ->
                             scope.launch { store.update { it.copy(scrimMode = v) } }
@@ -280,6 +289,10 @@ fun SettingsSheet(
                             }
                         },
                     )
+                    SettingsScreen.Channels -> ChannelsSettingsScreen(
+                        config = config,
+                        store = store,
+                    )
                     SettingsScreen.Categories -> CategoriesScreen(
                         config = config,
                         apps = apps,
@@ -311,6 +324,7 @@ private fun MainScreen(
     onDisplay: () -> Unit,
     onStatusBar: () -> Unit,
     onApps: () -> Unit,
+    onChannels: () -> Unit,
     onCategories: () -> Unit,
     onLauncher: () -> Unit,
     onAndroidSettings: () -> Unit,
@@ -341,6 +355,12 @@ private fun MainScreen(
             headlineContent = { Text(stringResource(R.string.item_sections)) },
             supportingContent = { Text(stringResource(R.string.item_sections_sub)) },
             leadingContent = { Icon(AppIcons.Folder, contentDescription = null) },
+        )
+        SettingsItem(
+            selected = false, onClick = onChannels,
+            headlineContent = { Text("Channels") },
+            supportingContent = { Text("Watch Next and Android TV app channels") },
+            leadingContent = { Icon(AppIcons.Play, contentDescription = null) },
         )
 
         // ---- Appearance: how it looks ----
@@ -503,14 +523,15 @@ private fun DisplayScreen(
         SelectorRow(
             modifier = Modifier.focusRequester(f),
             label = stringResource(R.string.view_mode),
-            value = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock))[config.layout.coerceIn(0, 2)],
+            value = listOf(stringResource(R.string.mode_carousel), stringResource(R.string.mode_grid), stringResource(R.string.mode_dock), stringResource(R.string.mode_sliding_rows))[config.layout.coerceIn(0, 3)],
             description = when (config.layout) {
                 LAYOUT_GRID -> stringResource(R.string.mode_grid_desc)
                 LAYOUT_DOCK -> stringResource(R.string.mode_dock_desc)
+                LAYOUT_SLIDING_ROWS -> stringResource(R.string.mode_sliding_rows_desc)
                 else -> stringResource(R.string.mode_carousel_desc)
             },
-            steps = 3,
-            current = config.layout.coerceIn(0, 2),
+            steps = 4,
+            current = config.layout.coerceIn(0, 3),
             onSelect = { v -> update { it.copy(layout = v) } },
         )
         // Section names are only drawn in carousel/grid — hide the toggle in dock.
@@ -557,6 +578,7 @@ private fun DisplayScreen(
             current = config.spacing.coerceIn(0, 4),
             onSelect = { v -> update { it.copy(spacing = v) } },
         )
+        PanelAppearanceSettings(config = config, store = store)
     }
 }
 
@@ -1334,20 +1356,35 @@ private fun WallpaperScreen(
             trailingContent = { CheckMark(checked = config.useBuiltinAerials) },
         )
         if (config.useBuiltinAerials) {
-            val sourceNames = listOf(
-                stringResource(R.string.aerial_src_all),
-                stringResource(R.string.aerial_src_apple),
-                stringResource(R.string.aerial_src_amazon),
-                stringResource(R.string.aerial_src_comm1),
-                stringResource(R.string.aerial_src_comm2),
+            Text(
+                "AERIAL COLLECTIONS",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
             )
-            val idx = config.builtinSource.coerceIn(0, sourceNames.size - 1)
-            SelectorRow(
-                label = stringResource(R.string.aerial_src_label),
-                value = sourceNames[idx],
-                steps = sourceNames.size,
-                current = idx,
-                onSelect = { v -> onSelectBuiltinSource(v) },
+            SettingsItem(
+                selected = false,
+                onClick = { onSelectBuiltinSource(1) },
+                headlineContent = { Text(stringResource(R.string.aerial_src_apple)) },
+                trailingContent = { CheckMark(checked = "A" in config.builtinSources) },
+            )
+            SettingsItem(
+                selected = false,
+                onClick = { onSelectBuiltinSource(2) },
+                headlineContent = { Text(stringResource(R.string.aerial_src_amazon)) },
+                trailingContent = { CheckMark(checked = "Z" in config.builtinSources) },
+            )
+            SettingsItem(
+                selected = false,
+                onClick = { onSelectBuiltinSource(3) },
+                headlineContent = { Text(stringResource(R.string.aerial_src_comm1)) },
+                trailingContent = { CheckMark(checked = "C1" in config.builtinSources) },
+            )
+            SettingsItem(
+                selected = false,
+                onClick = { onSelectBuiltinSource(4) },
+                headlineContent = { Text(stringResource(R.string.aerial_src_comm2)) },
+                trailingContent = { CheckMark(checked = "C2" in config.builtinSources) },
             )
         }
 
