@@ -567,6 +567,7 @@ fun LauncherApp(rescanTick: Int) {
 
     // ----- Built-in aerial videos: typed metadata + fair shuffle bag. -----
     val aerialShuffleBag = remember { com.conreo.couchytv.data.AerialShuffleBag() }
+    val aerialFailures = remember { com.conreo.couchytv.data.AerialFailureTracker() }
     val aerialWallpaper by produceState<com.conreo.couchytv.data.AerialItem?>(
         initialValue = null,
         config.useBuiltinAerials, config.builtinSources, wallpaperVersion,
@@ -581,9 +582,21 @@ fun LauncherApp(rescanTick: Int) {
         val aerials = withContext(Dispatchers.IO) {
             com.conreo.couchytv.data.BuiltinAerials.loadItems(context, config.builtinSources)
         }
-        // A source-set change restarts this producer immediately. The shuffle bag
-        // rebuilds for the new catalogue while preventing an immediate repeat.
-        value = aerialShuffleBag.next(aerials) ?: return@produceState
+        aerialFailures.retain(aerials.mapTo(linkedSetOf()) { it.id })
+        val eligibleAerials = aerialFailures.eligible(aerials)
+        if (eligibleAerials.isEmpty()) {
+            // Every selected clip is temporarily quarantined. Drop back to the
+            // preset instead of hammering known-bad streams, then retry the first
+            // clip whose quarantine expires.
+            value = null
+            val retryDelay = aerialFailures.retryDelayMs(aerials) ?: return@produceState
+            delay(retryDelay.coerceAtLeast(1_000L))
+            wallpaperVersion++
+            return@produceState
+        }
+        // A source-set or quarantine change rebuilds the bag for the currently
+        // eligible catalogue while preventing an immediate repeat.
+        value = aerialShuffleBag.next(eligibleAerials) ?: return@produceState
         // Clip end advances immediately; the timer is only a safety cap for very
         // long clips. Every eligible clip is consumed before the bag refills.
         delay(10 * 60_000L)
@@ -652,8 +665,18 @@ fun LauncherApp(rescanTick: Int) {
                     // Stream failed — a dead clip, or (at power-on) the network
                     // isn't ready yet. Fall back to the gradient and retry via
                     // aerialError, instead of sitting on the gradient cover.
-                    onEnded = { wallpaperVersion++ },
-                    onError = { aerialError = true },
+                    onEnded = {
+                        aerialWallpaper?.let { aerialFailures.recordSuccess(it.id) }
+                        wallpaperVersion++
+                    },
+                    onError = {
+                        // Player error + stall watchdog can both fire for one load.
+                        // Count that visible playback attempt only once.
+                        if (!aerialError) {
+                            aerialWallpaper?.let { aerialFailures.recordFailure(it.id) }
+                            aerialError = true
+                        }
+                    },
                 )
             } else if (config.useVideoWallpaper && config.videoUri.isNotEmpty()) {
                 VideoWallpaper(uri = config.videoUri, speed = videoSpeed, loop = true, coverBrush = presetBrush)
