@@ -3,6 +3,7 @@ package com.conreo.couchytv.feature.wallpaper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WallpaperEngineStateTest {
@@ -89,5 +90,49 @@ class WallpaperEngineStateTest {
         assertFalse(aerials in state.unavailable)
         assertFalse(aerials in state.revisions)
         assertEquals(1L, state.revisions[video])
+    }
+
+    @Test
+    fun removingThenReaddingFailedSourceClearsItsFailure() {
+        var state = WallpaperEngineState(plan)
+            .reduce(WallpaperEvent.SourceUnavailable(video, WallpaperUnavailableReason.LOAD_FAILED))
+        assertTrue(video in state.unavailable)
+
+        val withoutVideo = WallpaperPlan(
+            candidates = listOf(photo, preset),
+            videoSpeedIndex = 3,
+        )
+        state = state.reduce(WallpaperEvent.PlanChanged(withoutVideo))
+        assertFalse(video in state.unavailable)
+
+        state = state.reduce(WallpaperEvent.PlanChanged(plan))
+        assertFalse(video in state.unavailable)
+        assertEquals(aerials, state.selection.candidate)
+    }
+
+    @Test
+    fun unchangedPlanKeepsFailureUntilExplicitRecovery() {
+        val failed = WallpaperEngineState(plan)
+            .reduce(WallpaperEvent.SourceUnavailable(video, WallpaperUnavailableReason.LOAD_FAILED))
+
+        val samePlan = failed.reduce(WallpaperEvent.PlanChanged(plan))
+        assertEquals(WallpaperUnavailableReason.LOAD_FAILED, samePlan.unavailable[video])
+
+        val recovered = samePlan.reduce(WallpaperEvent.SourceRecovered(video))
+        assertFalse(video in recovered.unavailable)
+    }
+
+    @Test
+    fun eventsForCandidateOutsidePlanAreIgnored() {
+        val otherVideo = WallpaperCandidate.LocalVideo("content://other")
+        val state = WallpaperEngineState(plan)
+
+        assertSame(
+            state,
+            state.reduce(
+                WallpaperEvent.SourceUnavailable(otherVideo, WallpaperUnavailableReason.LOAD_FAILED)
+            ),
+        )
+        assertSame(state, state.reduce(WallpaperEvent.RefreshRequested(otherVideo)))
     }
 }

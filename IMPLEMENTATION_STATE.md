@@ -8,9 +8,9 @@ This file is the authoritative **current implementation checkpoint** for continu
 
 Working branch: `aerialrows-development`.
 
-The project is in **Phase 5 — wallpaper/Aerial engine**. Phases 0A/0B and the implemented Phase 1–4 slices are already complete; do not restart them unless a regression specifically requires it.
+The project is finishing **Phase 5 — wallpaper/Aerial engine**. Phases 0A/0B and the implemented Phase 1–4 slices are complete; do not restart them unless a regression specifically requires it.
 
-Merged Phase 5 work through the current product checkpoint includes:
+Merged Phase 5 work includes:
 
 - secure TLS for Aerial playback;
 - typed Aerial metadata;
@@ -22,22 +22,33 @@ Merged Phase 5 work through the current product checkpoint includes:
 - separate photo refresh vs Aerial rotation triggers;
 - pure `WallpaperEngineState`/semantic events;
 - typed `BuiltinAerialProvider` boundary;
-- LauncherScreen routed through that Aerial provider;
-- current-state Media3 callbacks plus renderer-local per-attempt error de-duplication so one player error/stall cannot be counted twice or attributed using stale Compose state.
+- current-state Media3 callbacks plus renderer-local per-attempt error de-duplication;
+- `LocalPhotoProvider` with IO-thread RGB_565 downsampling, `prepareToDraw()`, 1280px sharp and 96px pseudo-blur assets.
 
-The product checkpoint after Phase 5N is commit `c3a04bed1e6deab161a3312a19d9a290dacc0370` before this documentation/process update.
+The active Phase 5 milestone completes the runtime ownership move:
 
-## Next Phase 5 product slices
+- `WallpaperHost` is the single Compose/Android adapter around `WallpaperEngineState`;
+- provider work is demand-gated by the current plan;
+- Aerial, local-video, photo and preset fallback are selected through one typed state machine;
+- local-video failure now falls through explicitly instead of pinning the cover;
+- Aerial network/failure/quarantine recovery is coordinated through semantic source events;
+- normal Aerial clip changes keep the previous frame until the next item is ready;
+- dock-expanded pseudo-blur remains the existing cheap 96px texture path;
+- `LauncherScreen` no longer owns photo/Aerial provider state or wallpaper rendering internals.
 
-Continue with small, behavior-preserving slices. Already drafted as branches but intentionally not opened as stacked PRs:
+After this milestone passes CI and merges, the next action is one real-device Shield checkpoint for wallpaper/fallback/dock behavior, then begin **Phase 6 — settings architecture**.
 
-1. `phase5l-photo-provider` — move the existing 1280px sharp / 96px blurred RGB_565 photo decode + `prepareToDraw()` behind `LocalPhotoProvider`.
-2. `phase5m-wire-photo-provider` — route LauncherScreen custom-photo loading through that provider and remove its private bitmap decoder.
-3. Then continue the blueprint toward runtime `WallpaperEngine` wiring, provider/descriptor separation, shared image rendering, rotation scheduling and semantic wallpaper events while preserving SurfaceView/Media3 hot-path behavior.
+## Development / CI strategy
 
-Those 5L/5M branches were drafted before later CI/process changes. Before opening them, replay **only their changed files** onto the latest development base. Never transplant an old full tree across unrelated base changes.
+Use a **milestone workflow**, not one expensive full CI run per tiny slice:
 
-## CI / release process state
+1. batch related work on one milestone branch with logical commits;
+2. use pure JVM tests, targeted diff review and direct Git file/tree operations while developing;
+3. temporary one-shot materializers are allowed only when they materially reduce risk/time and must be removed before review;
+4. open one product PR when the milestone is ready;
+5. run the full Android/R8/lint/source-purity gate once at the milestone boundary;
+6. fix concrete CI failures on the same PR (superseded runs cancel automatically), then merge;
+7. use Shield testing at meaningful phase checkpoints rather than every implementation slice.
 
 Current CI rules:
 
@@ -51,13 +62,13 @@ Current CI rules:
 
 ## Development process rules
 
-- Keep **one active product PR at a time**. Later product slices may be staged as unopened branches, but do not build a long stack of open PRs on unmerged parents.
-- Merge only after the exact current PR head passes the full Android gate. An older run is acceptable only when its Git tree is proven byte-for-byte identical; prefer a fresh exact-head run after ancestry changes.
-- Squash merges change commit ancestry. After a parent squash-merge, replay the child change onto the new base rather than carrying superseded parent commits.
-- If the base gained unrelated files (especially CI/workflow changes), replay changed file blobs/patches onto the latest base. Do **not** reuse an old whole-tree SHA, which would silently revert those unrelated changes.
-- Temporary one-shot helper workflows must never remain in the reviewed tree. Prefer Git blobs/tree/commit operations or direct file updates for durable changes.
-- Preserve the Phase 0A source-purity invariant: builds must not mutate tracked source.
-- Preserve Couchy performance invariants and keep optional expensive work demand-gated.
+- Prefer one active product PR/milestone at a time; later ideas can be staged but should not become a long open PR stack.
+- Merge only after the exact current PR head passes the full Android gate.
+- Squash merges change commit ancestry. Replay later changes onto the new base rather than carrying superseded parent commits.
+- If the base gained unrelated files (especially CI/workflow changes), replay changed file blobs/patches onto the latest base. Do **not** reuse an old whole-tree SHA.
+- Preserve the Phase 0A source-purity invariant and Couchy performance invariants.
+- Optional feature disabled must mean its expensive provider/background work is disabled.
+- Prefer callbacks/events over polling and one shared renderer/provider path over parallel implementations.
 
 ## Known repository-admin gap
 
