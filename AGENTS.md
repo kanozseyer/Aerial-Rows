@@ -18,6 +18,8 @@ The project is a Couchy-derived Compose Android TV launcher. Preserve Couchy's l
 
 The C1–C12 research programme is complete. The raw handoff export is still in progress; machine state in `HANDOFF_MANIFEST.json`, `SOURCE_CATALOG.json` and `ARCHIVE_MANIFEST.json` is authoritative over prose. Run `python docs/ai-handoff/tools/validate_archive.py` before resuming export work.
 
+Export Process v5 supports both legacy raw UTF-8 reports and lossless deterministic `gzip-base64` transport. Use `materialize_report.py` to reconstruct compressed reports; the original Markdown SHA-256 remains authoritative.
+
 Immediate implementation phase after the export is completed/paused explicitly: **Phase 0A — materialize the Gradle-injected source changes and remove `applyAerialRowsSourcePatches` without changing behavior.** Do not restart C1–C12 unless a genuinely new unknown blocks implementation.
 
 Rules:
@@ -32,11 +34,8 @@ Rules:
 - Optional feature disabled should mean its expensive background work is disabled.
 - Platform observation belongs in repositories/callbacks, not long-lived Composable-owned queries.
 - Work in bounded commits; verify source/build behavior after each architecture change; update the handoff when its current phase/provenance changes.
-
-Raw-export reliability rules:
-
-- Expected corpus comes from `SOURCE_CATALOG.json`, not memory/prose.
+- Expected raw corpus comes from `SOURCE_CATALOG.json`, not memory/prose.
 - Package a raw report only if its source SHA matches the catalog.
-- Publish a subgroup atomically using Git blobs/tree/commit + compare-and-swap branch-ref lease.
+- Publish raw report subgroups atomically using Git blobs/tree/commit + compare-and-swap branch-ref lease.
 - Never force over unknown concurrent branch work.
 - A report is complete only when repository validation succeeds.

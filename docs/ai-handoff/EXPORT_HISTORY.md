@@ -19,3 +19,11 @@ v3 moved to exact Git blobs, per-report manifests, master archive manifest, auto
 The remaining weakness was coverage definition. v4 adds `raw/SOURCE_CATALOG.json` with authoritative SHA-256 values for every Couchy C1–C12 and required Projectivy original/post-closure report; machine-catalogs the final audit contract/process-bundle reference hashes; makes validation reject missing/unknown IDs and wrong source hashes; adds `--require-complete` for final closure; and adds `package_report.py`, which verifies a source against the catalog before writing archive output and updates local archive state automatically.
 
 The v4 bootstrap itself used a few small documentation commits while the new tooling was being installed; raw report publication remains the place where atomic Git-object publication is mandatory. C07 is the first report to use the complete catalog-aware v4 workflow.
+
+## v5 — lossless compressed transport
+
+C8 exposed that raw/base64 payload transfer through the chat connector remained the slowest and most error-prone step. Markdown compresses well, so v5 stores new reports as deterministic gzip bytes encoded as ASCII base64 chunks while retaining the original Markdown SHA as the authoritative identity.
+
+The validator is backward-compatible with C1-C7 raw UTF-8 manifests. New `materialize_report.py` reconstructs an exact `.md` from either representation. A critical connector rule was recorded: `.gz.b64` chunks are ASCII base64 text and must be sent to GitHub blob creation using UTF-8 encoding, not GitHub's base64 transport mode.
+
+C8 is the first report stored using the v5 compressed representation.

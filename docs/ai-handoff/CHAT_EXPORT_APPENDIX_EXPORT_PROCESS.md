@@ -6,6 +6,10 @@ The initial attempt had produced the orientation/context commit `b34d295407845ff
 
 Export Process v3 replaced that with exact Git blobs, per-report manifests, master archive state, automated repository validation, atomic report commits and compare-and-swap branch-ref updates. It repaired C3 and standardized C1–C6.
 
-The user asked for another reliability/efficiency/speed audit. Export Process v4 adds `SOURCE_CATALOG.json` containing the authoritative expected SHA-256 for every Couchy C1–C12 and every required Projectivy original/post-closure report. The validator now checks both bytes and corpus coverage; unknown/missing/wrong-SHA reports are errors. `package_report.py` verifies source identity before producing files and updates local archive state automatically. C07 is the first full v4-packaged report.
+The user asked for another reliability/efficiency/speed audit. Export Process v4 adds `SOURCE_CATALOG.json` containing the authoritative expected SHA-256 for every Couchy C1–C12 and every required Projectivy original/post-closure report. The validator checks both bytes and corpus coverage; unknown/missing/wrong-SHA reports are errors. `package_report.py` verifies source identity before producing files. C07 was the first full v4-packaged report.
+
+The user then asked for another process audit before continuing. C8 transport testing showed that the remaining weakness was manual raw/base64 payload size rather than validation or atomic publication. Export Process v5 therefore uses deterministic `gzip+base64` storage for new reports. This is lossless: the original Markdown SHA remains authoritative, and the validator/materializer decode and decompress the stored chunks and require exact original bytes. The v5 validator remains backward-compatible with C1-C7 raw UTF-8 reports. C08 is the first report stored in this compressed representation.
+
+An important transport correction was discovered during C8: `.md.gz.b64` chunks are themselves ASCII base64 text, so GitHub blob creation must use `encoding=utf-8`. Passing them to GitHub with `encoding=base64` would store the decoded gzip bytes and produce a different blob identity. That rule is now documented and enforced by predicted Git blob SHA checks.
 
 See `EXPORT_PROCESS.md`, `EXPORT_HISTORY.md`, `EXPORT_STATUS.md`, `raw/SOURCE_CATALOG.json` and `raw/ARCHIVE_MANIFEST.json` for canonical state.

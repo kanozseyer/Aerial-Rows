@@ -5,24 +5,16 @@ Expected corpus: `docs/ai-handoff/raw/SOURCE_CATALOG.json`
 Machine state: `docs/ai-handoff/raw/ARCHIVE_MANIFEST.json`  
 Validator: `python docs/ai-handoff/tools/validate_archive.py`
 
-## Current format
-
-**Export Process v4** is authoritative. Machine validation covers byte-exact integrity and complete expected-corpus coverage through `SOURCE_CATALOG.json`. Prose checkpoints are secondary.
+**Export Process v5** is authoritative. C1-C7 remain byte-exact raw Markdown; C8 onward may use lossless `gzip-base64` transport with exact original Markdown reconstruction.
 
 ## Orientation/context layer
 
 **COMPLETE**
 
-## Raw Couchy comparison archive
+## Raw Couchy archive
 
-- C01 — COMPLETE / manifested / cataloged
-- C02 — COMPLETE / manifested / cataloged
-- C03 — COMPLETE / repaired / manifested / cataloged
-- C04 — COMPLETE / manifested / cataloged
-- C05 — COMPLETE / manifested / cataloged
-- C06 — COMPLETE / manifested / cataloged
-- C07 — COMPLETE / manifested / cataloged
-- C08 — PENDING
+- C01-C07 — COMPLETE / validated
+- C08 — COMPLETE / compressed transport / exact source reconstruction
 - C09 — PENDING
 - C10 — PENDING
 - C11 — PENDING
@@ -30,18 +22,16 @@ Validator: `python docs/ai-handoff/tools/validate_archive.py`
 
 ## Projectivy raw archive
 
-**PENDING.** `SOURCE_CATALOG.json` enumerates every required original and authoritative post-closure report.
+**PENDING.** The expected original + authoritative post-closure corpus is machine-cataloged in `SOURCE_CATALOG.json`.
 
 ## Audit-process/tooling archive
 
-**PENDING**, except final contract/tool-bundle reference hashes are machine-cataloged. Do not commit proprietary APK/decompiled source/JADX/REA binaries.
+**PENDING**, except final contract/process-bundle reference hashes are cataloged. Do not commit proprietary analysis binaries/source.
 
-## Final E9 validation
+## Final E9
 
-Run `python docs/ai-handoff/tools/validate_archive.py --require-complete`, verify process-history coverage and documentation-only diff versus the pre-export app-source baseline, then mark `HANDOFF_MANIFEST.json` complete.
+Run `validate_archive.py --require-complete`, verify process-history coverage, and compare against the pre-export application baseline to prove the export changed documentation/workflow only.
 
 ## Current continuation point
 
-**Next subgroup: E3d — raw Couchy C08 only.**
-
-Do not begin Phase 0A implementation until the user either completes this export or explicitly pauses it.
+**Next subgroup: E4a — raw Couchy C09 only.**
