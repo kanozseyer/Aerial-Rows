@@ -565,11 +565,11 @@ fun LauncherApp(rescanTick: Int) {
         WALLPAPERS[config.wallpaper.coerceIn(0, WALLPAPERS.size - 1)].brush()
     }
 
-    // ----- Built-in aerial videos: the manifests ship with the launcher, so
-    // there's no external dependency — pick one, rotate every 10 minutes. -----
-    val aerialWallpaper by produceState<String?>(
+    // ----- Built-in aerial videos: typed metadata + fair shuffle bag. -----
+    val aerialShuffleBag = remember { com.conreo.couchytv.data.AerialShuffleBag() }
+    val aerialWallpaper by produceState<com.conreo.couchytv.data.AerialItem?>(
         initialValue = null,
-        config.useBuiltinAerials, config.builtinSource, wallpaperVersion,
+        config.useBuiltinAerials, config.builtinSources, wallpaperVersion,
     ) {
         if (!config.useBuiltinAerials) {
             value = null
@@ -579,17 +579,13 @@ fun LauncherApp(rescanTick: Int) {
         // changes, the previous video keeps playing until the new one is
         // picked, instead of flashing back to the preset background.
         val aerials = withContext(Dispatchers.IO) {
-            com.conreo.couchytv.data.BuiltinAerials.load(context, config.builtinSources)
+            com.conreo.couchytv.data.BuiltinAerials.loadItems(context, config.builtinSources)
         }
-        if (aerials.isEmpty()) return@produceState
-        // Pick one, different from the current so the uri always changes (which
-        // drives the fade out→in). The next is chosen when this clip ENDS
-        // (onEnded bumps wallpaperVersion, re-running this) — a continuous
-        // shuffle. A 10-min safety timer also advances very long clips.
-        val current = value
-        var next = aerials.random()
-        if (aerials.size > 1) while (next == current) next = aerials.random()
-        value = next
+        // A source-set change restarts this producer immediately. The shuffle bag
+        // rebuilds for the new catalogue while preventing an immediate repeat.
+        value = aerialShuffleBag.next(aerials) ?: return@produceState
+        // Clip end advances immediately; the timer is only a safety cap for very
+        // long clips. Every eligible clip is consumed before the bag refills.
         delay(10 * 60_000L)
         wallpaperVersion++
     }
@@ -649,7 +645,7 @@ fun LauncherApp(rescanTick: Int) {
             val aerial = aerialWallpaper
             if (aerial != null && net.connected && !aerialError) {
                 VideoWallpaper(
-                    uri = aerial,
+                    uri = aerial.uri,
                     speed = videoSpeed,
                     loop = false, // play once, then shuffle to the next aerial
                     coverBrush = presetBrush,
