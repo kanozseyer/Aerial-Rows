@@ -38,7 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.conreo.couchytv.core.settings.ChannelSettingsIds
 import com.conreo.couchytv.core.settings.DisplaySettingDescriptors
+import com.conreo.couchytv.core.settings.SettingId
 import com.conreo.couchytv.core.settings.DisplaySettingIds
 import com.conreo.couchytv.data.ConfigStore
 import com.conreo.couchytv.data.LauncherConfig
@@ -54,6 +56,8 @@ import kotlinx.coroutines.launch
 fun ChannelsSettingsScreen(
     config: LauncherConfig,
     store: ConfigStore,
+    rememberedFocus: SettingId?,
+    onFocus: (SettingId) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -64,6 +68,27 @@ fun ChannelsSettingsScreen(
     val watchNextProviders by produceState(emptyList<com.conreo.couchytv.data.TvProviderInfo>(), channelRefresh) {
         value = TvContentRepository.discoverWatchNextProviders(context)
     }
+    val channelFocusIds = remember(config.showWatchNext, watchNextProviders, channels) {
+        buildList {
+            add(ChannelSettingsIds.WatchNext)
+            if (config.showWatchNext) {
+                add(ChannelSettingsIds.WatchNextLimit)
+                watchNextProviders.forEach { add(ChannelSettingsIds.watchNextProvider(it.packageName)) }
+            }
+            add(ChannelSettingsIds.PreviewChannels)
+            add(ChannelSettingsIds.DefaultChannelLimit)
+            channels.forEach { channel ->
+                add(ChannelSettingsIds.channel(channel.key))
+                if (channel.browsable && channel.programs.isNotEmpty()) add(ChannelSettingsIds.channelLimit(channel.key))
+            }
+        }
+    }
+    val channelFocus = rememberSettingsFocusBindings(
+        ids = channelFocusIds,
+        rememberedFocus = rememberedFocus,
+        defaultFocus = ChannelSettingsIds.WatchNext,
+        onFocused = onFocus,
+    )
 
     Column(
         Modifier
@@ -83,12 +108,11 @@ fun ChannelsSettingsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
         )
-        val focus = extraInitialFocus()
         ExtraSettingRow(
             title = "Watch Next",
             subtitle = "Show the system Play Next / Watch Next row when available",
             checked = config.showWatchNext,
-            modifier = Modifier.focusRequester(focus),
+            modifier = channelFocus.modifier(ChannelSettingsIds.WatchNext),
             onClick = {
                 scope.launch { store.update { it.copy(showWatchNext = !it.showWatchNext) } }
             },
@@ -104,6 +128,7 @@ fun ChannelsSettingsScreen(
                 value = providerCaps[capIndex].toString(),
                 steps = providerCaps.size,
                 current = capIndex,
+                modifier = channelFocus.modifier(ChannelSettingsIds.WatchNextLimit),
                 onSelect = { i ->
                     scope.launch { store.update { it.copy(watchNextPerProviderLimit = providerCaps[i]) } }
                 },
@@ -121,6 +146,7 @@ fun ChannelsSettingsScreen(
                         title = provider.label,
                         subtitle = provider.packageName,
                         checked = enabled,
+                        modifier = channelFocus.modifier(ChannelSettingsIds.watchNextProvider(provider.packageName)),
                         onClick = {
                             scope.launch {
                                 store.update { cfg ->
@@ -141,6 +167,7 @@ fun ChannelsSettingsScreen(
             title = "App preview channels",
             subtitle = "Master switch for browsable channels published by installed TV apps",
             checked = config.showPreviewChannels,
+            modifier = channelFocus.modifier(ChannelSettingsIds.PreviewChannels),
             onClick = {
                 scope.launch { store.update { it.copy(showPreviewChannels = !it.showPreviewChannels) } }
             },
@@ -154,6 +181,7 @@ fun ChannelsSettingsScreen(
             value = limits[current].toString(),
             steps = limits.size,
             current = current,
+            modifier = channelFocus.modifier(ChannelSettingsIds.DefaultChannelLimit),
             onSelect = { i -> scope.launch { store.update { it.copy(channelItemLimit = limits[i]) } } },
         )
 
@@ -189,6 +217,7 @@ fun ChannelsSettingsScreen(
                     title = channel.name,
                     subtitle = subtitle,
                     checked = channel.browsable && !hidden,
+                    modifier = channelFocus.modifier(ChannelSettingsIds.channel(channel.key)),
                     onClick = {
                         if (!channel.browsable) {
                             if (TvContentRepository.requestChannelBrowsable(context, channel.id)) {
@@ -228,6 +257,7 @@ fun ChannelsSettingsScreen(
                         value = limits[index].toString(),
                         steps = limits.size,
                         current = index,
+                        modifier = channelFocus.modifier(ChannelSettingsIds.channelLimit(channel.key)),
                         onSelect = { i ->
                             scope.launch {
                                 store.update { cfg ->

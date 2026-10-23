@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="toast_config_save_failed">ไม่สามารถบันทึกการกำหนดค่าได้</string>
+    <string name="toast_config_newer">การกำหนดค่านี้สร้างขึ้นด้วยเวอร์ชันที่ใหม่กว่า</string>
+</resources>

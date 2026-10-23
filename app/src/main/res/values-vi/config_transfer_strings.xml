@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="toast_config_save_failed">Không thể lưu cấu hình</string>
+    <string name="toast_config_newer">Cấu hình này được tạo bằng phiên bản mới hơn</string>
+</resources>

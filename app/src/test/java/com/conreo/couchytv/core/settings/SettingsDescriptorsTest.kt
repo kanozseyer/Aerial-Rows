@@ -43,13 +43,16 @@ class SettingsDescriptorsTest {
     }
 
     @Test
-    fun wallpaperSpeedAndPresetReloadWallpaperAfterDebounce() {
+    fun wallpaperSpeedAndPresetRelyOnObservedConfigAfterDebounce() {
+        // WallpaperHost is already keyed from LauncherConfig, so an explicit
+        // reload callback would duplicate the same work rather than cross an
+        // external runtime boundary.
         listOf(
             WallpaperSettingDescriptors.GradientPreset,
             WallpaperSettingDescriptors.VideoSpeed,
         ).forEach { descriptor ->
             assertEquals(PersistencePolicy.DEBOUNCED, descriptor.persistence)
-            assertEquals(SettingEffect.RELOAD_WALLPAPER, descriptor.effect)
+            assertEquals(SettingEffect.RECOMPOSE, descriptor.effect)
         }
     }
 

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="toast_config_save_failed">Impossibile salvare la configurazione</string>
+    <string name="toast_config_newer">Questa configurazione è stata creata con una versione più recente</string>
+</resources>
