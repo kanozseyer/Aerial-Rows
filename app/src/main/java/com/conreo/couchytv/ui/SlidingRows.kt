@@ -62,8 +62,10 @@ import com.conreo.couchytv.core.launch.LaunchRequest
 import com.conreo.couchytv.core.launch.LaunchTarget
 import com.conreo.couchytv.core.home.HomeFocusState
 import com.conreo.couchytv.core.home.HomeFocusTarget
+import com.conreo.couchytv.core.home.HomeItem
+import com.conreo.couchytv.core.home.HomeRow
+import com.conreo.couchytv.core.home.HomeRowSource
 import com.conreo.couchytv.core.home.HomeRailState
-import com.conreo.couchytv.core.home.HomeRowSnapshot
 import com.conreo.couchytv.core.model.AppId
 import com.conreo.couchytv.core.model.HomeItemId
 import com.conreo.couchytv.core.model.RowId
@@ -80,24 +82,38 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 private sealed interface HomeRowModel {
-    val id: String
-    val title: String
+    val semantic: HomeRow
     val icon: String
+
+    val id: String get() = semantic.id.value
+    val title: String get() = semantic.title
 }
 
 private data class WatchNextHomeRow(
     val programs: List<TvProgramItem>,
 ) : HomeRowModel {
-    override val id: String = "watch_next"
-    override val title: String = "Watch Next"
+    override val semantic: HomeRow = HomeRow(
+        id = RowId("watch_next"),
+        source = HomeRowSource.WatchNext,
+        title = "Watch Next",
+        items = programs.map { HomeItem.TvProgram(tvHomeItemId(it, "watch_next")) },
+    )
     override val icon: String = "▶"
 }
 
 private data class ChannelHomeRow(
     val channel: TvChannelRow,
 ) : HomeRowModel {
-    override val id: String = "channel:${channel.key}"
-    override val title: String = channel.name
+    override val semantic: HomeRow = HomeRow(
+        id = RowId("channel:${channel.key}"),
+        source = HomeRowSource.TvChannel(channel.key),
+        title = channel.name,
+        items = channel.programs.map { item ->
+            HomeItem.TvProgram(
+                tvHomeItemId(item, channel.packageName.ifBlank { "channel:${channel.key}" }),
+            )
+        },
+    )
     override val icon: String = "▣"
 }
 
@@ -105,8 +121,12 @@ private data class CategoryHomeRow(
     val category: CategoryCfg,
     val apps: List<AppEntry>,
 ) : HomeRowModel {
-    override val id: String = "category:${category.id}"
-    override val title: String = category.name
+    override val semantic: HomeRow = HomeRow(
+        id = RowId("category:${category.id}"),
+        source = HomeRowSource.AppCategory(category.id),
+        title = category.name,
+        items = apps.map { HomeItem.App(appHomeItemId(it)) },
+    )
     override val icon: String = categoryIcon(category)
 }
 
@@ -132,7 +152,7 @@ private fun normalizeHomeOrder(
     return migrated.filter { it in natural }.distinct() + natural.filterNot { it in migrated }
 }
 
-private fun appHomeItemId(app: AppEntry): HomeItemId =
+private fun appHomeItemId(app: AppEntry): HomeItemId.App =
     HomeItemId.App(
         AppId(
             packageName = app.pkg,
@@ -140,28 +160,11 @@ private fun appHomeItemId(app: AppEntry): HomeItemId =
         ),
     )
 
-private fun tvHomeItemId(item: TvProgramItem, ownerFallback: String): HomeItemId =
+private fun tvHomeItemId(item: TvProgramItem, ownerFallback: String): HomeItemId.TvProgram =
     HomeItemId.TvProgram(
         providerPackage = item.packageName.ifBlank { ownerFallback },
         programKey = item.id.toString(),
     )
-
-private fun HomeRowModel.toFocusSnapshot(): HomeRowSnapshot = when (this) {
-    is WatchNextHomeRow -> HomeRowSnapshot(
-        id = RowId(id),
-        itemIds = programs.map { tvHomeItemId(it, "watch_next") },
-    )
-    is ChannelHomeRow -> HomeRowSnapshot(
-        id = RowId(id),
-        itemIds = channel.programs.map {
-            tvHomeItemId(it, channel.packageName.ifBlank { "channel:${channel.key}" })
-        },
-    )
-    is CategoryHomeRow -> HomeRowSnapshot(
-        id = RowId(id),
-        itemIds = apps.map(::appHomeItemId),
-    )
-}
 
 /**
  * Projectivy-inspired layout: vertically stacked sections, each one a normal
@@ -231,7 +234,7 @@ fun SlidingRowsArea(
     val normalizedOrder = normalizeHomeOrder(config.homeRowOrder, naturalIds, rowAliases)
     val rank = normalizedOrder.withIndex().associate { (index, id) -> id to index }
     val rows = naturalRows.sortedBy { rank[it.id] ?: Int.MAX_VALUE }
-    val rowSnapshots = remember(rows) { rows.map(HomeRowModel::toFocusSnapshot) }
+    val rowSnapshots = remember(rows) { rows.map { it.semantic.toFocusSnapshot() } }
 
     LaunchedEffect(rowSnapshots) {
         val reconciled = focusState.reconcile(rowSnapshots)
@@ -534,7 +537,7 @@ private fun AppCategoryRow(
     onLaunch: (AppEntry) -> Unit,
     onMenu: (AppEntry) -> Unit,
 ) {
-    val itemIds = remember(row.apps) { row.apps.map(::appHomeItemId) }
+    val itemIds: List<HomeItemId> = remember(row.apps) { row.apps.map(::appHomeItemId) }
     val itemFocus = remember(rowId, itemIds) { itemIds.associateWith { FocusRequester() } }
     val horizontalState = rememberLazyListState()
 
@@ -641,7 +644,7 @@ private fun TvContentRow(
     onFirstLeft: () -> Boolean,
     onLaunch: (TvProgramItem) -> Unit,
 ) {
-    val itemIds = remember(programs, programOwnerFallback) {
+    val itemIds: List<HomeItemId> = remember(programs, programOwnerFallback) {
         programs.map { tvHomeItemId(it, programOwnerFallback) }
     }
     val itemFocus = remember(rowId, itemIds) { itemIds.associateWith { FocusRequester() } }
