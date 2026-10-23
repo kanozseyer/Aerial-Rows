@@ -1,13 +1,14 @@
 package com.conreo.couchytv
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
+import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.UserHandle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -15,14 +16,22 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import com.conreo.couchytv.data.AppRepository
 import com.conreo.couchytv.ui.LauncherApp
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
-    /** Bumped whenever a package is installed/removed so the app grid rescans. */
+    /** Bumped after a relevant package change so app discovery refreshes once. */
     var rescanTick by mutableIntStateOf(0)
         private set
+
+    private val packageRescanHandler = Handler(Looper.getMainLooper())
+    private val packageRescanRunnable = Runnable { rescanTick++ }
+    private val launcherApps: LauncherApps by lazy {
+        @Suppress("DEPRECATION")
+        getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+    }
 
     private val tvListingsPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -34,17 +43,54 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val packageReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val pkg = intent.data?.schemeSpecificPart
-            val launchable = pkg != null && (
-                packageManager.getLeanbackLaunchIntentForPackage(pkg) != null ||
-                    packageManager.getLaunchIntentForPackage(pkg) != null
-                )
-            if (intent.action == Intent.ACTION_PACKAGE_REMOVED || launchable) {
-                rescanTick++
-            }
+    private val packageCallback = object : LauncherApps.Callback() {
+        override fun onPackageAdded(packageName: String, user: UserHandle) {
+            if (shouldRescan(packageName)) schedulePackageRescan()
         }
+
+        override fun onPackageRemoved(packageName: String, user: UserHandle) {
+            // The package can no longer be queried, so always refresh to remove a
+            // previously visible card and clear stale artwork on the next scan.
+            schedulePackageRescan()
+        }
+
+        override fun onPackageChanged(packageName: String, user: UserHandle) {
+            // Rescan when the package is launchable now OR was already present.
+            // The second case matters when an update/disable makes an app stop
+            // being launchable; checking only its current state would leave a
+            // stale card behind indefinitely.
+            if (shouldRescan(packageName)) schedulePackageRescan()
+        }
+
+        override fun onPackagesAvailable(
+            packageNames: Array<out String>,
+            user: UserHandle,
+            replacing: Boolean,
+        ) {
+            if (packageNames.any(::shouldRescan)) schedulePackageRescan()
+        }
+
+        override fun onPackagesUnavailable(
+            packageNames: Array<out String>,
+            user: UserHandle,
+            replacing: Boolean,
+        ) {
+            val visible = AppRepository.memoryCache.orEmpty().asSequence().map { it.pkg }.toHashSet()
+            if (packageNames.any(visible::contains)) schedulePackageRescan()
+        }
+    }
+
+    private fun shouldRescan(packageName: String): Boolean {
+        val alreadyVisible = AppRepository.memoryCache.orEmpty().any { it.pkg == packageName }
+        if (alreadyVisible) return true
+        return packageManager.getLeanbackLaunchIntentForPackage(packageName) != null ||
+            packageManager.getLaunchIntentForPackage(packageName) != null
+    }
+
+    /** Coalesce install/update callback bursts into one expensive artwork scan. */
+    private fun schedulePackageRescan() {
+        packageRescanHandler.removeCallbacks(packageRescanRunnable)
+        packageRescanHandler.postDelayed(packageRescanRunnable, PACKAGE_RESCAN_DEBOUNCE_MS)
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -60,22 +106,12 @@ class MainActivity : ComponentActivity() {
         // from other apps when READ_TV_LISTINGS is granted. Ask only once.
         maybeRequestTvListingsPermission()
 
-        // A home screen never exits on Back
+        // A home screen never exits on Back.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { /* no-op */ }
         })
 
-        androidx.core.content.ContextCompat.registerReceiver(
-            this,
-            packageReceiver,
-            IntentFilter().apply {
-                addAction(Intent.ACTION_PACKAGE_ADDED)
-                addAction(Intent.ACTION_PACKAGE_REMOVED)
-                addAction(Intent.ACTION_PACKAGE_CHANGED)
-                addDataScheme("package")
-            },
-            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
+        launcherApps.registerCallback(packageCallback)
 
         setContent {
             LauncherApp(rescanTick)
@@ -93,11 +129,13 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        unregisterReceiver(packageReceiver)
+        packageRescanHandler.removeCallbacks(packageRescanRunnable)
+        launcherApps.unregisterCallback(packageCallback)
         super.onDestroy()
     }
 
     companion object {
+        private const val PACKAGE_RESCAN_DEBOUNCE_MS = 250L
         private const val LOCALE_PREFS = "locale"
         private const val LOCALE_KEY = "lang"
         private const val PERMISSION_PREFS = "permissions"
