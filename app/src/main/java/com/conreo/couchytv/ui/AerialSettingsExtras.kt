@@ -44,6 +44,7 @@ import com.conreo.couchytv.data.PANEL_LIQUID_GLASS
 import com.conreo.couchytv.data.PANEL_SOLID
 import com.conreo.couchytv.data.TvChannelRow
 import com.conreo.couchytv.data.TvContentRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -53,8 +54,12 @@ fun ChannelsSettingsScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val channels by produceState(emptyList<TvChannelRow>()) {
+    var channelRefresh by remember { mutableStateOf(0) }
+    val channels by produceState(emptyList<TvChannelRow>(), channelRefresh) {
         value = TvContentRepository.discoverChannels(context)
+    }
+    val watchNextProviders by produceState(emptyList<com.conreo.couchytv.data.TvProviderInfo>(), channelRefresh) {
+        value = TvContentRepository.discoverWatchNextProviders(context)
     }
 
     Column(
@@ -85,6 +90,50 @@ fun ChannelsSettingsScreen(
                 scope.launch { store.update { it.copy(showWatchNext = !it.showWatchNext) } }
             },
         )
+        if (config.showWatchNext) {
+            val providerCaps = listOf(1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 30)
+            val capIndex = providerCaps.indices.minByOrNull {
+                kotlin.math.abs(providerCaps[it] - config.watchNextPerProviderLimit)
+            } ?: 3
+            ExtraSelector(
+                title = "Watch Next cards per app",
+                subtitle = "Stops one provider from filling the entire Watch Next row",
+                value = providerCaps[capIndex].toString(),
+                steps = providerCaps.size,
+                current = capIndex,
+                onSelect = { i ->
+                    scope.launch { store.update { it.copy(watchNextPerProviderLimit = providerCaps[i]) } }
+                },
+            )
+            if (watchNextProviders.isNotEmpty()) {
+                Text(
+                    "WATCH NEXT APPS",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp),
+                )
+                watchNextProviders.forEach { provider ->
+                    val enabled = provider.packageName !in config.excludedWatchNextProviders
+                    ExtraSettingRow(
+                        title = provider.label,
+                        subtitle = provider.packageName,
+                        checked = enabled,
+                        onClick = {
+                            scope.launch {
+                                store.update { cfg ->
+                                    cfg.copy(
+                                        excludedWatchNextProviders = if (provider.packageName in cfg.excludedWatchNextProviders)
+                                            cfg.excludedWatchNextProviders - provider.packageName
+                                        else cfg.excludedWatchNextProviders + provider.packageName
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
         ExtraSettingRow(
             title = "App preview channels",
             subtitle = "Master switch for browsable channels published by installed TV apps",
@@ -121,25 +170,55 @@ fun ChannelsSettingsScreen(
             )
         } else {
             channels.forEach { channel ->
-                val hidden = channel.key in config.hiddenTvChannels
+                val hidden = channel.isHiddenBy(config.hiddenTvChannels)
+                val subtitle = when {
+                    !channel.browsable -> {
+                        val owner = channel.packageName.ifBlank { "Android TV channel" }
+                        "$owner · Not approved for TV home — press OK to request"
+                    }
+                    channel.programs.isEmpty() -> {
+                        val owner = channel.packageName.ifBlank { "Android TV channel" }
+                        "$owner · No programmes currently published"
+                    }
+                    else -> channel.packageName.ifBlank { "Android TV channel" }
+                }
                 ExtraSettingRow(
                     title = channel.name,
-                    subtitle = channel.packageName.ifBlank { "Android TV channel" },
-                    checked = !hidden,
+                    subtitle = subtitle,
+                    checked = channel.browsable && !hidden,
                     onClick = {
-                        scope.launch {
-                            store.update { cfg ->
-                                cfg.copy(
-                                    hiddenTvChannels = if (channel.key in cfg.hiddenTvChannels)
-                                        cfg.hiddenTvChannels - channel.key
-                                    else cfg.hiddenTvChannels + channel.key
-                                )
+                        if (!channel.browsable) {
+                            if (TvContentRepository.requestChannelBrowsable(context, channel.id)) {
+                                // The platform updates COLUMN_BROWSABLE asynchronously.
+                                // Refresh once shortly after the system request so the
+                                // Settings row reflects the approved state without the
+                                // user having to leave/re-enter this screen.
+                                scope.launch {
+                                    delay(750L)
+                                    channelRefresh++
+                                }
+                            }
+                        } else {
+                            scope.launch {
+                                store.update { cfg ->
+                                    val aliases = setOf(channel.key, channel.legacyKey)
+                                    cfg.copy(
+                                        hiddenTvChannels = if (channel.isHiddenBy(cfg.hiddenTvChannels)) {
+                                            cfg.hiddenTvChannels - aliases
+                                        } else {
+                                            (cfg.hiddenTvChannels - channel.legacyKey) + channel.key
+                                        },
+                                    )
+                                }
                             }
                         }
                     },
                 )
-                if (!hidden) {
-                    val value = config.channelItemLimits[channel.key] ?: config.channelItemLimit
+                if (channel.browsable && !hidden && channel.programs.isNotEmpty()) {
+                    val value = channel.configuredItemLimit(
+                        config.channelItemLimits,
+                        config.channelItemLimit,
+                    )
                     val index = limits.indices.minByOrNull { kotlin.math.abs(limits[it] - value) } ?: current
                     ExtraSelector(
                         title = "↳ ${channel.name}: cards shown",
@@ -149,7 +228,10 @@ fun ChannelsSettingsScreen(
                         onSelect = { i ->
                             scope.launch {
                                 store.update { cfg ->
-                                    cfg.copy(channelItemLimits = cfg.channelItemLimits + (channel.key to limits[i]))
+                                    cfg.copy(
+                                        channelItemLimits = (cfg.channelItemLimits - channel.legacyKey) +
+                                            (channel.key to limits[i]),
+                                    )
                                 }
                             }
                         },

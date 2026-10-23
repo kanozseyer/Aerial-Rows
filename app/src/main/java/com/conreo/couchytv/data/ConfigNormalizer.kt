@@ -16,10 +16,18 @@ object ConfigNormalizer {
             .toList()
             .ifEmpty { fallbackCategories }
 
+        val excludedWatchNextProviders = config.excludedWatchNextProviders
+            .asSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toCollection(linkedSetOf())
+
         return config.copy(
             categories = categories,
             builtinSources = sources,
             rowsTopMarginPercent = config.rowsTopMarginPercent.coerceIn(0, 50),
+            watchNextPerProviderLimit = config.watchNextPerProviderLimit.coerceIn(1, 30),
+            excludedWatchNextProviders = excludedWatchNextProviders,
             channelItemLimit = config.channelItemLimit.coerceIn(4, 30),
             channelItemLimits = config.channelItemLimits.mapValues { (_, value) -> value.coerceIn(4, 30) },
             homeRowOrder = config.homeRowOrder.distinct(),

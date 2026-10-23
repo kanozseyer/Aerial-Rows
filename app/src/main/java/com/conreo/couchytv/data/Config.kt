@@ -29,8 +29,10 @@ data class LauncherConfig(
     /** category id -> explicit package order */
     val order: Map<String, List<String>> = emptyMap(),
     val hidden: Set<String> = emptySet(),
-    /** packages seen on the last scan — new installs are auto-added to the first section */
+    /** Packages seen on the last scan, used to identify genuinely new installs. */
     val knownApps: Set<String> = emptySet(),
+    /** Assignment behavior for apps first observed after the initial baseline scan. */
+    val newInstallPolicy: NewInstallPolicy = NewInstallPolicy.FIRST_SECTION,
     val wallpaper: Int = 1, // Aurora
     val useCustomWallpaper: Boolean = false,
     /** video wallpaper: persisted content-URI of a local video, looped muted */
@@ -52,6 +54,10 @@ data class LauncherConfig(
     // ----- Android TV content rows -----
     /** System Watch Next / Play Next content, when the device exposes it. */
     val showWatchNext: Boolean = true,
+    /** Maximum Watch Next cards accepted from any one provider package. */
+    val watchNextPerProviderLimit: Int = 4,
+    /** Provider packages excluded from the Watch Next row. */
+    val excludedWatchNextProviders: Set<String> = emptySet(),
     /** App-published Android TV preview channels. */
     val showPreviewChannels: Boolean = true,
     /** Maximum cards loaded from each TV channel row unless overridden per channel. */

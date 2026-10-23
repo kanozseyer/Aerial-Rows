@@ -1,6 +1,7 @@
 package com.conreo.couchytv.data
 
 import android.content.Context
+import android.database.ContentObserver
 import android.media.tv.TvContract
 import android.net.Uri
 import android.os.Build
@@ -8,6 +9,14 @@ import android.provider.BaseColumns
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 @Immutable
@@ -25,11 +34,23 @@ data class TvProgramItem(
 @Immutable
 data class TvChannelRow(
     val id: Long,
+    /** Stable provider identity when available, otherwise the legacy numeric key. */
     val key: String,
+    /** Previous package + provider-row-id identity kept as a compatibility alias. */
+    val legacyKey: String,
     val name: String,
     val packageName: String,
+    val browsable: Boolean,
     val programs: List<TvProgramItem>,
-)
+) {
+    fun matchesStoredKey(storedKey: String): Boolean = storedKey == key || storedKey == legacyKey
+
+    fun isHiddenBy(hiddenKeys: Set<String>): Boolean =
+        key in hiddenKeys || legacyKey in hiddenKeys
+
+    fun configuredItemLimit(perChannelLimits: Map<String, Int>, defaultLimit: Int): Int =
+        perChannelLimits[key] ?: perChannelLimits[legacyKey] ?: defaultLimit
+}
 
 @Immutable
 data class TvContentRows(
@@ -37,8 +58,169 @@ data class TvContentRows(
     val channels: List<TvChannelRow> = emptyList(),
 )
 
-/** Reads Android TV's system Watch Next row and app-published preview channels. */
+@Immutable
+data class TvProviderInfo(
+    val packageName: String,
+    val label: String,
+)
+
+@Immutable
+data class WatchNextProviderPolicy(
+    val maxItemsPerProvider: Int,
+    val excludedPackages: Set<String>,
+)
+
+class WatchNextProviderLimiter(policy: WatchNextProviderPolicy) {
+    private val maxItemsPerProvider = policy.maxItemsPerProvider.coerceIn(1, 30)
+    private val excludedPackages = policy.excludedPackages
+    private val acceptedByProvider = mutableMapOf<String, Int>()
+
+    fun allow(packageName: String): Boolean {
+        if (packageName in excludedPackages) return false
+        val providerKey = packageName.ifBlank { "<unknown>" }
+        val accepted = acceptedByProvider[providerKey] ?: 0
+        if (accepted >= maxItemsPerProvider) return false
+        acceptedByProvider[providerKey] = accepted + 1
+        return true
+    }
+}
+
+@Immutable
+data class TvChannelIdentity(
+    val key: String,
+    val legacyKey: String,
+)
+
+enum class TvContentObservation {
+    WATCH_NEXT,
+    CHANNELS,
+    PREVIEW_PROGRAMS,
+}
+
+enum class TvChannelQueryMode {
+    HOME,
+    DISCOVERY,
+}
+
+enum class TvProgramQueryKind {
+    WATCH_NEXT,
+    PREVIEW_CHANNEL,
+}
+
+/** Pure demand-driven observation plan; useful for regression testing without Android provider state. */
+fun tvContentObservationTargets(
+    showWatchNext: Boolean,
+    showPreviewChannels: Boolean,
+): Set<TvContentObservation> = buildSet {
+    if (showWatchNext) add(TvContentObservation.WATCH_NEXT)
+    if (showPreviewChannels) {
+        add(TvContentObservation.CHANNELS)
+        add(TvContentObservation.PREVIEW_PROGRAMS)
+    }
+}
+
+/**
+ * Prefer the provider's own logical channel ID because TvProvider row IDs can be
+ * recreated. The old package + numeric ID remains as an alias so existing config
+ * continues to match and can migrate lazily without a destructive schema rewrite.
+ */
+fun tvChannelIdentity(
+    packageName: String,
+    internalProviderId: String,
+    channelId: Long,
+): TvChannelIdentity {
+    val owner = packageName.ifBlank { "unknown" }
+    val legacyKey = "$owner:$channelId"
+    val providerId = internalProviderId.trim()
+    val key = if (providerId.isNotEmpty()) "$owner:provider:$providerId" else legacyKey
+    return TvChannelIdentity(key = key, legacyKey = legacyKey)
+}
+
+/**
+ * Android TV exposes different ordering hints for these two provider surfaces.
+ * A deterministic row-id tie-break keeps equal-priority results stable.
+ */
+fun tvProgramSortOrder(kind: TvProgramQueryKind): String = when (kind) {
+    TvProgramQueryKind.WATCH_NEXT -> "last_engagement_time_utc_millis DESC, _id DESC"
+    TvProgramQueryKind.PREVIEW_CHANNEL -> "weight DESC, _id ASC"
+}
+
+/**
+ * Home only renders browsable channels that currently contain cards. Settings
+ * discovery deliberately keeps every readable preview channel so the user can
+ * request a non-browsable channel and still see an empty provider row.
+ */
+fun shouldIncludeTvChannel(
+    mode: TvChannelQueryMode,
+    browsable: Boolean,
+    hasPrograms: Boolean,
+): Boolean = when (mode) {
+    TvChannelQueryMode.HOME -> browsable && hasPrograms
+    TvChannelQueryMode.DISCOVERY -> true
+}
+
+/** Reads and observes Android TV's system Watch Next row and app-published preview channels. */
 object TvContentRepository {
+
+    /**
+     * Emits an initial snapshot and then only reloads when one of the enabled TV
+     * provider surfaces changes. Disabled features register no observer at all.
+     */
+    fun observe(context: Context, config: LauncherConfig): Flow<TvContentRows> {
+        if (Build.VERSION.SDK_INT < 26) return flowOf(TvContentRows())
+
+        val targets = tvContentObservationTargets(
+            showWatchNext = config.showWatchNext,
+            showPreviewChannels = config.showPreviewChannels,
+        )
+        if (targets.isEmpty()) return flowOf(TvContentRows())
+
+        val appContext = context.applicationContext
+        return callbackFlow {
+            val observer = object : ContentObserver(null) {
+                override fun onChange(selfChange: Boolean) {
+                    trySend(Unit)
+                }
+
+                override fun onChange(selfChange: Boolean, uri: Uri?) {
+                    trySend(Unit)
+                }
+            }
+
+            fun register(uri: Uri) {
+                runCatching {
+                    appContext.contentResolver.registerContentObserver(
+                        uri,
+                        true,
+                        observer,
+                    )
+                }
+            }
+
+            if (TvContentObservation.WATCH_NEXT in targets) {
+                register(TvContract.WatchNextPrograms.CONTENT_URI)
+            }
+            if (TvContentObservation.CHANNELS in targets) {
+                register(TvContract.Channels.CONTENT_URI)
+            }
+            if (TvContentObservation.PREVIEW_PROGRAMS in targets) {
+                register(TvContract.PreviewPrograms.CONTENT_URI)
+            }
+
+            // Initial snapshot: the same path handles startup and later invalidations.
+            trySend(Unit)
+
+            awaitClose {
+                runCatching { appContext.contentResolver.unregisterContentObserver(observer) }
+            }
+        }
+            // Provider writes often arrive in small bursts; keep only the latest
+            // invalidation while a query is already running.
+            .conflate()
+            .map { load(appContext, config) }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.IO)
+    }
 
     suspend fun load(context: Context, config: LauncherConfig): TvContentRows = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < 26) return@withContext TvContentRows()
@@ -46,7 +228,16 @@ object TvContentRepository {
         val defaultLimit = config.channelItemLimit.coerceIn(4, 30)
         val watchNext = if (config.showWatchNext) {
             runCatching {
-                queryPrograms(context, TvContract.WatchNextPrograms.CONTENT_URI, defaultLimit)
+                queryPrograms(
+                    context = context,
+                    uri = TvContract.WatchNextPrograms.CONTENT_URI,
+                    limit = defaultLimit,
+                    kind = TvProgramQueryKind.WATCH_NEXT,
+                    watchNextPolicy = WatchNextProviderPolicy(
+                        maxItemsPerProvider = config.watchNextPerProviderLimit,
+                        excludedPackages = config.excludedWatchNextProviders,
+                    ),
+                )
             }.getOrDefault(emptyList())
         } else emptyList()
 
@@ -57,6 +248,7 @@ object TvContentRepository {
                     defaultLimit = defaultLimit,
                     hidden = config.hiddenTvChannels,
                     perChannelLimits = config.channelItemLimits,
+                    mode = TvChannelQueryMode.HOME,
                 )
             }.getOrDefault(emptyList())
         } else emptyList()
@@ -65,9 +257,9 @@ object TvContentRepository {
     }
 
     /**
-     * Settings uses this to show every readable channel, including channels the
-     * user has hidden from the home screen. Only a few programs are loaded for
-     * the preview so this remains cheap.
+     * Settings shows every readable preview channel, including non-browsable and
+     * currently empty rows. This is intentionally broader than the home query so
+     * the user can request Android TV to approve a channel before it is visible.
      */
     suspend fun discoverChannels(context: Context): List<TvChannelRow> = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < 26) return@withContext emptyList()
@@ -77,12 +269,55 @@ object TvContentRepository {
                 defaultLimit = 4,
                 hidden = emptySet(),
                 perChannelLimits = emptyMap(),
+                mode = TvChannelQueryMode.DISCOVERY,
             )
         }.getOrDefault(emptyList())
     }
 
+    /** Discover all provider packages currently contributing Watch Next items. */
+    suspend fun discoverWatchNextProviders(context: Context): List<TvProviderInfo> = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < 26) return@withContext emptyList()
+        val packages = linkedSetOf<String>()
+        runCatching {
+            context.contentResolver.query(
+                TvContract.WatchNextPrograms.CONTENT_URI,
+                arrayOf("package_name"),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val packageCol = cursor.getColumnIndex("package_name")
+                while (cursor.moveToNext()) {
+                    if (packageCol < 0 || cursor.isNull(packageCol)) continue
+                    cursor.getString(packageCol).orEmpty().trim()
+                        .takeIf(String::isNotEmpty)
+                        ?.let(packages::add)
+                }
+            }
+        }
+        val pm = context.packageManager
+        packages.map { packageName ->
+            val label = runCatching {
+                @Suppress("DEPRECATION")
+                val info = pm.getApplicationInfo(packageName, 0)
+                pm.getApplicationLabel(info).toString().ifBlank { packageName }
+            }.getOrDefault(packageName)
+            TvProviderInfo(packageName = packageName, label = label)
+        }.sortedBy { it.label.lowercase() }
+    }
+
+    /** Ask Android TV to approve a preview channel for home-screen browsing. */
+    fun requestChannelBrowsable(context: Context, channelId: Long): Boolean {
+        if (Build.VERSION.SDK_INT < 26) return false
+        return runCatching {
+            TvContract.requestChannelBrowsable(context, channelId)
+            true
+        }.getOrDefault(false)
+    }
+
+    /** Legacy key helper retained for config/backward-compatibility callers. */
     fun channelKey(packageName: String, channelId: Long): String =
-        "${packageName.ifBlank { "unknown" }}:$channelId"
+        tvChannelIdentity(packageName, internalProviderId = "", channelId = channelId).legacyKey
 
     @RequiresApi(26)
     private fun queryChannels(
@@ -90,12 +325,14 @@ object TvContentRepository {
         defaultLimit: Int,
         hidden: Set<String>,
         perChannelLimits: Map<String, Int>,
+        mode: TvChannelQueryMode,
     ): List<TvChannelRow> {
         val projection = arrayOf(
             BaseColumns._ID,
             TvContract.Channels.COLUMN_DISPLAY_NAME,
             TvContract.Channels.COLUMN_BROWSABLE,
             TvContract.Channels.COLUMN_TYPE,
+            TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID,
             "package_name",
         )
         val rows = mutableListOf<TvChannelRow>()
@@ -104,31 +341,50 @@ object TvContentRepository {
             val nameCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_DISPLAY_NAME)
             val browsableCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_BROWSABLE)
             val typeCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_TYPE)
+            val providerIdCol = cursor.getColumnIndex(TvContract.Channels.COLUMN_INTERNAL_PROVIDER_ID)
             val pkgCol = cursor.getColumnIndex("package_name")
             while (cursor.moveToNext()) {
                 val id = if (idCol >= 0) cursor.getLong(idCol) else continue
                 val type = if (typeCol >= 0) cursor.getString(typeCol).orEmpty() else ""
                 if (type != TvContract.Channels.TYPE_PREVIEW) continue
-                if (browsableCol >= 0 && cursor.getInt(browsableCol) == 0) continue
+
+                val browsable = browsableCol < 0 || cursor.getInt(browsableCol) != 0
+                // Avoid an unnecessary program query for a channel that cannot
+                // appear on Home anyway. Discovery deliberately continues.
+                if (mode == TvChannelQueryMode.HOME && !browsable) continue
 
                 val name = if (nameCol >= 0) {
                     cursor.getString(nameCol).orEmpty().ifBlank { "Channel" }
                 } else "Channel"
                 val packageName = if (pkgCol >= 0) cursor.getString(pkgCol).orEmpty() else ""
-                val key = channelKey(packageName, id)
-                if (key in hidden) continue
+                val internalProviderId = if (providerIdCol >= 0 && !cursor.isNull(providerIdCol)) {
+                    cursor.getString(providerIdCol).orEmpty()
+                } else ""
+                val identity = tvChannelIdentity(packageName, internalProviderId, id)
+                if (identity.key in hidden || identity.legacyKey in hidden) continue
 
-                val limit = (perChannelLimits[key] ?: defaultLimit).coerceIn(4, 30)
+                val limit = (
+                    perChannelLimits[identity.key]
+                        ?: perChannelLimits[identity.legacyKey]
+                        ?: defaultLimit
+                    ).coerceIn(4, 30)
                 val programs = runCatching {
-                    queryPrograms(context, TvContract.buildPreviewProgramsUriForChannel(id), limit)
+                    queryPrograms(
+                        context = context,
+                        uri = TvContract.buildPreviewProgramsUriForChannel(id),
+                        limit = limit,
+                        kind = TvProgramQueryKind.PREVIEW_CHANNEL,
+                    )
                 }.getOrDefault(emptyList())
-                if (programs.isEmpty()) continue
+                if (!shouldIncludeTvChannel(mode, browsable, programs.isNotEmpty())) continue
 
                 rows += TvChannelRow(
                     id = id,
-                    key = key,
+                    key = identity.key,
+                    legacyKey = identity.legacyKey,
                     name = name,
                     packageName = packageName,
+                    browsable = browsable,
                     programs = programs,
                 )
             }
@@ -137,7 +393,13 @@ object TvContentRepository {
     }
 
     @RequiresApi(26)
-    private fun queryPrograms(context: Context, uri: Uri, limit: Int): List<TvProgramItem> {
+    private fun queryPrograms(
+        context: Context,
+        uri: Uri,
+        limit: Int,
+        kind: TvProgramQueryKind,
+        watchNextPolicy: WatchNextProviderPolicy? = null,
+    ): List<TvProgramItem> {
         // Shared preview/watch-next column names. Using literal provider names
         // avoids Kotlin/JVM inherited-static binding differences across SDKs.
         val projection = arrayOf(
@@ -153,29 +415,43 @@ object TvContentRepository {
             "last_playback_position_millis",
             "browsable",
         )
+        val resolver = context.contentResolver
+        val preferredOrder = tvProgramSortOrder(kind)
+        // TvProvider implementations vary: use the platform ordering hint when
+        // supported, but retry without SQL sort syntax rather than losing a row
+        // entirely on an OEM/provider that rejects the sort-order argument.
+        val cursor = runCatching {
+            resolver.query(uri, projection, null, null, preferredOrder)
+        }.getOrNull() ?: runCatching {
+            resolver.query(uri, projection, null, null, null)
+        }.getOrNull() ?: return emptyList()
+
         val result = ArrayList<TvProgramItem>(limit)
-        context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+        val watchNextLimiter = watchNextPolicy?.let(::WatchNextProviderLimiter)
+        cursor.use {
             fun text(name: String): String {
-                val i = cursor.getColumnIndex(name)
-                return if (i >= 0 && !cursor.isNull(i)) cursor.getString(i).orEmpty() else ""
+                val i = it.getColumnIndex(name)
+                return if (i >= 0 && !it.isNull(i)) it.getString(i).orEmpty() else ""
             }
             fun long(name: String): Long {
-                val i = cursor.getColumnIndex(name)
-                return if (i >= 0 && !cursor.isNull(i)) cursor.getLong(i) else 0L
+                val i = it.getColumnIndex(name)
+                return if (i >= 0 && !it.isNull(i)) it.getLong(i) else 0L
             }
-            val idCol = cursor.getColumnIndex(BaseColumns._ID)
-            val browsableCol = cursor.getColumnIndex("browsable")
-            while (cursor.moveToNext() && result.size < limit) {
-                if (browsableCol >= 0 && cursor.getInt(browsableCol) == 0) continue
+            val idCol = it.getColumnIndex(BaseColumns._ID)
+            val browsableCol = it.getColumnIndex("browsable")
+            while (it.moveToNext() && result.size < limit) {
+                if (browsableCol >= 0 && it.getInt(browsableCol) == 0) continue
                 val title = text("title")
                 if (title.isBlank()) continue
+                val packageName = text("package_name")
+                if (watchNextLimiter != null && !watchNextLimiter.allow(packageName)) continue
                 result += TvProgramItem(
-                    id = if (idCol >= 0) cursor.getLong(idCol) else result.size.toLong(),
+                    id = if (idCol >= 0) it.getLong(idCol) else result.size.toLong(),
                     title = title,
                     subtitle = text("episode_title").ifBlank { text("short_description") },
                     artworkUri = text("poster_art_uri").ifBlank { text("thumbnail_uri") },
                     intentUri = text("intent_uri"),
-                    packageName = text("package_name"),
+                    packageName = packageName,
                     durationMs = long("duration_millis"),
                     playbackPositionMs = long("last_playback_position_millis"),
                 )

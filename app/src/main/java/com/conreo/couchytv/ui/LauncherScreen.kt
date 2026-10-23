@@ -89,6 +89,7 @@ import com.conreo.couchytv.data.LAYOUT_GRID
 import com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS
 import com.conreo.couchytv.data.LauncherConfig
 import com.conreo.couchytv.data.NetStatus
+import com.conreo.couchytv.data.NewInstallAssignment
 import com.conreo.couchytv.data.networkStatusFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -213,10 +214,19 @@ fun LauncherApp(rescanTick: Int) {
     val scope = rememberCoroutineScope()
     val launchDispatcher = remember(context) { createDefaultLaunchDispatcher(context) }
 
-    fun dispatchApp(packageName: String, origin: LaunchOrigin) {
+    fun dispatchApp(
+        packageName: String,
+        origin: LaunchOrigin,
+        componentName: String? = null,
+    ) {
         launchDispatcher.dispatch(
             LaunchRequest(
-                target = LaunchTarget.App(AppId(packageName = packageName)),
+                target = LaunchTarget.App(
+                    AppId(
+                        packageName = packageName,
+                        componentName = componentName,
+                    ),
+                ),
                 origin = origin,
             ),
         )
@@ -335,7 +345,8 @@ fun LauncherApp(rescanTick: Int) {
         }
     }
 
-    // New installs are auto-added to the FIRST section.
+    // Establish the first scan as a baseline; later installs follow the explicit
+    // policy instead of embedding one assignment rule in the UI.
     LaunchedEffect(apps) {
         if (apps.isEmpty()) return@LaunchedEffect
         val current = apps.map { it.pkg }.toSet()
@@ -345,10 +356,17 @@ fun LauncherApp(rescanTick: Int) {
                 val added = current - cfg.knownApps
                 if (added.isEmpty() && current == cfg.knownApps) cfg
                 else {
-                    val first = cfg.categories.first().id
+                    val regularCategoryIds = cfg.categories
+                        .map { it.id }
+                        .filter { it != AppRepository.ALL_APPS_ID }
+                    val explicitSections = NewInstallAssignment.explicitSections(
+                        policy = cfg.newInstallPolicy,
+                        regularCategoryIds = regularCategoryIds,
+                    )
                     cfg.copy(
                         knownApps = current,
-                        sections = cfg.sections + added.associateWith { setOf(first) },
+                        sections = if (explicitSections == null) cfg.sections
+                        else cfg.sections + added.associateWith { explicitSections },
                     )
                 }
             }
@@ -547,11 +565,11 @@ fun LauncherApp(rescanTick: Int) {
         WALLPAPERS[config.wallpaper.coerceIn(0, WALLPAPERS.size - 1)].brush()
     }
 
-    // ----- Built-in aerial videos: the manifests ship with the launcher, so
-    // there's no external dependency — pick one, rotate every 10 minutes. -----
-    val aerialWallpaper by produceState<String?>(
+    // ----- Built-in aerial videos: typed metadata + fair shuffle bag. -----
+    val aerialShuffleBag = remember { com.conreo.couchytv.data.AerialShuffleBag() }
+    val aerialWallpaper by produceState<com.conreo.couchytv.data.AerialItem?>(
         initialValue = null,
-        config.useBuiltinAerials, config.builtinSource, wallpaperVersion,
+        config.useBuiltinAerials, config.builtinSources, wallpaperVersion,
     ) {
         if (!config.useBuiltinAerials) {
             value = null
@@ -561,17 +579,13 @@ fun LauncherApp(rescanTick: Int) {
         // changes, the previous video keeps playing until the new one is
         // picked, instead of flashing back to the preset background.
         val aerials = withContext(Dispatchers.IO) {
-            com.conreo.couchytv.data.BuiltinAerials.load(context, config.builtinSources)
+            com.conreo.couchytv.data.BuiltinAerials.loadItems(context, config.builtinSources)
         }
-        if (aerials.isEmpty()) return@produceState
-        // Pick one, different from the current so the uri always changes (which
-        // drives the fade out→in). The next is chosen when this clip ENDS
-        // (onEnded bumps wallpaperVersion, re-running this) — a continuous
-        // shuffle. A 10-min safety timer also advances very long clips.
-        val current = value
-        var next = aerials.random()
-        if (aerials.size > 1) while (next == current) next = aerials.random()
-        value = next
+        // A source-set change restarts this producer immediately. The shuffle bag
+        // rebuilds for the new catalogue while preventing an immediate repeat.
+        value = aerialShuffleBag.next(aerials) ?: return@produceState
+        // Clip end advances immediately; the timer is only a safety cap for very
+        // long clips. Every eligible clip is consumed before the bag refills.
         delay(10 * 60_000L)
         wallpaperVersion++
     }
@@ -631,7 +645,7 @@ fun LauncherApp(rescanTick: Int) {
             val aerial = aerialWallpaper
             if (aerial != null && net.connected && !aerialError) {
                 VideoWallpaper(
-                    uri = aerial,
+                    uri = aerial.uri,
                     speed = videoSpeed,
                     loop = false, // play once, then shuffle to the next aerial
                     coverBrush = presetBrush,
@@ -746,7 +760,7 @@ fun LauncherApp(rescanTick: Int) {
                         moveFocus = moveFocus,
                         cardWidth = cardWidth,
                         gap = gap,
-                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
+                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD, app.componentName) },
                         onMenu = { app -> if (movePkg == null) menuFor = app },
                         onSettings = { showSettings = true },
                         onAndroidSettings = { Actions.openSystemSettings(context) },
@@ -763,7 +777,7 @@ fun LauncherApp(rescanTick: Int) {
                         intro = introShown,
                         expanded = dockExpanded,
                         onExpandChange = { dockExpanded = it },
-                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
+                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD, app.componentName) },
                         onMenu = { app -> if (movePkg == null) menuFor = app },
                     )
                     else -> {
@@ -867,14 +881,14 @@ fun LauncherApp(rescanTick: Int) {
                                     GridSection(
                                         catApps, config, accent, movePkg, moveFocus,
                                         cardWidth, gap, introShown,
-                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
+                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD, app.componentName) },
                                         onMenu = { app -> if (movePkg == null) menuFor = app },
                                     )
                                 } else {
                                     CarouselSection(
                                         catApps, config, accent, movePkg, moveFocus,
                                         cardWidth, gap,
-                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
+                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD, app.componentName) },
                                         onMenu = { app -> if (movePkg == null) menuFor = app },
                                     )
                                 }
@@ -892,7 +906,7 @@ fun LauncherApp(rescanTick: Int) {
                     app = app,
                     isHidden = app.pkg in config.hidden,
                     onDismiss = { menuFor = null },
-                    onOpen = { menuFor = null; dispatchApp(app.pkg, LaunchOrigin.CONTEXT_MENU) },
+                    onOpen = { menuFor = null; dispatchApp(app.pkg, LaunchOrigin.CONTEXT_MENU, app.componentName) },
                     onMove = { menuFor = null; movePkg = app.pkg },
                     onToggleHide = {
                         menuFor = null
@@ -1358,24 +1372,13 @@ private fun PeekStrip(app: AppEntry, cardWidth: Dp, cardHeight: Dp, peekH: Dp) {
 }
 
 /**
- * Shared OkHttp client (built once, lazily) that accepts any TLS cert — used
- * ONLY to stream decorative aerial video. Apple's sylvan.apple.com serves a
- * chain many Android-TV trust stores reject, so normal validation kills the
- * wallpaper. No credentials or private data ever go over this client, so
- * skipping validation is acceptable. One instance for the whole app lifetime —
- * OkHttpDataSource never closes it, so sharing is safe.
+ * Shared Aerial HTTP client. Keep Android/OkHttp's normal certificate-chain and
+ * hostname verification: decorative media is still untrusted network input and
+ * must not weaken TLS for the video pipeline. One instance is reused for the
+ * app lifetime because OkHttpDataSource does not own/close the client.
  */
-private val trustAllHttpClient: okhttp3.OkHttpClient by lazy {
-    val trustAll = object : javax.net.ssl.X509TrustManager {
-        override fun checkClientTrusted(c: Array<java.security.cert.X509Certificate>?, a: String?) {}
-        override fun checkServerTrusted(c: Array<java.security.cert.X509Certificate>?, a: String?) {}
-        override fun getAcceptedIssuers() = arrayOf<java.security.cert.X509Certificate>()
-    }
-    val ctx = javax.net.ssl.SSLContext.getInstance("TLS")
-    ctx.init(null, arrayOf<javax.net.ssl.TrustManager>(trustAll), java.security.SecureRandom())
+private val aerialHttpClient: okhttp3.OkHttpClient by lazy {
     okhttp3.OkHttpClient.Builder()
-        .sslSocketFactory(ctx.socketFactory, trustAll)
-        .hostnameVerifier { _, _ -> true }
         .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
         .build()
@@ -1419,12 +1422,9 @@ private fun VideoWallpaper(
         fun build(): androidx.media3.exoplayer.ExoPlayer {
             val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(context)
                 .setEnableDecoderFallback(true) // fall back to SW decoder on odd clips
-            // Stream through a trust-all OkHttp client: Apple's sylvan.apple.com
-            // serves a cert chain many TV trust stores can't validate ("Trust
-            // anchor not found"), which fails the TLS handshake → the aerial never
-            // loads (black). Scoped to the wallpaper player only; it fetches
-            // nothing but decorative public video, so there's no data to protect.
-            val http = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(trustAllHttpClient)
+            // Use the platform/OkHttp trust store and normal hostname verification.
+            // Invalid TLS endpoints fail closed and are handled by the wallpaper fallback path.
+            val http = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(aerialHttpClient)
             val dataSource = androidx.media3.datasource.DefaultDataSource.Factory(context, http)
             val sourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSource)
             return androidx.media3.exoplayer.ExoPlayer.Builder(context)
@@ -1440,9 +1440,16 @@ private fun VideoWallpaper(
                         .build()
                 )
                 .build().apply {
+                    // Wallpaper video is always silent. Disable the audio track
+                    // entirely so Media3 does not allocate/decode audio just to mute it.
+                    setTrackSelectionParameters(
+                        trackSelectionParameters.buildUpon()
+                            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, true)
+                            .build()
+                    )
                     repeatMode = if (loop) androidx.media3.common.Player.REPEAT_MODE_ONE
                         else androidx.media3.common.Player.REPEAT_MODE_OFF
-                    volume = 0f
+                    volume = 0f // defensive mute if a future renderer changes track policy
                     videoScalingMode =
                         androidx.media3.common.C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
                     playWhenReady = true
