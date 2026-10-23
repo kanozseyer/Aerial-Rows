@@ -68,7 +68,7 @@ Committed as ordered parts:
 - `C03.part05.md`
 - `C03.part06.md`
 
-Local reassembly check after splitting:
+Reassembly check:
 
 `cat C03.part*.md | sha256sum` -> `c756b965caa99ac016eb312a9828be05cfcd6618d666c5b41b1ca333c6761f03`
 
@@ -76,17 +76,43 @@ This exactly matches the original `couchy_group03.md` SHA-256 in `RESEARCH_INDEX
 
 ### E2c — C4
 
-Status: **PENDING**
+Status: **COMPLETE**
 
-C4 is ~1064 lines and will be exported as numbered parts using the same process as C3.
+Committed as ordered parts:
+
+- `C04.part01.md`
+- `C04.part02.md`
+- `C04.part03.md`
+- `C04.part04.md`
+- `C04.part05.md`
+- `C04.part06.md`
+
+Local source split/reassembly check:
+
+`cat C04.part*.md | sha256sum` -> `935945ec232fe56e6e64e2112eb19179a3297e6194594234d239b9cde5ebd297`
+
+Every GitHub C04 part blob was compared with its local Git blob hash. Part 2 initially differed by one trailing newline byte; it was corrected before E2c was marked complete. The six remote parts are byte-for-byte identical to the six local source chunks, so their concatenation reproduces the original `couchy_group04.md` SHA-256 exactly.
+
+**E2 status: COMPLETE.**
 
 ## E3 — Couchy raw reports C5–C8
 
 Status: **PENDING**
 
+For safer recovery, E3 is subdivided further:
+
+- **E3a — C5 only**
+- **E3b — C6 only**
+- **E3c — C7 only**
+- **E3d — C8 only**
+
+Each oversized report must use numbered parts and exact SHA reassembly verification.
+
 ## E4 — Couchy raw reports C9–C12
 
 Status: **PENDING**
+
+Use one report per resumable subgroup if necessary.
 
 ## E5 — Projectivy raw G1–G4
 
@@ -151,10 +177,11 @@ If a tool call, conversation, or environment fails mid-subgroup:
 - continue only the missing part files;
 - use small GitHub Contents API writes rather than one giant archive/blob;
 - verify concatenated SHA before marking a split report complete;
+- compare remote Git blob SHA with local `git hash-object` for every part when possible;
 - never wait until the end of the whole export to commit progress.
 
 ## Current continuation point
 
-**Next subgroup: E2c — raw Couchy C4 only.**
+**Next subgroup: E3a — raw Couchy C5 only.**
 
 Do not begin Phase 0A implementation until the user either finishes E2–E9 or explicitly chooses to pause the export and start coding.
