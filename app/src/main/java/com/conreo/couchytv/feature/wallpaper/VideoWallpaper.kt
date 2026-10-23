@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -21,6 +22,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Shared wallpaper HTTP client. Keep Android/OkHttp's normal certificate-chain
@@ -54,6 +56,13 @@ fun VideoWallpaper(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    // Player listeners and the stall watchdog outlive individual recompositions.
+    // Always read the latest callback/URI so an event from the current playback
+    // attempt cannot be attributed using stale Compose state.
+    val currentUri by rememberUpdatedState(uri)
+    val currentOnEnded by rememberUpdatedState(onEnded)
+    val currentOnError by rememberUpdatedState(onError)
+
     // A clip is hidden until its first frame is actually rendered, then fades up.
     // On a source change the old clip fades out first, giving a symmetric fade.
     val alpha = remember { Animatable(0f) }
@@ -61,6 +70,12 @@ fun VideoWallpaper(
 
     // Hold the scarce hardware decoder only while HOME is visible.
     var player by remember { mutableStateOf<androidx.media3.exoplayer.ExoPlayer?>(null) }
+
+    // Media3 can report a player error while the watchdog later observes the same
+    // attempt as stalled. Keep de-duplication in the renderer itself so callers
+    // receive at most one failure event for a concrete player+URI attempt.
+    val failureReported = remember(player, uri) { AtomicBoolean(false) }
+
     DisposableEffect(lifecycleOwner) {
         fun build(): androidx.media3.exoplayer.ExoPlayer {
             val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(context)
@@ -132,7 +147,7 @@ fun VideoWallpaper(
         player?.setPlaybackSpeed(speed)
     }
 
-    DisposableEffect(player) {
+    DisposableEffect(player, uri) {
         val p = player ?: return@DisposableEffect onDispose { }
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onRenderedFirstFrame() {
@@ -140,15 +155,15 @@ fun VideoWallpaper(
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == androidx.media3.common.Player.STATE_ENDED) onEnded()
+                if (state == androidx.media3.common.Player.STATE_ENDED) currentOnEnded()
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 android.util.Log.w(
                     "LiteTV",
-                    "wallpaper play error ${error.errorCodeName}: $uri",
+                    "wallpaper play error ${error.errorCodeName}: $currentUri",
                 )
-                onError()
+                if (failureReported.compareAndSet(false, true)) currentOnError()
             }
         }
         p.addListener(listener)
@@ -165,16 +180,17 @@ fun VideoWallpaper(
             p.prepare()
         }
 
-        // A dead/unreachable stream must not pin the cover indefinitely.
+        // A dead/unreachable stream must not pin the cover indefinitely. The
+        // player listener and this watchdog share one per-attempt failure guard.
         delay(2_500L)
         val resumed = lifecycleOwner.lifecycle.currentState
             .isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
         if (firstFrameGen == genBefore && resumed) {
             android.util.Log.w(
                 "LiteTV",
-                "wallpaper stalled (no frame in 2.5s), skipping: $uri",
+                "wallpaper stalled (no frame in 2.5s), skipping: $currentUri",
             )
-            onError()
+            if (failureReported.compareAndSet(false, true)) currentOnError()
         }
     }
 
