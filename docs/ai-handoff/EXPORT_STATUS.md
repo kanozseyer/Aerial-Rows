@@ -28,17 +28,29 @@ That commit added the orientation/context layer without changing Kotlin, Gradle,
 
 These are enough for a new AI to understand the project and continue implementation, but they are **consolidations**, not yet the complete raw report corpus requested by the user.
 
-## Export process rule
+## Export Process v2 — reliability/speed improvements
 
-Work on **one small subgroup at a time**. After each subgroup:
+The C3–C5 export exposed three avoidable sources of fragility: too many tiny writes, trailing-newline normalization at chunk boundaries, and directory listings growing too large to use as a universal verification mechanism.
 
-1. commit every completed file immediately;
-2. verify the branch head;
-3. verify concatenated chunk SHA where a raw report is split;
-4. update this status file;
-5. stop/report before the next subgroup.
+From C6 onward use this process:
 
-Oversized reports are split into ordered numbered parts to avoid connector/tool truncation. Concatenating those parts byte-for-byte must reproduce the original report SHA-256 recorded in `RESEARCH_INDEX.md`.
+1. Work on **one report only** per resumable subgroup.
+2. Split large reports into the **fewest safe UTF-8 chunks**, targeting roughly 12–16 KB per part rather than ~4 KB.
+3. Every **intermediate** chunk must end on a non-newline byte. Move the complete newline run at the split boundary to the **start of the next chunk**. Concatenating the ordered chunks must reproduce the source bytes exactly.
+4. Before upload, record for every part:
+   - byte size;
+   - SHA-256;
+   - expected Git blob SHA-1 (`git hash-object` semantics);
+   - whether it begins/ends with a newline.
+5. Commit a `Cxx.manifest.json` beside the parts containing the original whole-report SHA-256 and all per-part verification data.
+6. Verify remote content using Git blob SHA:
+   - for a small archive directory, one directory listing is acceptable;
+   - once the directory listing becomes too large/truncated, fetch **only the newly written parts** and compare their remote `sha` values with the manifest.
+7. Because the local ordered parts are verified before upload and every remote blob must match its corresponding local Git blob SHA, exact remote whole-report reconstruction follows transitively from those checks.
+8. Update this checkpoint only after verification passes.
+9. Stop/report before beginning the next subgroup.
+
+This reduces GitHub commits/tool calls substantially while preserving byte-exact recovery.
 
 ## E2 — Couchy raw reports C1–C4
 
@@ -99,7 +111,7 @@ Every GitHub C04 part blob was compared with its local Git blob hash. Part 2 ini
 
 Status: **IN PROGRESS**
 
-For safer recovery, E3 is subdivided further:
+For safe recovery, E3 is subdivided one report at a time.
 
 ### E3a — C5 only
 
@@ -125,23 +137,45 @@ Concatenating those adjusted chunks still reproduces the original report byte-fo
 
 ### E3b — C6 only
 
-Status: **PENDING**
+Status: **COMPLETE**
+
+Export Process v2 was introduced here.
+
+Committed:
+
+- `C06.part00.md`
+- `C06.part01.md`
+- `C06.manifest.json`
+
+Original report:
+
+- size: `27847` bytes
+- SHA-256: `0bf49b7fed0fa4fee3abe2c86f133c3f62fb1eba708821c4b2cebf12cba37b18`
+
+Verified remote Git blob identities:
+
+- `C06.part00.md` -> `37cd26bf580aaad5b027db76f0b8aab59d7f82f7`
+- `C06.part01.md` -> `2faf6edb83e7d05cee8a135c0f901cff8c2b09c4`
+
+These exactly match the locally precomputed Git blob hashes in `C06.manifest.json`. The ordered local chunks reconstruct exactly to the original C6 SHA-256, so the verified remote blobs reproduce the original report byte-for-byte.
 
 ### E3c — C7 only
 
 Status: **PENDING**
 
+Use Export Process v2.
+
 ### E3d — C8 only
 
 Status: **PENDING**
 
-Each oversized report must use numbered parts and exact SHA reassembly verification.
+Use Export Process v2.
 
 ## E4 — Couchy raw reports C9–C12
 
 Status: **PENDING**
 
-Use one report per resumable subgroup if necessary.
+Use one report per resumable subgroup and Export Process v2.
 
 ## E5 — Projectivy raw G1–G4
 
@@ -205,13 +239,12 @@ If a tool call, conversation, or environment fails mid-subgroup:
 - check which individual part files from the current report exist;
 - continue only the missing part files;
 - use small GitHub Contents API writes rather than one giant archive/blob;
-- verify concatenated SHA before marking a split report complete;
-- compare remote Git blob SHA with local `git hash-object` for every part when possible;
-- if GitHub normalizes a boundary newline, move that newline to the adjacent chunk boundary and re-verify the reconstructed whole-file SHA;
+- use Export Process v2 for new split reports;
+- verify exact report identity before marking a subgroup complete;
 - never wait until the end of the whole export to commit progress.
 
 ## Current continuation point
 
-**Next subgroup: E3b — raw Couchy C6 only.**
+**Next subgroup: E3c — raw Couchy C7 only.**
 
 Do not begin Phase 0A implementation until the user either finishes E2–E9 or explicitly chooses to pause the export and start coding.
