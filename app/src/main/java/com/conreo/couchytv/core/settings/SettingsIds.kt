@@ -48,3 +48,61 @@ object MainSettingIds {
         About,
     )
 }
+
+/** Stable identities for the display screen and its high-frequency selectors. */
+object DisplaySettingIds {
+    val Layout = SettingId("display.layout")
+    val CategoryNames = SettingId("display.category_names")
+    val UiScale = SettingId("display.ui_scale")
+    val CornerRadius = SettingId("display.corner_radius")
+    val IconScale = SettingId("display.icon_scale")
+    val Spacing = SettingId("display.spacing")
+    val PanelStyle = SettingId("display.panel_style")
+    val PanelOpacity = SettingId("display.panel_opacity")
+    val PanelTintHue = SettingId("display.panel_tint_hue")
+    val PanelTintSaturation = SettingId("display.panel_tint_saturation")
+    val PanelEffectStrength = SettingId("display.panel_effect_strength")
+
+    val all: List<SettingId> = listOf(
+        Layout,
+        CategoryNames,
+        UiScale,
+        CornerRadius,
+        IconScale,
+        Spacing,
+        PanelStyle,
+        PanelOpacity,
+        PanelTintHue,
+        PanelTintSaturation,
+        PanelEffectStrength,
+    )
+}
+
+/** Stable identities for wallpaper source/appearance controls. */
+object WallpaperSettingIds {
+    val Scrim = SettingId("wallpaper.scrim")
+    val GradientMode = SettingId("wallpaper.gradient_mode")
+    val GradientPreset = SettingId("wallpaper.gradient_preset")
+    val CustomPhoto = SettingId("wallpaper.custom_photo")
+    val BuiltinAerials = SettingId("wallpaper.builtin_aerials")
+    val AerialApple = SettingId("wallpaper.aerial.apple")
+    val AerialAmazon = SettingId("wallpaper.aerial.amazon")
+    val AerialCommunity1 = SettingId("wallpaper.aerial.community_1")
+    val AerialCommunity2 = SettingId("wallpaper.aerial.community_2")
+    val LocalVideo = SettingId("wallpaper.local_video")
+    val VideoSpeed = SettingId("wallpaper.video_speed")
+
+    val all: List<SettingId> = listOf(
+        Scrim,
+        GradientMode,
+        GradientPreset,
+        CustomPhoto,
+        BuiltinAerials,
+        AerialApple,
+        AerialAmazon,
+        AerialCommunity1,
+        AerialCommunity2,
+        LocalVideo,
+        VideoSpeed,
+    )
+}

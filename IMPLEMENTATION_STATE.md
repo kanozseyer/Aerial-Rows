@@ -12,61 +12,60 @@ Working branch: `aerialrows-development`.
 
 The active implementation phase is **Phase 6 — settings architecture**. Phases 0A/0B and implemented Phase 1–5 work are complete; do not restart them unless a regression specifically requires it.
 
+The first Phase 6 milestone — semantic settings navigation and shared choice controls — is merged at `891bcdb257110ddcad74312e54a07f7c8d704a51`.
+
 ## Phase 5 completion checkpoint
 
-The merged wallpaper runtime now has:
-
-- secure TLS, typed Aerial metadata, fair shuffle, failure quarantine and muted/no-audio decoding;
-- shared SurfaceView/Media3 `VideoWallpaper` renderer with current callbacks and per-attempt error de-duplication;
-- typed `WallpaperPlan`, pure `WallpaperEngineState` and semantic source events;
-- `BuiltinAerialProvider` and `LocalPhotoProvider` boundaries;
-- unified `WallpaperHost` runtime ownership for Aerial/local-video/photo/preset fallback;
-- demand-gated provider work and explicit failure/recovery paths;
-- existing 1280px RGB_565 photo + 96px pseudo-blur hot path preserved;
-- LauncherScreen no longer owns wallpaper provider internals.
+The merged wallpaper runtime has secure/typed Aerial playback, fair shuffle and quarantine, shared SurfaceView/Media3 video rendering, `WallpaperPlan`/`WallpaperEngineState`, provider boundaries, unified `WallpaperHost`, explicit failure/recovery and the existing low-memory photo/pseudo-blur hot paths. LauncherScreen no longer owns wallpaper-provider internals.
 
 A meaningful Shield checkpoint for wallpaper/fallback/dock behavior is still useful, but it does not block Phase 6 coding.
 
-## Active Phase 6 milestone
+## Active Phase 6 runtime milestone
 
-Current work batches the first settings-architecture foundation before one full CI gate:
+The current milestone batches runtime behavior and CI-speed work before one full merge gate:
 
-- stable semantic `SettingId` and `SettingsRoute` values;
-- `SettingsNavigationState` route stack and per-route semantic focus memory;
-- settings descriptors with validation, persistence policy, effect and export policy;
-- pure change planning for IMMEDIATE / DEBOUNCED / ON_CONFIRM / SESSION_ONLY persistence;
-- effect batching without losing independent reload/recreate work;
-- `SettingsSheet` migrated from a private screen enum to semantic routes;
-- root settings menu restores the exact semantic row after returning from a sub-screen;
-- selector rows can open a D-pad choice dialog focused on the current value while retaining Left/Right fast stepping;
-- named dropdown choices enabled for layout, UI scale, roundness, icon size, spacing, wallpaper speed and gradient preset;
-- existing toggle/checkmark behavior remains direct and focus-stable.
+- semantic IDs expanded to Display and Wallpaper controls;
+- reusable semantic focus bindings for settings routes;
+- Display and Wallpaper restore the exact visible semantic setting rather than always jumping to row 1;
+- hidden conditional rows are excluded from the active focus-ID set so focus restoration cannot target an uncomposed option;
+- pure `SettingMutationBuffer` coalesces pending transforms by `SettingId` without overwriting unrelated config changes;
+- pure `SettingDebounceScheduler` owns debounce deadlines and explicit flush behavior;
+- `DebouncedSettingsWriter` applies captured mutations over the latest ConfigStore value;
+- rapid Display selectors and wallpaper dim/speed use optimistic local UI with coalesced persistence;
+- pending writes flush when Settings closes or HOME stops;
+- typed Display/Wallpaper descriptors define validation, persistence policy and effects;
+- stable setting/route identity uniqueness is regression-tested;
+- Gradle parallel execution and local build cache are enabled;
+- CI keeps a trusted `aerialrows-development` Gradle cache warm so later PRs can restore a base-branch cache instead of repeatedly starting cold;
+- benchmark APK compilation remains conditional while release/R8, unit tests, debug, device-test compile, lint and source-purity remain mandatory at milestone PR boundaries.
 
-After this milestone merges, continue Phase 6 with:
+Development validation for this milestone uses a cheap unit-test + Kotlin-compile check before opening the single full-CI PR.
 
-1. semantic focus memory for important sub-screens rather than only the root menu;
-2. session preview + coalesced DataStore writes for rapid/debounced settings;
-3. progressively attach descriptors/effects to existing settings instead of rewriting all screens at once;
-4. migrate remaining named multi-choice selectors to the shared choice-dialog primitive;
-5. keep dialogs returning focus to their source row and current option.
+After this milestone, continue Phase 6 with:
+
+1. attach semantic focus/descriptors to remaining high-value settings screens (Status, Launcher, Apps/Channels where useful);
+2. move panel appearance sliders onto the same debounced writer;
+3. add explicit ON_CONFIRM/session preview adapters only where a setting genuinely needs them;
+4. progressively route setting effects (`RELOAD_APPS`, `RELOAD_TV_CONTENT`, `RELOAD_WALLPAPER`, recreate/restart) through one effect dispatcher;
+5. migrate remaining named multi-choice controls to the shared choice-dialog primitive;
+6. finish Phase 6 with a Shield D-pad/settings checkpoint before Phase 7 notifications/media work.
 
 ## Development / CI strategy
 
 Use a **milestone workflow**, not one expensive full CI run per tiny slice:
 
-1. batch related work on one milestone branch with logical commits;
-2. use pure JVM tests, targeted diff review and direct Git file/tree operations during development;
-3. temporary one-shot materializers are allowed only when they materially reduce risk/time and must be removed before review;
-4. open one product PR when the milestone is ready;
-5. run the Android/R8/lint/source-purity gate once at the milestone boundary;
-6. fix concrete CI failures on the same PR (superseded runs cancel automatically), then merge;
-7. use Shield testing at meaningful checkpoints rather than every implementation slice.
-
-The active Phase 6 milestone also validates a CI speed improvement: release/R8, unit tests, debug, device-test compilation, lint and source-purity remain mandatory on every PR, while benchmark APK variants are rebuilt only for benchmark/build-configuration changes (and always for tags). This avoids recompiling benchmark variants for unrelated UI/domain milestones.
+1. batch related work on one milestone branch;
+2. stage later work as unopened branches while the active milestone validates;
+3. use pure JVM tests, targeted review and a cheap compile/unit check during development;
+4. temporary one-shot materializers/check workflows are allowed only when they materially reduce time/risk and must be removed before review;
+5. open one product PR when the milestone is ready;
+6. run the Android/R8/lint/source-purity gate once at the milestone boundary;
+7. fix concrete failures on the same PR (superseded runs cancel automatically), then merge;
+8. use Shield testing at meaningful phase checkpoints rather than every slice.
 
 ## Development process rules
 
-- Prefer one active product PR/milestone at a time; later ideas can be staged but should not become a long open PR stack.
+- Prefer one active product PR/milestone at a time; later ideas may be staged but should not become a long open PR stack.
 - Merge only after the exact current PR head passes its required Android gate.
 - Squash merges change commit ancestry. Replay later changes onto the new base rather than carrying superseded parent commits.
 - If the base gained unrelated files, replay changed file blobs/patches onto the latest base; never reuse an old whole-tree SHA across unrelated base changes.
