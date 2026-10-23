@@ -1,6 +1,7 @@
 package com.conreo.couchytv.data
 
 import android.content.Context
+import android.database.ContentObserver
 import android.media.tv.TvContract
 import android.net.Uri
 import android.os.Build
@@ -8,6 +9,14 @@ import android.provider.BaseColumns
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 @Immutable
@@ -37,8 +46,86 @@ data class TvContentRows(
     val channels: List<TvChannelRow> = emptyList(),
 )
 
-/** Reads Android TV's system Watch Next row and app-published preview channels. */
+enum class TvContentObservation {
+    WATCH_NEXT,
+    CHANNELS,
+    PREVIEW_PROGRAMS,
+}
+
+/** Pure demand-driven observation plan; useful for regression testing without Android provider state. */
+fun tvContentObservationTargets(
+    showWatchNext: Boolean,
+    showPreviewChannels: Boolean,
+): Set<TvContentObservation> = buildSet {
+    if (showWatchNext) add(TvContentObservation.WATCH_NEXT)
+    if (showPreviewChannels) {
+        add(TvContentObservation.CHANNELS)
+        add(TvContentObservation.PREVIEW_PROGRAMS)
+    }
+}
+
+/** Reads and observes Android TV's system Watch Next row and app-published preview channels. */
 object TvContentRepository {
+
+    /**
+     * Emits an initial snapshot and then only reloads when one of the enabled TV
+     * provider surfaces changes. Disabled features register no observer at all.
+     */
+    fun observe(context: Context, config: LauncherConfig): Flow<TvContentRows> {
+        if (Build.VERSION.SDK_INT < 26) return flowOf(TvContentRows())
+
+        val targets = tvContentObservationTargets(
+            showWatchNext = config.showWatchNext,
+            showPreviewChannels = config.showPreviewChannels,
+        )
+        if (targets.isEmpty()) return flowOf(TvContentRows())
+
+        val appContext = context.applicationContext
+        return callbackFlow {
+            val observer = object : ContentObserver(null) {
+                override fun onChange(selfChange: Boolean) {
+                    trySend(Unit)
+                }
+
+                override fun onChange(selfChange: Boolean, uri: Uri?) {
+                    trySend(Unit)
+                }
+            }
+
+            fun register(uri: Uri) {
+                runCatching {
+                    appContext.contentResolver.registerContentObserver(
+                        uri,
+                        true,
+                        observer,
+                    )
+                }
+            }
+
+            if (TvContentObservation.WATCH_NEXT in targets) {
+                register(TvContract.WatchNextPrograms.CONTENT_URI)
+            }
+            if (TvContentObservation.CHANNELS in targets) {
+                register(TvContract.Channels.CONTENT_URI)
+            }
+            if (TvContentObservation.PREVIEW_PROGRAMS in targets) {
+                register(TvContract.PreviewPrograms.CONTENT_URI)
+            }
+
+            // Initial snapshot: the same path handles startup and later invalidations.
+            trySend(Unit)
+
+            awaitClose {
+                runCatching { appContext.contentResolver.unregisterContentObserver(observer) }
+            }
+        }
+            // Provider writes often arrive in small bursts; keep only the latest
+            // invalidation while a query is already running.
+            .conflate()
+            .map { load(appContext, config) }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.IO)
+    }
 
     suspend fun load(context: Context, config: LauncherConfig): TvContentRows = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < 26) return@withContext TvContentRows()

@@ -73,6 +73,7 @@ import com.conreo.couchytv.data.TvContentRepository
 import com.conreo.couchytv.data.TvContentRows
 import com.conreo.couchytv.data.TvProgramItem
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 private sealed interface HomeRowModel {
@@ -194,7 +195,9 @@ fun SlidingRowsArea(
         config.hiddenTvChannels,
         config.channelItemLimits,
     ) {
-        value = TvContentRepository.load(context, config)
+        TvContentRepository.observe(context, config).collect { rows ->
+            value = rows
+        }
     }
 
     val naturalRows = buildList<HomeRowModel> {
@@ -206,7 +209,6 @@ fun SlidingRowsArea(
     val normalizedOrder = normalizeHomeOrder(config.homeRowOrder, naturalIds)
     val rank = normalizedOrder.withIndex().associate { (index, id) -> id to index }
     val rows = naturalRows.sortedBy { rank[it.id] ?: Int.MAX_VALUE }
-    val rowIds = rows.map { it.id }
     val rowSnapshots = remember(rows) { rows.map(HomeRowModel::toFocusSnapshot) }
 
     LaunchedEffect(rowSnapshots) {
