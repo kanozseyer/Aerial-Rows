@@ -1,6 +1,5 @@
 package com.conreo.couchytv.ui
 
-import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -58,8 +57,6 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -80,9 +77,7 @@ import com.conreo.couchytv.core.launch.LaunchOrigin
 import com.conreo.couchytv.core.launch.LaunchRequest
 import com.conreo.couchytv.core.launch.LaunchTarget
 import com.conreo.couchytv.core.model.AppId
-import com.conreo.couchytv.feature.wallpaper.VideoWallpaper
-import com.conreo.couchytv.feature.wallpaper.AerialProviderResult
-import com.conreo.couchytv.feature.wallpaper.createBuiltinAerialProvider
+import com.conreo.couchytv.feature.wallpaper.WallpaperHost
 import com.conreo.couchytv.integration.android.createDefaultLaunchDispatcher
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.AppRepository
@@ -99,7 +94,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -380,7 +374,6 @@ fun LauncherApp(rescanTick: Int) {
     var movePkg by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var photoVersion by remember { mutableIntStateOf(0) }
-    var aerialVersion by remember { mutableIntStateOf(0) }
 
     // Drop empty sections: an empty row is dead space AND a focus trap that
     // stops D-pad navigation from reaching the section below it.
@@ -540,79 +533,9 @@ fun LauncherApp(rescanTick: Int) {
         if (movePkg != null) runCatching { moveFocus.requestFocus() }
     }
 
-    // ----- wallpaper: decoded off the main thread, downsampled, cached.
-    // A ~100px copy is decoded alongside: upscaled by the GPU it looks
-    // blurred, and crossfading it in costs one texture blend per frame
-    // instead of a full-screen RenderEffect blur (heavy on TV GPUs). -----
-    val wallpaperPair by produceState<Pair<ImageBitmap?, ImageBitmap?>>(
-        initialValue = null to null, config.useCustomWallpaper, photoVersion
-    ) {
-        value = if (!config.useCustomWallpaper) null to null
-        else withContext(Dispatchers.IO) {
-            val f = File(context.filesDir, "wallpaper.jpg")
-            if (!f.exists()) null to null
-            else runCatching {
-                // 1280px is indistinguishable as a scrimmed background but the
-                // texture is ~2.3× smaller than 1920 — TV GPUs choke on the
-                // first upload of full-res textures. prepareToDraw() moves the
-                // upload off the first visible frame.
-                val sharp = decodeDownsampled(f, maxWidth = 1280)
-                    ?.also { it.prepareToDraw() }?.asImageBitmap()
-                val blurred = decodeDownsampled(f, maxWidth = 96)
-                    ?.also { it.prepareToDraw() }?.asImageBitmap()
-                sharp to blurred
-            }.getOrDefault(null to null)
-        }
-    }
-    val (wallpaperSharp, wallpaperBlurred) = wallpaperPair
+    // Wallpaper providers/rendering are owned by WallpaperHost; LauncherApp only supplies inputs.
     val presetBrush = remember(config.wallpaper) {
         WALLPAPERS[config.wallpaper.coerceIn(0, WALLPAPERS.size - 1)].brush()
-    }
-
-    // ----- Built-in aerial videos: typed metadata + fair shuffle bag. -----
-    val aerialProvider = remember(context) { createBuiltinAerialProvider(context) }
-    val aerialWallpaper by produceState<com.conreo.couchytv.data.AerialItem?>(
-        initialValue = null,
-        config.useBuiltinAerials, config.builtinSources, aerialVersion,
-    ) {
-        if (!config.useBuiltinAerials) {
-            value = null
-            return@produceState
-        }
-        // NOTE: value is intentionally NOT reset here — when the collection
-        // changes, the previous video keeps playing until the new one is
-        // picked, instead of flashing back to the preset background.
-        when (val result = aerialProvider.next(config.builtinSources)) {
-            is AerialProviderResult.Ready -> value = result.item
-            is AerialProviderResult.RetryAfter -> {
-                // Every selected clip is temporarily quarantined. Drop back to
-                // the preset and wake when the earliest clip can be retried.
-                value = null
-                delay(result.delayMs.coerceAtLeast(1_000L))
-                aerialVersion++
-                return@produceState
-            }
-            AerialProviderResult.Empty -> {
-                value = null
-                return@produceState
-            }
-        }
-        // Clip end advances immediately; the timer is only a safety cap for very
-        // long clips. Every eligible clip is consumed before the bag refills.
-        delay(10 * 60_000L)
-        aerialVersion++
-    }
-
-    // Aerials stream from a CDN. Right after the TV powers on, the network/DNS
-    // isn't up yet, so the first clip fails to load — show the gradient instead
-    // of a black screen, and retry: quickly once the network reconnects,
-    // otherwise backing off, until a clip streams.
-    var aerialError by remember { mutableStateOf(false) }
-    LaunchedEffect(aerialError, net.connected) {
-        if (!aerialError) return@LaunchedEffect
-        delay(if (net.connected) 2500L else 6000L)
-        aerialError = false
-        aerialVersion++
     }
 
     val corner: Dp = CORNER_RADII[config.cornerRadius.coerceIn(0, CORNER_RADII.size - 1)]
@@ -652,67 +575,17 @@ fun LauncherApp(rescanTick: Int) {
                     }
                 }
         ) {
-            // Wallpaper + readability scrim.
-            // Priority: built-in aerials > local video > photo > preset.
+            // WallpaperEngine policy + providers + renderers are isolated from the home UI.
             val videoSpeed = VIDEO_SPEEDS[config.videoSpeed.coerceIn(0, VIDEO_SPEEDS.size - 1)]
-            val aerial = aerialWallpaper
-            if (aerial != null && net.connected && !aerialError) {
-                VideoWallpaper(
-                    uri = aerial.uri,
-                    speed = videoSpeed,
-                    loop = false, // play once, then shuffle to the next aerial
-                    coverBrush = presetBrush,
-                    // Stream failed — a dead clip, or (at power-on) the network
-                    // isn't ready yet. Fall back to the gradient and retry via
-                    // aerialError, instead of sitting on the gradient cover.
-                    onEnded = {
-                        aerialWallpaper?.let { aerialProvider.recordSuccess(it.id) }
-                        aerialVersion++
-                    },
-                    onError = {
-                        // Player error + stall watchdog can both fire for one load.
-                        // Count that visible playback attempt only once.
-                        if (!aerialError) {
-                            aerialWallpaper?.let { aerialProvider.recordFailure(it.id) }
-                            aerialError = true
-                        }
-                    },
-                )
-            } else if (config.useVideoWallpaper && config.videoUri.isNotEmpty()) {
-                VideoWallpaper(uri = config.videoUri, speed = videoSpeed, loop = true, coverBrush = presetBrush)
-            } else if (wallpaperSharp != null) {
-                Image(
-                    bitmap = wallpaperSharp,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Box(Modifier.fillMaxSize().background(presetBrush))
-            }
-            // Dock-expanded overlay: cheap pseudo-blur (tiny bitmap upscaled)
-            // + dim, crossfaded. Works identically on every Android version.
-            val overlayAlpha by animateFloatAsState(
-                targetValue = if (dockExpanded) 1f else 0f,
-                animationSpec = tween(1000),
-                label = "dockOverlay",
+            WallpaperHost(
+                config = config,
+                networkConnected = net.connected,
+                photoRefreshToken = photoVersion,
+                dockExpanded = dockExpanded,
+                presetBrush = presetBrush,
+                videoSpeed = videoSpeed,
             )
-            if (overlayAlpha > 0.01f) {
-                if (wallpaperBlurred != null) {
-                    Image(
-                        bitmap = wallpaperBlurred,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlpha },
-                    )
-                }
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = overlayAlpha }
-                        .background(Color.Black.copy(alpha = 0.45f))
-                )
-            }
+
             when (config.scrimMode) {
                 4 -> {} // off
                 3 -> Box(Modifier.fillMaxSize().background(ScrimFull))
@@ -1420,18 +1293,4 @@ private fun LoadingScreen() {
                 .graphicsLayer { scaleX = scale; scaleY = scale },
         )
     }
-}
-
-/** Decodes a bitmap with an inSampleSize so its width stays near [maxWidth]. */
-private fun decodeDownsampled(file: File, maxWidth: Int): android.graphics.Bitmap? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeFile(file.absolutePath, bounds)
-    if (bounds.outWidth <= 0) return null
-    var sample = 1
-    while (bounds.outWidth / (sample * 2) >= maxWidth) sample *= 2
-    val opts = BitmapFactory.Options().apply {
-        inSampleSize = sample
-        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-    }
-    return BitmapFactory.decodeFile(file.absolutePath, opts)
 }
