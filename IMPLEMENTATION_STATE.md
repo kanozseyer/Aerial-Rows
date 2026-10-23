@@ -17,7 +17,8 @@ Merged Phase 6 milestones:
 - semantic settings navigation and shared choice controls: `891bcdb257110ddcad74312e54a07f7c8d704a51`;
 - debounced settings runtime, Display/Wallpaper semantic focus and CI/cache speed work: `d458d2ed92a8c820c8634bb7aca73984d6a0016b`;
 - panel semantic focus, debounced panel controls and live optimistic preview: `177900956ac46c9e48526df1f019b7f55083bdcf`;
-- Status/Launcher semantic focus plus deterministic settings-effect policy: `ae8114d7e66bdbc924b595b062b4ce83e37ebe25`.
+- Status/Launcher semantic focus plus deterministic settings-effect policy: `ae8114d7e66bdbc924b595b062b4ce83e37ebe25`;
+- shared named-choice TV UI plus the reusable marker-triggered Fast Check workflow: `07acd83bfbea8cd2f43580850488e6bf5b1b83a7`.
 
 ## Phase 5 completion checkpoint
 
@@ -25,27 +26,19 @@ The merged wallpaper runtime has secure/typed Aerial playback, fair shuffle and 
 
 A meaningful Shield checkpoint for wallpaper/fallback/dock behavior is still useful, but it does not block Phase 6 coding.
 
-## Active Phase 6 shared-choice milestone
+## Active Phase 6 completion milestone
 
-The current staged milestone is based directly on `ae8114d7e66bdbc924b595b062b4ce83e37ebe25` and its app code has passed the cheap development gate (`:app:testDebugUnitTest :app:compileDebugKotlin`).
+The next milestone starts from `07acd83bfbea8cd2f43580850488e6bf5b1b83a7` and should finish the remaining architecture work before the Phase 6 Shield checkpoint.
 
-Current work:
+Current priorities:
 
-- extracts the named-choice dialog into one reusable `SettingsChoiceDialog` primitive;
-- Display/Wallpaper/Status selectors keep the same current-value-focused choice behavior through the shared primitive;
-- panel `ExtraSelector` keeps Left/Right instant stepping but OK now opens the full named choice list when options are available;
-- panel dialogs open focused on the optimistic/current value and return to the selector after selection/dismissal;
-- shared row/check primitives are internal to the settings UI package rather than duplicated;
-- introduces one permanent marker-triggered `Fast Check` workflow so later milestones no longer create/delete temporary YAML just to run unit tests + Kotlin compile;
-- the reusable fast check has concurrency cancellation, a 15-minute bound and a source-mutation check; deleting the marker becomes a checkout-only no-op.
+1. wire only **true external setting effects** (`RELOAD_APPS`, `RELOAD_TV_CONTENT`, `RELOAD_WALLPAPER`, `RECREATE_ACTIVITY`, `RESTART_HOME_TASK`) to existing runtime invalidation seams where config observation alone is insufficient;
+2. add **ON_CONFIRM/session-preview adapters only where a setting genuinely needs them**, rather than forcing every control through another abstraction;
+3. add semantic restore to dynamic Apps/Channels/Categories settings surfaces where it materially improves TV navigation, using stable app/channel/category identities rather than list positions;
+4. migrate any remaining named multi-choice controls that still benefit from the shared `SettingsChoiceDialog` primitive;
+5. run a meaningful Shield D-pad/settings checkpoint; then move to Phase 7 notifications/media/status cleanup.
 
-After this milestone, continue Phase 6 with:
-
-1. wire true external effects (`RELOAD_APPS`, `RELOAD_TV_CONTENT`, `RELOAD_WALLPAPER`, recreate/restart) to existing launcher/runtime invalidation seams only where config observation is insufficient;
-2. add ON_CONFIRM/session-preview adapters only where a setting genuinely needs them;
-3. add semantic restore to remaining dynamic settings surfaces where it materially improves TV navigation (Apps/Channels/Categories), using stable app/channel/category identities rather than list positions;
-4. run the Phase 6 Shield D-pad/settings checkpoint;
-5. then move to Phase 7 notifications/media/status cleanup.
+Do not add polling, a central Accessibility controller, or a second settings runtime. Keep persistence/effect/focus behavior routed through the existing typed settings contracts and the current launcher repositories.
 
 ## Development / CI strategy
 
@@ -64,10 +57,11 @@ Current CI speed path:
 
 - Gradle parallel execution and local build cache are enabled;
 - pushes to `aerialrows-development` run a trusted compile/unit-test cache warmer;
-- post-merge cache warming is verified working;
+- post-merge cache warming is verified working, including the latest `07acd83b` development head;
 - PRs targeting `aerialrows-development` can restore that base-branch cache;
 - benchmark APKs are compiled only when benchmark/build configuration changes (and for tags);
 - reusable `.github/workflows/fast-check.yml` runs only when `.github/fast-check-trigger` is deliberately present/changed;
+- the trigger marker is absent on the development branch during normal operation;
 - release/R8, unit tests, debug build, device-test compilation, lint and source-purity stay mandatory for product PRs.
 
 ## Development process rules
