@@ -1,0 +1,44 @@
+name: Phase 6 Final Trigger
+
+on:
+  push:
+    paths:
+      - '.github/phase6-final-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.ref == 'refs/heads/phase6-final-settings'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase6-final-settings
+          fetch-depth: 0
+      - name: Run staged materializer
+        shell: python
+        run: |
+          from pathlib import Path
+          workflow = Path('.github/workflows/phase6-final-materialize.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(workflow) if line.strip() == 'from pathlib import Path')
+          end = next(i for i in range(start + 1, len(workflow)) if workflow[i].startswith('      - name: Run cheap Phase 6 gate'))
+          source = '\n'.join(line[10:] if line.startswith('          ') else line for line in workflow[start:end])
+          exec(compile(source, 'phase6-materializer', 'exec'))
+      - name: Run cheap Phase 6 gate
+        run: ./gradlew :app:testDebugUnitTest :app:compileDebugKotlin --stacktrace
+      - name: Commit materialized changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main app/src/test
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+          else
+            git commit -m "Finish Phase 6 dynamic settings and config transfer"
+            git push origin HEAD:phase6-final-settings
+          fi
