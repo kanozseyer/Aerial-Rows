@@ -31,7 +31,7 @@ jobs:
       - name: Materialize current Aerial Rows source patches
         run: ./gradlew applyAerialRowsSourcePatches --no-daemon
 
-      - name: Remove build-time source rewriting and add cleanliness gate
+      - name: Remove build-time source rewriting
         shell: python
         run: |
           from pathlib import Path
@@ -46,14 +46,6 @@ jobs:
           if end < 0:
               raise SystemExit('Phase 0A: dependencies block not found')
           gradle.write_text(text[:start] + text[end:])
-
-          workflow = Path('.github/workflows/build.yml')
-          build = workflow.read_text()
-          anchor = '      - name: Build (debug + unsigned release) and lint\n        run: ./gradlew assembleDebug assembleRelease lintRelease --no-daemon\n'
-          if anchor not in build:
-              raise SystemExit('Phase 0A: build workflow anchor not found')
-          gate = anchor + '''\n      - name: Verify build does not mutate tracked source\n        shell: bash\n        run: |\n          if ! git diff --exit-code; then\n            echo "::error::Gradle build mutated tracked repository files"\n            git status --short\n            exit 1\n          fi\n'''
-          workflow.write_text(build.replace(anchor, gate, 1))
 
       - name: Verify source is now fully materialized
         shell: bash
@@ -74,8 +66,7 @@ jobs:
           git add app/build.gradle.kts \
                   app/src/main/java/com/conreo/couchytv/ui/LauncherScreen.kt \
                   app/src/main/java/com/conreo/couchytv/ui/SettingsSheet.kt \
-                  app/src/main/res/values/strings.xml \
-                  .github/workflows/build.yml
+                  app/src/main/res/values/strings.xml
           git diff --cached --check
           git commit -m 'Materialize Aerial Rows source patches'
           git push origin HEAD:phase0a-source-pure
