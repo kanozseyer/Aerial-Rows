@@ -76,6 +76,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.conreo.couchytv.Actions
+import com.conreo.couchytv.core.launch.LaunchOrigin
+import com.conreo.couchytv.core.launch.LaunchRequest
+import com.conreo.couchytv.core.launch.LaunchTarget
+import com.conreo.couchytv.core.model.AppId
+import com.conreo.couchytv.integration.android.createDefaultLaunchDispatcher
 import com.conreo.couchytv.data.AppEntry
 import com.conreo.couchytv.data.AppRepository
 import com.conreo.couchytv.data.ConfigStore
@@ -206,6 +211,16 @@ fun LauncherApp(rescanTick: Int) {
     val context = LocalContext.current
     val store = remember { ConfigStore(context.applicationContext) }
     val scope = rememberCoroutineScope()
+    val launchDispatcher = remember(context) { createDefaultLaunchDispatcher(context) }
+
+    fun dispatchApp(packageName: String, origin: LaunchOrigin) {
+        launchDispatcher.dispatch(
+            LaunchRequest(
+                target = LaunchTarget.App(AppId(packageName = packageName)),
+                origin = origin,
+            ),
+        )
+    }
 
     // Wait for the persisted config before drawing anything, so the setup
     // wizard never flashes for users who already completed it.
@@ -711,7 +726,7 @@ fun LauncherApp(rescanTick: Int) {
                         showVpn = config.showVpnButton,
                         glass = config.statusBarGlass,
                         onVpnClick = {
-                            if (config.vpnApp.isNotEmpty()) Actions.launchApp(context, config.vpnApp)
+                            if (config.vpnApp.isNotEmpty()) dispatchApp(config.vpnApp, LaunchOrigin.STATUS_BAR)
                             else Actions.openVpnSettings(context)
                         },
                         onNetworkClick = { Actions.openNetworkSettings(context) },
@@ -725,12 +740,13 @@ fun LauncherApp(rescanTick: Int) {
                         allApps = apps,
                         config = config,
                         store = store,
+                        launchDispatcher = launchDispatcher,
                         accent = accent,
                         movePkg = movePkg,
                         moveFocus = moveFocus,
                         cardWidth = cardWidth,
                         gap = gap,
-                        onLaunch = { app -> if (movePkg == null) Actions.launchApp(context, app.pkg) },
+                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
                         onMenu = { app -> if (movePkg == null) menuFor = app },
                         onSettings = { showSettings = true },
                         onAndroidSettings = { Actions.openSystemSettings(context) },
@@ -747,7 +763,7 @@ fun LauncherApp(rescanTick: Int) {
                         intro = introShown,
                         expanded = dockExpanded,
                         onExpandChange = { dockExpanded = it },
-                        onLaunch = { app -> if (movePkg == null) Actions.launchApp(context, app.pkg) },
+                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
                         onMenu = { app -> if (movePkg == null) menuFor = app },
                     )
                     else -> {
@@ -851,14 +867,14 @@ fun LauncherApp(rescanTick: Int) {
                                     GridSection(
                                         catApps, config, accent, movePkg, moveFocus,
                                         cardWidth, gap, introShown,
-                                        onLaunch = { app -> if (movePkg == null) Actions.launchApp(context, app.pkg) },
+                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
                                         onMenu = { app -> if (movePkg == null) menuFor = app },
                                     )
                                 } else {
                                     CarouselSection(
                                         catApps, config, accent, movePkg, moveFocus,
                                         cardWidth, gap,
-                                        onLaunch = { app -> if (movePkg == null) Actions.launchApp(context, app.pkg) },
+                                        onLaunch = { app -> if (movePkg == null) dispatchApp(app.pkg, LaunchOrigin.HOME_CARD) },
                                         onMenu = { app -> if (movePkg == null) menuFor = app },
                                     )
                                 }
@@ -876,7 +892,7 @@ fun LauncherApp(rescanTick: Int) {
                     app = app,
                     isHidden = app.pkg in config.hidden,
                     onDismiss = { menuFor = null },
-                    onOpen = { menuFor = null; Actions.launchApp(context, app.pkg) },
+                    onOpen = { menuFor = null; dispatchApp(app.pkg, LaunchOrigin.CONTEXT_MENU) },
                     onMove = { menuFor = null; movePkg = app.pkg },
                     onToggleHide = {
                         menuFor = null
@@ -900,6 +916,7 @@ fun LauncherApp(rescanTick: Int) {
                     config = config,
                     apps = apps,
                     store = store,
+                    launchDispatcher = launchDispatcher,
                     onDismiss = { showSettings = false },
                     onWallpaperChanged = { wallpaperVersion++ },
                     // Runs on LauncherApp's scope, which survives the dialog
