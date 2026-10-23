@@ -8,8 +8,6 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 @Serializable
 data class CategoryCfg(
@@ -137,15 +135,15 @@ private val Context.dataStore by preferencesDataStore(name = "launcher")
 private val KEY_CONFIG = stringPreferencesKey("config")
 private val KEY_LAST_KNOWN_GOOD = stringPreferencesKey("config_last_known_good")
 private val KEY_CORRUPT_CONFIG = stringPreferencesKey("config_corrupt_backup")
-private val json = Json { ignoreUnknownKeys = true }
 
 class ConfigStore(private val context: Context) {
 
     private val fallbackCategories: List<CategoryCfg>
         get() = ConfigDefaults.defaultCategories(context)
 
-    private fun decode(raw: String?): LauncherConfig? = raw?.let {
-        runCatching { json.decodeFromString<LauncherConfig>(it) }.getOrNull()
+    private fun decode(raw: String?): LauncherConfig? = when (val result = raw?.let(ConfigCodec::decode)) {
+        is ConfigDecodeResult.Success -> result.envelope.launcherConfig
+        else -> null
     }
 
     private fun normalize(config: LauncherConfig): LauncherConfig =
@@ -161,26 +159,32 @@ class ConfigStore(private val context: Context) {
     suspend fun update(transform: (LauncherConfig) -> LauncherConfig) {
         context.dataStore.edit { prefs ->
             val rawCurrent = prefs[KEY_CONFIG]
-            val decodedCurrent = decode(rawCurrent)
+            val currentResult = rawCurrent?.let(ConfigCodec::decode)
 
-            // Never silently destroy the payload that failed to decode. Keep the
-            // first damaged value for diagnostics/manual recovery before writing
-            // a repaired snapshot back to the primary key.
-            if (rawCurrent != null && decodedCurrent == null && prefs[KEY_CORRUPT_CONFIG] == null) {
+            if (currentResult is ConfigDecodeResult.UnsupportedSchema) {
+                error(
+                    "Stored config schema ${currentResult.schemaVersion} is newer than " +
+                        "supported schema $CURRENT_CONFIG_SCHEMA_VERSION",
+                )
+            }
+
+            // Never silently destroy a malformed payload. Preserve the first
+            // damaged value for diagnostics/manual recovery before writing a
+            // repaired snapshot back to the primary key.
+            if (rawCurrent != null && currentResult is ConfigDecodeResult.Failure && prefs[KEY_CORRUPT_CONFIG] == null) {
                 prefs[KEY_CORRUPT_CONFIG] = rawCurrent
             }
 
-            val current = decodedCurrent
+            val current = (currentResult as? ConfigDecodeResult.Success)?.envelope?.launcherConfig
                 ?: decode(prefs[KEY_LAST_KNOWN_GOOD])
                 ?: ConfigDefaults.create(context)
 
             val next = normalize(transform(normalize(current)))
-            val encoded = json.encodeToString(next)
+            val encoded = ConfigCodec.encode(next)
 
-            // Validate the exact serialized payload before committing it. A
-            // future serialization/config change must not replace a readable
-            // snapshot with bytes we cannot immediately decode ourselves.
-            check(decode(encoded) != null) { "Refusing to persist unreadable launcher config" }
+            check(ConfigCodec.decode(encoded) is ConfigDecodeResult.Success) {
+                "Refusing to persist unreadable launcher config"
+            }
 
             prefs[KEY_CONFIG] = encoded
             prefs[KEY_LAST_KNOWN_GOOD] = encoded
