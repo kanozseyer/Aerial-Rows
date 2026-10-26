@@ -1,0 +1,39 @@
+name: Online Wallpaper Materialize
+
+on:
+  push:
+    branches:
+      - phase6-shield-followup
+    paths:
+      - '.github/online-wallpaper-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out follow-up branch
+        uses: actions/checkout@v4
+        with:
+          ref: phase6-shield-followup
+          fetch-depth: 1
+
+      - name: Apply reviewed online wallpaper patch
+        run: python3 .github/online_wallpaper_patch.py
+
+      - name: Commit materialized product source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+            exit 0
+          fi
+          git commit -m "Add cached Wikimedia static wallpapers"
+          git push origin HEAD:phase6-shield-followup
