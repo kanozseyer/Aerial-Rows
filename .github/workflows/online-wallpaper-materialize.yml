@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 1
 
       - name: Apply reviewed online wallpaper patch
-        run: python3 .github/online_wallpaper_patch.py
+        run: python3 .github/online_wallpaper_patch_v2.py
 
       - name: Commit materialized product source
         shell: bash
