@@ -58,12 +58,12 @@ jobs:
           echo "ox3_smali=$OX3" >> "$GITHUB_ENV"
           echo "lu_smali=$LU" >> "$GITHUB_ENV"
 
-          python3 - <<'PY'
+          OX3_SMALI="$OX3" LU_SMALI="$LU" python3 - <<'PY'
           from pathlib import Path
           import os, re
           out = Path('glass-target-analysis.txt')
-          ox = Path(os.environ['ox3_smali'])
-          lu = Path(os.environ['lu_smali'])
+          ox = Path(os.environ['OX3_SMALI'])
+          lu = Path(os.environ['LU_SMALI'])
           with out.open('w', encoding='utf-8') as f:
               f.write('=== VERIFIED APK ===\n')
               f.write('sha256:a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae\n\n')
@@ -107,11 +107,11 @@ jobs:
           test -n "$OX3_JAVA" && test -n "$LU_JAVA"
           echo "ox3_java=$OX3_JAVA" >> "$GITHUB_ENV"
 
-          python3 - <<'PY'
+          OX3_JAVA_PATH="$OX3_JAVA" LU_JAVA_PATH="$LU_JAVA" python3 - <<'PY'
           from pathlib import Path
           import os,re
           out=Path('glass-target-analysis.txt')
-          paths=[('OX3 JAVA',Path(os.environ['ox3_java'])),('LU JAVA',next(Path('jadx-out/sources').rglob('lu.java')))]
+          paths=[('OX3 JAVA',Path(os.environ['OX3_JAVA_PATH'])),('LU JAVA',Path(os.environ['LU_JAVA_PATH']))]
           with out.open('a',encoding='utf-8') as f:
               for label,path in paths:
                   lines=path.read_text(encoding='utf-8',errors='replace').splitlines()
