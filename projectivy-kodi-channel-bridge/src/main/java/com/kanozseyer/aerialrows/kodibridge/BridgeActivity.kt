@@ -17,6 +17,9 @@ class BridgeActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         RefreshScheduler.schedule(this)
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { RedLightSync.discoverAndSync(applicationContext) }
+        }
         if (savedInstanceState == null) {
             GuidedStepSupportFragment.addAsRoot(this, BridgeSettingsFragment(), android.R.id.content)
         }
@@ -25,9 +28,9 @@ class BridgeActivity : FragmentActivity() {
 
 class BridgeSettingsFragment : GuidedStepSupportFragment() {
     override fun onCreateGuidance(savedInstanceState: Bundle?): Guidance = Guidance(
-        getString(R.string.app_short_name),
-        getString(R.string.app_description),
-        "Projectivy channel integration",
+        "Red Light → Projectivy",
+        "Mirrors Red Light and its Trakt-backed sections into Projectivy channels",
+        "Kodi channel integration",
         null,
     )
 
@@ -38,12 +41,24 @@ class BridgeSettingsFragment : GuidedStepSupportFragment() {
         actions += GuidedAction.Builder(context)
             .id(ACTION_STATUS)
             .title(if (installed) "Kodi detected" else "Kodi not detected")
-            .description("Package: ${context.kodiPackage} · ${channels.size} bridge channel(s)")
+            .description("Package: ${context.kodiPackage} · ${channels.size} Red Light channel(s)")
             .infoOnly(true)
             .build()
-        actions += GuidedAction.Builder(context).id(ACTION_OPEN_KODI).title("Open Kodi").description("Start Kodi so add-on folders can be queried").build()
-        actions += GuidedAction.Builder(context).id(ACTION_BROWSE).title("Browse Kodi and add channel").description("Video add-ons → choose a folder → publish it to Projectivy").build()
-        actions += GuidedAction.Builder(context).id(ACTION_REFRESH).title("Refresh all Kodi channels").description("Keeps previous cards if Kodi is unavailable").build()
+        actions += GuidedAction.Builder(context)
+            .id(ACTION_OPEN_KODI)
+            .title("Open Kodi")
+            .description("Start Kodi if Red Light is not currently queryable")
+            .build()
+        actions += GuidedAction.Builder(context)
+            .id(ACTION_BROWSE)
+            .title("Browse Red Light sections")
+            .description("Only Red Light is exposed; other video add-ons are ignored")
+            .build()
+        actions += GuidedAction.Builder(context)
+            .id(ACTION_REFRESH)
+            .title("Discover / refresh Red Light channels")
+            .description("Auto-detects Red Light and expands Trakt/My Lists one level")
+            .build()
         channels.forEachIndexed { index, channel ->
             actions += GuidedAction.Builder(context)
                 .id(CHANNEL_BASE + index)
@@ -59,8 +74,17 @@ class BridgeSettingsFragment : GuidedStepSupportFragment() {
             ACTION_OPEN_KODI -> KodiClient.open(context)
             ACTION_BROWSE -> startActivity(Intent(context, BrowserActivity::class.java))
             ACTION_REFRESH -> lifecycleScope.launch {
-                val result = withContext(Dispatchers.IO) { TvPublisher.refreshAll(context.applicationContext) }
-                Toast.makeText(context, "Refreshed ${result.first}/${result.second} Kodi channels", Toast.LENGTH_LONG).show()
+                val result = withContext(Dispatchers.IO) {
+                    val discovered = RedLightSync.discoverAndSync(context.applicationContext)
+                    TvPublisher.refreshAll(context.applicationContext)
+                    discovered
+                }
+                val message = when {
+                    !result.found -> "Red Light not returned by Kodi. Open Kodi once, then retry."
+                    result.discoveredSections == 0 -> "Red Light found, but no publishable sections were returned."
+                    else -> "Red Light: ${result.syncedChannels}/${result.discoveredSections} channel(s) synced"
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
             }
             else -> if (action.id >= CHANNEL_BASE) {
                 val index = (action.id - CHANNEL_BASE).toInt()
