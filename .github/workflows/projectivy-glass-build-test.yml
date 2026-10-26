@@ -1,0 +1,170 @@
+name: Validate Projectivy 4.72 Liquid Glass Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-liquid-glass
+    paths:
+      - 'projectivy-mod/**'
+      - '.github/workflows/projectivy-glass-build-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout patcher branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download and verify official inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/projectivy-glass-build"
+          mkdir -p "$W"
+          cd "$W"
+
+          curl -fL --retry 3 \
+            'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' \
+            -o projectivy.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  projectivy.apk' | sha256sum -c -
+
+          curl -fL --retry 3 \
+            'https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar' \
+            -o apktool.jar
+          echo 'dbf930b076c6b9be08d57c449cacefc3bdd6b71ebd59b3066fc0e1f5b14f9423  apktool.jar' | sha256sum -c -
+
+      - name: Decode and apply hash-locked visual patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/projectivy-glass-build"
+          cd "$W"
+
+          # No resources need editing. Keep resources.arsc intact and touch only smali.
+          java -jar apktool.jar d -f -r projectivy.apk -o decoded >/tmp/apktool-decode.log 2>&1 || {
+            tail -n 120 /tmp/apktool-decode.log
+            exit 1
+          }
+
+          python3 "$GITHUB_WORKSPACE/projectivy-mod/patch_ox3.py" decoded
+
+          OX3="$(find decoded -type f -name ox3.smali -print -quit)"
+          test -n "$OX3"
+          test "$(grep -c 'Projectivy Liquid Glass:' "$OX3")" -eq 4
+          test "$(grep -c '0x3ee66666' "$OX3")" -ge 2
+          test "$(grep -c 'Landroid/graphics/Paint;->setAlpha(I)V' "$OX3")" -ge 4
+
+          # Scope guard: only ox3.smali may differ in the decoded tree after patching.
+          cp "$OX3" "$W/patched-ox3.smali"
+          rm -rf decoded-pristine
+          java -jar apktool.jar d -f -r projectivy.apk -o decoded-pristine >/dev/null 2>&1
+          PRISTINE_OX3="$(find decoded-pristine -type f -name ox3.smali -print -quit)"
+          test -n "$PRISTINE_OX3"
+          diff -u "$PRISTINE_OX3" "$OX3" > "$W/ox3.patch" || true
+          test -s "$W/ox3.patch"
+
+          python3 - "$W/decoded-pristine" "$W/decoded" <<'PY'
+          from pathlib import Path
+          import hashlib, sys
+
+          pristine = Path(sys.argv[1])
+          patched = Path(sys.argv[2])
+
+          def digest(path: Path) -> str:
+              h = hashlib.sha256()
+              h.update(path.read_bytes())
+              return h.hexdigest()
+
+          pmap = {p.relative_to(pristine): digest(p) for p in pristine.rglob('*') if p.is_file()}
+          mmap = {p.relative_to(patched): digest(p) for p in patched.rglob('*') if p.is_file()}
+          changed = sorted(str(k) for k in set(pmap) | set(mmap) if pmap.get(k) != mmap.get(k))
+          print('Decoded-tree changed files:')
+          print('\n'.join(changed))
+          if len(changed) != 1 or not changed[0].endswith('/ox3.smali') and changed[0] != 'smali_classes2/ox3.smali':
+              raise SystemExit(f'Unexpected patch scope: {changed}')
+          PY
+
+      - name: Rebuild APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/projectivy-glass-build"
+          cd "$W"
+          java -jar apktool.jar b decoded -o projectivy-glass-unsigned.apk >/tmp/apktool-build.log 2>&1 || {
+            tail -n 160 /tmp/apktool-build.log
+            exit 1
+          }
+          unzip -t projectivy-glass-unsigned.apk >/dev/null
+          echo "Unsigned rebuilt APK SHA-256: $(sha256sum projectivy-glass-unsigned.apk | awk '{print $1}')"
+
+      - name: Zipalign, sign with ephemeral CI key, and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/projectivy-glass-build"
+          cd "$W"
+
+          BUILD_TOOLS="$(python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          sdk = Path(os.environ['ANDROID_HOME'])
+          roots = []
+          for p in (sdk / 'build-tools').iterdir():
+              if p.is_dir() and (p / 'zipalign').exists() and (p / 'apksigner').exists():
+                  roots.append(p)
+          if not roots:
+              raise SystemExit('No Android build-tools with zipalign/apksigner found')
+          def key(p):
+              return [int(x) for x in re.findall(r'\d+', p.name)]
+          print(max(roots, key=key))
+          PY
+          )"
+
+          "$BUILD_TOOLS/zipalign" -f -p 4 projectivy-glass-unsigned.apk projectivy-glass-aligned.apk
+          "$BUILD_TOOLS/zipalign" -c -v 4 projectivy-glass-aligned.apk >/dev/null
+
+          PASS='ci-projectivy-glass-only'
+          keytool -genkeypair -noprompt \
+            -keystore ci.jks \
+            -storepass "$PASS" \
+            -keypass "$PASS" \
+            -alias ci \
+            -keyalg RSA -keysize 3072 -validity 2 \
+            -dname 'CN=CI Projectivy Glass Validation' >/dev/null 2>&1
+
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks ci.jks \
+            --ks-key-alias ci \
+            --ks-pass "pass:$PASS" \
+            --key-pass "pass:$PASS" \
+            --out projectivy-glass-test.apk \
+            projectivy-glass-aligned.apk
+
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs projectivy-glass-test.apk
+          unzip -t projectivy-glass-test.apk >/dev/null
+          echo "Signed validation APK SHA-256: $(sha256sum projectivy-glass-test.apk | awk '{print $1}')"
+          echo 'Validation only: modified Projectivy APK is intentionally not uploaded as an artifact.'
+
+      - name: Confirm original package/version metadata survived rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/projectivy-glass-build"
+          cd "$W"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 -print | sort -V | tail -n 1)"
+          test -n "$AAPT"
+          "$AAPT" dump badging projectivy-glass-test.apk | head -n 8 | tee package-metadata.txt
+          grep -q "package: name='com.spocky.projengmenu'" package-metadata.txt
+          grep -q "versionCode='97'" package-metadata.txt
+          grep -q "versionName='4.72'" package-metadata.txt
