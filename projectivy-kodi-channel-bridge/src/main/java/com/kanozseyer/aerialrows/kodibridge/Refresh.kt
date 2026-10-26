@@ -30,6 +30,7 @@ class RefreshJobService : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         executor.execute {
+            RedLightSync.discoverAndSync(applicationContext)
             TvPublisher.refreshAll(applicationContext)
             jobFinished(params, false)
         }
