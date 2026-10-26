@@ -15,3 +15,5 @@ dependencyResolutionManagement {
 rootProject.name = "CouchyLauncher"
 include(":app")
 include(":macrobenchmark")
+include(":projectivy-wallpaper-api")
+include(":aerialrows-wallpaper-provider")
