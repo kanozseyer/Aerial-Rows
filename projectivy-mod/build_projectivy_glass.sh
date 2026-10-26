@@ -48,10 +48,28 @@ if [[ "$APKTOOL_ACTUAL" != "$APKTOOL_SHA" ]]; then
   exit 1
 fi
 
+# Prefer an explicit SDK environment, then the repo's local.properties, then
+# Android Studio's standard macOS SDK location.
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+if [[ -z "$SDK_ROOT" && -f "$ROOT/local.properties" ]]; then
+  SDK_ROOT="$(python3 - "$ROOT/local.properties" <<'PY'
+from pathlib import Path
+import sys
+for raw in Path(sys.argv[1]).read_text(errors='replace').splitlines():
+    if raw.startswith('sdk.dir='):
+        value = raw.split('=', 1)[1].strip()
+        value = value.replace('\\:', ':').replace('\\\\', '\\')
+        print(value)
+        break
+PY
+)"
+fi
+if [[ -z "$SDK_ROOT" && -d "$HOME/Library/Android/sdk" ]]; then
+  SDK_ROOT="$HOME/Library/Android/sdk"
+fi
 if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT/build-tools" ]]; then
-  echo "ANDROID_SDK_ROOT/ANDROID_HOME is not set to an Android SDK with build-tools." >&2
-  echo "Android Studio normally installs this for you." >&2
+  echo "Could not locate an Android SDK with build-tools." >&2
+  echo "Checked ANDROID_SDK_ROOT, ANDROID_HOME, local.properties, and ~/Library/Android/sdk." >&2
   exit 1
 fi
 
