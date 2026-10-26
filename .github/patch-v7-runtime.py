@@ -35,8 +35,8 @@ for item in categories:
         removed.append(item.get('title', uid))
         continue
     cleaned.append(item)
-root['action_categories_list'] = json.dumps(cleaned, separators=(',', ':'))
-profile.write_text(json.dumps(root, separators=(',', ':')))
+root['action_categories_list'] = json.dumps(cleaned, separators=(',', ':'), ensure_ascii=False)
+profile.write_text(json.dumps(root, separators=(',', ':'), ensure_ascii=False))
 print('sanitized bundled channel profile; removed:', removed)
 
 
