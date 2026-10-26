@@ -9,7 +9,9 @@ on:
       - '.github/projectivy-aerial-enhancements.py'
       - '.github/projectivy-single-apk.py'
       - '.github/patch-redlight-runtime.py'
+      - '.github/patch-v6-runtime.py'
       - '.github/projectivy-redlight-routing.py'
+      - '.github/projectivy-redlight-label.py'
       - 'embedded-runtime/**'
       - 'settings.gradle.kts'
       - 'build.gradle.kts'
@@ -29,12 +31,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Patch embedded Red Light runtime for installed menu structure
+      - name: Patch embedded Red Light runtime for installed menu structure and v6 fixes
         shell: bash
         run: |
           set -euo pipefail
           python3 .github/patch-redlight-runtime.py
+          python3 .github/patch-v6-runtime.py
           grep -q 'classifyDirectMenuShelf' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'notifyProjectivyChannelsChanged' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'GUI.ActivateWindow' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightLaunchActivity.java
+          grep -q 'syncRedLightAsync(c)' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
 
       - name: Build framework-only embedded runtime DEX
         shell: bash
@@ -100,14 +106,21 @@ jobs:
           test -s /tmp/projectivy-decoded/assets/aerials.json
           test -s /tmp/projectivy-decoded/assets/launcher_default_profile.json
           python3 -m json.tool /tmp/projectivy-decoded/assets/launcher_default_profile.json >/dev/null
+          grep -q 'Red Light · Trending Movies' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · Trending TV Shows' /tmp/projectivy-decoded/assets/launcher_default_profile.json
 
       - name: Patch Projectivy for embedded Aerial and Red Light
+        shell: bash
         run: |
+          set -euo pipefail
           python3 .github/projectivy-aerial-integration.py
           python3 .github/projectivy-aerial-enhancements.py
           python3 .github/projectivy-single-apk.py
           python3 .github/projectivy-redlight-routing.py
+          python3 .github/projectivy-redlight-label.py
           grep -q 'android:host="plugin.video.redlight"' /tmp/projectivy-decoded/AndroidManifest.xml
+          grep -q 'android.permission.INTERNET' /tmp/projectivy-decoded/AndroidManifest.xml
+          grep -R -q 'const-string v4, "Red Light"' /tmp/projectivy-decoded/smali*/*g70.smali
 
       - name: Rebuild Projectivy and inject embedded DEX
         shell: bash
