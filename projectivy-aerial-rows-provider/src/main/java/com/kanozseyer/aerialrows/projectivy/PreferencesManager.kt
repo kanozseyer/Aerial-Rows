@@ -55,7 +55,7 @@ object PreferencesManager {
         set(value) = preferences.edit().putBoolean(KEY_PREFER_4K, value).apply()
 
     var preferHdr: Boolean
-        get() = preferences.getBoolean(KEY_PREFER_HDR, true)
+        get() = preferences.getBoolean(KEY_PREFER_HDR, false)
         set(value) = preferences.edit().putBoolean(KEY_PREFER_HDR, value).apply()
 
     var fallback: Boolean
