@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 rootProject.name = "CouchyLauncher"
 include(":app")
 include(":macrobenchmark")
+include(":embedded-runtime")
