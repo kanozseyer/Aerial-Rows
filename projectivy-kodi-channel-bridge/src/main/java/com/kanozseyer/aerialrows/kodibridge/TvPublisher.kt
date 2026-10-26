@@ -28,12 +28,18 @@ object TvPublisher {
             resolver.delete(TvContractCompat.buildPreviewProgramsUriForChannel(channel.channelId), null, null)
         }
 
-        entries.take(MAX_PROGRAMS).forEachIndexed { index, item ->
-            val program = buildProgram(context, channel.channelId, item, index)
-            runCatching {
-                resolver.insert(TvContractCompat.PreviewPrograms.CONTENT_URI, program.toContentValues())
+        // A media shelf can occasionally contain navigation folders. Projectivy
+        // should only receive actual content cards; Red Light handles the next
+        // navigation/playback step from the card's native plugin:// URI.
+        entries.asSequence()
+            .filterNot { it.isDirectory }
+            .take(MAX_PROGRAMS)
+            .forEachIndexed { index, item ->
+                val program = buildProgram(context, channel.channelId, item, index)
+                runCatching {
+                    resolver.insert(TvContractCompat.PreviewPrograms.CONTENT_URI, program.toContentValues())
+                }
             }
-        }
         return true
     }
 
@@ -52,18 +58,33 @@ object TvPublisher {
     }
 
     private fun ensureChannel(context: Context, original: BridgeChannel): BridgeChannel? {
-        if (original.channelId > 0L && channelExists(context, original.channelId)) return original
-
-        val appLink = KodiClient.intent(context, original.sourceUri)
-        val channel = Channel.Builder()
+        // The channel app-link simply opens Kodi. Individual PreviewPrograms carry
+        // the exact current Red Light plugin:// route via ACTION_VIEW.
+        val channelValues = Channel.Builder()
             .setType(TvContractCompat.Channels.TYPE_PREVIEW)
             .setDisplayName(original.title)
-            .setAppLinkIntent(appLink)
+            .setAppLinkIntent(KodiClient.intent(context))
             .setInternalProviderId(original.id)
             .build()
+            .toContentValues()
+
+        if (original.channelId > 0L && channelExists(context, original.channelId)) {
+            // Update the visible title/app-link in place. Keeping channelId stable
+            // preserves Projectivy/Android TV channel choices when Red Light moves
+            // or renames the backing route.
+            runCatching {
+                context.contentResolver.update(
+                    TvContractCompat.buildChannelUri(original.channelId),
+                    channelValues,
+                    null,
+                    null,
+                )
+            }
+            return original
+        }
 
         val uri = runCatching {
-            context.contentResolver.insert(TvContractCompat.Channels.CONTENT_URI, channel.toContentValues())
+            context.contentResolver.insert(TvContractCompat.Channels.CONTENT_URI, channelValues)
         }.getOrNull() ?: return null
 
         val withId = original.copy(channelId = ContentUris.parseId(uri))
@@ -88,15 +109,16 @@ object TvPublisher {
             else -> TvContractCompat.PreviewProgramColumns.TYPE_CLIP
         }
         val poster = Uri.parse("android.resource://${context.packageName}/${R.drawable.ic_kodi_bridge}")
+        val nativeUri = KodiClient.rawUri(context, item.uri)
         return PreviewProgram.Builder()
             .setChannelId(channelId)
             .setTitle(item.name)
-            .setDescription(item.mediaType ?: item.category ?: "Kodi")
+            .setDescription(item.mediaType ?: item.category ?: "Red Light")
             .setType(type)
-            .setIntent(KodiClient.intent(context, item.uri))
+            .setIntent(KodiClient.intent(context, nativeUri))
             .setPosterArtUri(poster)
             .setPosterArtAspectRatio(TvContractCompat.PreviewProgramColumns.ASPECT_RATIO_16_9)
-            .setInternalProviderId(item.uri)
+            .setInternalProviderId(nativeUri)
             .setWeight(MAX_PROGRAMS - index)
             .build()
     }
