@@ -1,0 +1,166 @@
+name: Projectivy Native Aerial Rows POC
+
+on:
+  push:
+    branches: [projectivy-native-mod]
+    paths:
+      - '.github/workflows/projectivy-native-poc.yml'
+      - '.github/projectivy-native-poc-trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download and verify Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' \
+            -o /tmp/projectivy.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
+
+      - name: Download apktool and decode
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' \
+            -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/projectivy-decoded
+
+      - name: Add Aerial Rows as a native wallpaper provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('/tmp/projectivy-decoded')
+          bs4 = root / 'smali/bs4.smali'
+          native_id = 'd0c1c218-4906-4ed5-a520-a9aee0b87541'
+
+          provider = r'''.class public final Laer0;
+          .super Lz05;
+          .source "AerialRowsNative"
+
+          .method public constructor <init>()V
+              .locals 1
+              const-string v0, "AIR"
+              invoke-direct {p0, v0}, Lz05;-><init>(Ljava/lang/String;)V
+              return-void
+          .end method
+
+          .method public final A(Ltv/projectivy/plugin/wallpaperprovider/api/Event;)Ljava/util/List;
+              .locals 8
+              invoke-virtual {p1}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
+              new-instance v0, Ltv/projectivy/plugin/wallpaperprovider/api/Wallpaper;
+              const-string v1, "https://sylvan.apple.com/itunes-assets/Aerials116/v4/97/e9/06/97e90616-1227-c670-6118-bd5ae991b43b/comp_GMT026_363A_103NC_E1027_KOREA_JAPAN_NIGHT_v18_SDR_PS_20180907_SDR_2K_AVC.mov"
+              const/4 v2, 0x4
+              const/4 v3, 0x1
+              const-string v4, "East Asia"
+              const-string v5, "Aerial Rows · Apple TV"
+              const/4 v6, 0x0
+              const/4 v7, 0x0
+              invoke-direct/range {v0 .. v7}, Ltv/projectivy/plugin/wallpaperprovider/api/Wallpaper;-><init>(Ljava/lang/String;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+              invoke-static {v0}, Lab0;->I(Ljava/lang/Object;)Ljava/util/List;
+              move-result-object v0
+              return-object v0
+          .end method
+
+          .method public final N()Lta3;
+              .locals 1
+              sget-object v0, Lta3;->vp:Lta3;
+              return-object v0
+          .end method
+
+          .method public final e()I
+              .locals 1
+              const p0, 0x36ee80
+              return p0
+          .end method
+
+          .method public final getId()Ljava/lang/String;
+              .locals 1
+              const-string v0, "d0c1c218-4906-4ed5-a520-a9aee0b87541"
+              return-object v0
+          .end method
+
+          .method public final getName()Ljava/lang/String;
+              .locals 1
+              const-string v0, "Aerial Rows"
+              return-object v0
+          .end method
+          '''
+          (root / 'smali/aer0.smali').write_text(provider)
+
+          text = bs4.read_text()
+
+          old_ids = '''    const-string v0, "e77610c3-d495-4090-b387-fae3faafa718"\n\n    .line 120\n    .line 121\n    const-string v1, "eea7a685-d68f-4fb5-b46e-b4897af5413f"\n\n    .line 122\n    .line 123\n    const-string v2, "773b5948-b4d1-49c5-b994-999210bc8877"\n\n    .line 124\n    .line 125\n    const-string v3, "326618d8-3242-4322-a1b1-9e60e5d3dfc3"\n\n    .line 126\n    .line 127\n    filled-new-array {v2, v3, v0, v1}, [Ljava/lang/String;'''
+          new_ids = f'''    const-string v0, "e77610c3-d495-4090-b387-fae3faafa718"\n\n    .line 120\n    .line 121\n    const-string v1, "eea7a685-d68f-4fb5-b46e-b4897af5413f"\n\n    .line 122\n    .line 123\n    const-string v2, "773b5948-b4d1-49c5-b994-999210bc8877"\n\n    .line 124\n    .line 125\n    const-string v3, "326618d8-3242-4322-a1b1-9e60e5d3dfc3"\n\n    const-string v4, "{native_id}"\n\n    .line 126\n    .line 127\n    filled-new-array {{v4, v2, v3, v0, v1}}, [Ljava/lang/String;'''
+          if text.count(old_ids) != 1:
+              raise SystemExit('native wallpaper ID registry anchor mismatch')
+          text = text.replace(old_ids, new_ids, 1)
+
+          old_ctor = '''    new-instance v10, Lem4;\n\n    .line 123\n    .line 124\n    invoke-direct {v10}, Lem4;-><init>()V\n\n    .line 125\n    .line 126\n    .line 127\n    const/16 v11, 0xa'''
+          new_ctor = '''    new-instance v10, Lem4;\n\n    .line 123\n    .line 124\n    invoke-direct {v10}, Lem4;-><init>()V\n\n    new-instance v15, Laer0;\n\n    invoke-direct {v15}, Laer0;-><init>()V\n\n    .line 125\n    .line 126\n    .line 127\n    const/16 v11, 0xb'''
+          if text.count(old_ctor) != 1:
+              raise SystemExit('native provider constructor anchor mismatch')
+          text = text.replace(old_ctor, new_ctor, 1)
+
+          old_array = '''    const/4 v13, 0x0\n\n    .line 132\n    aput-object v1, v12, v13\n\n    .line 133\n    .line 134\n    const/4 v1, 0x1\n\n    .line 135\n    aput-object v2, v12, v1\n\n    .line 136\n    .line 137\n    const/4 v2, 0x2\n\n    .line 138\n    aput-object v3, v12, v2\n\n    .line 139\n    .line 140\n    const/4 v3, 0x3\n\n    .line 141\n    aput-object v4, v12, v3\n\n    .line 142\n    .line 143\n    const/4 v3, 0x4\n\n    .line 144\n    aput-object v5, v12, v3\n\n    .line 145\n    .line 146\n    const/4 v3, 0x5\n\n    .line 147\n    aput-object v6, v12, v3\n\n    .line 148\n    .line 149\n    const/4 v3, 0x6\n\n    .line 150\n    aput-object v7, v12, v3\n\n    .line 151\n    .line 152\n    const/4 v4, 0x7\n\n    .line 153\n    aput-object v8, v12, v4\n\n    .line 154\n    .line 155\n    const/16 v5, 0x8\n\n    .line 156\n    .line 157\n    aput-object v9, v12, v5\n\n    .line 158\n    .line 159\n    const/16 v5, 0x9\n\n    .line 160\n    .line 161\n    aput-object v10, v12, v5'''
+          new_array = '''    const/4 v13, 0x0\n\n    aput-object v15, v12, v13\n\n    const/4 v14, 0x1\n    aput-object v1, v12, v14\n    const/4 v1, 0x1\n\n    const/4 v14, 0x2\n    aput-object v2, v12, v14\n    const/4 v2, 0x2\n\n    const/4 v14, 0x3\n    aput-object v3, v12, v14\n    const/4 v3, 0x3\n\n    const/4 v14, 0x4\n    aput-object v4, v12, v14\n\n    const/4 v14, 0x5\n    aput-object v5, v12, v14\n\n    const/4 v14, 0x6\n    aput-object v6, v12, v14\n\n    const/4 v3, 0x6\n    const/4 v14, 0x7\n    aput-object v7, v12, v14\n\n    const/4 v4, 0x7\n    const/16 v14, 0x8\n    aput-object v8, v12, v14\n\n    const/16 v5, 0x8\n    const/16 v14, 0x9\n    aput-object v9, v12, v14\n\n    const/16 v5, 0x9\n    const/16 v14, 0xa\n    aput-object v10, v12, v14'''
+          if text.count(old_array) != 1:
+              raise SystemExit('native provider array anchor mismatch')
+          text = text.replace(old_array, new_array, 1)
+          bs4.write_text(text)
+
+          print('Aerial Rows native provider injected:', native_id)
+          PY
+
+      - name: Rebuild Projectivy APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-native-unsigned.apk
+
+      - name: Align and sign test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          keytool -genkeypair -v \
+            -keystore /tmp/aerialrows-projectivy-debug.jks \
+            -storepass android -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname 'CN=Aerial Rows Projectivy Test,O=Aerial Rows,C=GB'
+          "$BUILD_TOOLS/zipalign" -p -f 4 \
+            /tmp/projectivy-native-unsigned.apk \
+            /tmp/Projectivy-4.72-Aerial-Rows-POC-aligned.apk
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks /tmp/aerialrows-projectivy-debug.jks \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out /tmp/Projectivy-4.72-Aerial-Rows-POC.apk \
+            /tmp/Projectivy-4.72-Aerial-Rows-POC-aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-4.72-Aerial-Rows-POC.apk
+          sha256sum /tmp/Projectivy-4.72-Aerial-Rows-POC.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Aerial-Rows-POC
+          path: /tmp/Projectivy-4.72-Aerial-Rows-POC.apk
+          retention-days: 7
