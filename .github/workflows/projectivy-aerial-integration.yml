@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/projectivy-aerial-integration.yml'
       - '.github/projectivy-aerial-integration.py'
+      - '.github/projectivy-aerial-enhancements.py'
   workflow_dispatch:
 
 permissions:
@@ -34,7 +35,9 @@ jobs:
         run: java -jar /tmp/apktool.jar d -f -r /tmp/projectivy.apk -o /tmp/projectivy-decoded
 
       - name: Integrate Aerial Rows
-        run: python3 .github/projectivy-aerial-integration.py
+        run: |
+          python3 .github/projectivy-aerial-integration.py
+          python3 .github/projectivy-aerial-enhancements.py
 
       - name: Rebuild Projectivy
         run: java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-aerial-unsigned.apk
