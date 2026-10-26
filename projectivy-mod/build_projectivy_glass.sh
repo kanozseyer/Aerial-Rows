@@ -81,8 +81,8 @@ UNSIGNED="$WORK/projectivy-glass-unsigned.apk"
 ALIGNED="$WORK/projectivy-glass-aligned.apk"
 OUTPUT="$DIST_DIR/ProjectivyLauncher-4.72-liquid-glass.apk"
 
-echo "Decoding…"
-java -jar "$APKTOOL_JAR" d -f "$INPUT_APK" -o "$DECODED" >/dev/null
+echo "Decoding code only while preserving Projectivy resources…"
+java -jar "$APKTOOL_JAR" d -f -r "$INPUT_APK" -o "$DECODED" >/dev/null
 
 echo "Applying liquid-glass dock patch…"
 python3 "$MOD_DIR/patch_ox3.py" "$DECODED" \
