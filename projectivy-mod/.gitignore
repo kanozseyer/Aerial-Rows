@@ -1,0 +1,5 @@
+dist/
+*.apk
+*.jks
+*.keystore
+signing.pass
