@@ -57,7 +57,8 @@ object RedLightSync {
             val nativeUri = KodiClient.rawUri(context, node.entry.uri)
             if (!visited.add(nativeUri)) continue
 
-            classify(node.entry, node.trail)?.let { section ->
+            val section = classify(node.entry, node.trail)
+            if (section != null) {
                 discovered.putIfAbsent(section.semanticKey, section)
                 continue
             }
@@ -66,8 +67,6 @@ object RedLightSync {
             containerScans++
             val children = KodiClient.list(context, nativeUri)
             if (children == null) {
-                // Kodi, Red Light or an authenticated provider was temporarily busy.
-                // Do not age-out previously working channels on a partial scan.
                 completeDiscovery = false
                 continue
             }
@@ -84,13 +83,13 @@ object RedLightSync {
 
         var synced = 0
         val seenKeys = mutableSetOf<String>()
-        discovered.values.forEach { section ->
-            seenKeys += section.semanticKey
+        discovered.values.forEach { item ->
+            seenKeys += item.semanticKey
             val channel = BridgePrefs.upsert(
                 context = context,
-                semanticKey = section.semanticKey,
-                title = section.title,
-                sourceUri = KodiClient.rawUri(context, section.entry.uri),
+                semanticKey = item.semanticKey,
+                title = item.title,
+                sourceUri = KodiClient.rawUri(context, item.entry.uri),
             )
             if (TvPublisher.sync(context, channel)) synced++
         }
@@ -104,11 +103,6 @@ object RedLightSync {
         return RedLightSyncResult(true, discovered.size, synced)
     }
 
-    /**
-     * Resolve by route semantics first, then human label. Route matching survives
-     * user menu moves/renames; label matching gives us a fallback when Red Light
-     * changes an internal route name in a future release.
-     */
     private fun classify(entry: KodiEntry, trail: List<String>): DiscoveredSection? {
         val uri = runCatching { Uri.parse(entry.uri) }.getOrNull()
         val mode = uri?.getQueryParameter("mode").orEmpty()
@@ -120,7 +114,6 @@ object RedLightSync {
         fun section(key: String, defaultTitle: String = entry.name.trim()): DiscoveredSection =
             DiscoveredSection("redlight:$key", "Red Light · $defaultTitle", entry)
 
-        // Red Light single-episode / progress shelves.
         if (mode == "build_continue_watching" || label == "continue watching")
             return section("continue_watching", "Continue Watching")
         if (mode == "build_next_episode" || label.startsWith("next episodes") || label.startsWith("anime next episodes")) {
@@ -137,7 +130,6 @@ object RedLightSync {
         if (mode == "build_recently_watched_episode" || label.contains("recently watched episodes"))
             return section(if (anime) "recently_watched_episodes:anime" else "recently_watched_episodes")
 
-        // Red Light's movie/show progress shelves.
         when (action) {
             "recent_watched_movies" -> return section("recently_watched:movies", "Recently Watched Movies")
             "recent_watched_tvshows" -> if (!anime) return section("recently_watched:shows", "Recently Watched TV Shows")
@@ -145,8 +137,6 @@ object RedLightSync {
             "in_progress_tvshows" -> if (!anime) return section("in_progress:shows", "TV Shows In Progress")
         }
 
-        // Signed-in Trakt shelves. Media type is inferred from the build route so
-        // the identity remains stable even when the visible label is customized.
         val media = when (mode) {
             "build_movie_list" -> "movies"
             "build_tvshow_list" -> if (anime) "anime" else "shows"
@@ -163,8 +153,6 @@ object RedLightSync {
         if (mode == "build_my_calendar" || label == "calendar")
             return section("trakt:calendar", "Trakt Calendar")
 
-        // Every personal Trakt list gets its own stable Projectivy channel. Prefer
-        // Trakt list_id, then user/slug, then a deterministic label/trail hash.
         if (mode == "trakt.list.build_trakt_list") {
             val listId = uri?.getQueryParameter("list_id").orEmpty()
             val user = uri?.getQueryParameter("user").orEmpty()
@@ -177,8 +165,6 @@ object RedLightSync {
             return section("trakt:list:$identity")
         }
 
-        // Label fallback for future Red Light releases that rename an internal
-        // route while retaining the user's visible shelf name.
         return when {
             label == "movies watchlist" -> section("trakt:watchlist:movies", "Movies Watchlist")
             label == "tv shows watchlist" || label == "tv show watchlist" -> section("trakt:watchlist:shows", "TV Shows Watchlist")
@@ -188,11 +174,6 @@ object RedLightSync {
         }
     }
 
-    /**
-     * Only walk Red Light containers that can lead to useful media shelves. This
-     * keeps discovery cheap and avoids invoking Tools/Search/Services menus or
-     * hammering remote APIs simply to learn the menu tree.
-     */
     private fun shouldTraverse(entry: KodiEntry, trail: List<String>): Boolean {
         val uri = runCatching { Uri.parse(entry.uri) }.getOrNull()
         val mode = uri?.getQueryParameter("mode").orEmpty()
@@ -215,8 +196,6 @@ object RedLightSync {
             )
         ) return true
 
-        // This is Red Light's live list-of-Trakt-lists container. Traversing it
-        // discovers lists the user creates later without any bridge update.
         if (mode == "trakt.list.get_trakt_lists" &&
             uri?.getQueryParameter("list_type") == "my_lists"
         ) return true
