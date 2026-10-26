@@ -1,0 +1,75 @@
+name: Projectivy Native Decode
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-native-mod]
+    paths:
+      - '.github/workflows/projectivy-native-decode.yml'
+      - '.github/projectivy-native-decode-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download and verify official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' \
+            -o /tmp/projectivy.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
+
+      - name: Decode with apktool
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' \
+            -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/projectivy-decoded
+
+      - name: Produce focused wallpaper reference report
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/projectivy-report.txt
+          : > "$OUT"
+          for pattern in \
+            'tv.projectivy.plugin.WALLPAPER_PROVIDER' \
+            'WALLPAPER_PROVIDER_UPDATED' \
+            'settings_wallpaper' \
+            'wallpaper_provider' \
+            'WallpaperProvider' \
+            'premium' \
+            'Premium'; do
+            printf '\n===== %s =====\n' "$pattern" >> "$OUT"
+            grep -RIn --binary-files=without-match --include='*.smali' --include='*.xml' --include='*.json' "$pattern" /tmp/projectivy-decoded 2>/dev/null | head -n 500 >> "$OUT" || true
+          done
+
+      - name: Package decoded project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/projectivy-report.txt /tmp/projectivy-decoded/PROJECTIVY_WALLPAPER_REPORT.txt
+          cd /tmp
+          zip -q -r projectivy-4.72-decoded.zip projectivy-decoded
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: projectivy-4.72-decoded
+          path: /tmp/projectivy-4.72-decoded.zip
+          compression-level: 0
+          retention-days: 7
