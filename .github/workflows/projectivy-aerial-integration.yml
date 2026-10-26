@@ -54,14 +54,32 @@ jobs:
           echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
           curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
 
-      - name: Decode Projectivy code and manifest with original resources intact
+      - name: Fully decode Projectivy resources and manifest
         shell: bash
         run: |
           set -euo pipefail
-          java -jar /tmp/apktool.jar d -f -r --force-manifest /tmp/projectivy.apk -o /tmp/projectivy-decoded
-          file /tmp/projectivy-decoded/AndroidManifest.xml
-          head -c 64 /tmp/projectivy-decoded/AndroidManifest.xml
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/projectivy-decoded
           grep -q '<manifest' /tmp/projectivy-decoded/AndroidManifest.xml
+
+      - name: Repair Material state attrs for Apktool rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          values = Path('/tmp/projectivy-decoded/res/values')
+          values.mkdir(parents=True, exist_ok=True)
+          p = values / 'attrs.xml'
+          text = p.read_text() if p.exists() else '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+          additions = []
+          for name in ('state_liftable', 'state_lifted', 'state_swiped'):
+              if f'name="{name}"' not in text:
+                  additions.append(f'    <attr name="{name}" format="boolean" />')
+          if additions:
+              text = text.replace('</resources>', '\n'.join(additions) + '\n</resources>')
+              p.write_text(text)
+          print('Material attrs added:', additions)
+          PY
 
       - name: Add Aerial catalogue asset
         shell: bash
