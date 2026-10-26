@@ -19,7 +19,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Download Projectivy and JADX
+      - name: Download Projectivy tools
         shell: bash
         run: |
           set -euo pipefail
@@ -27,40 +27,22 @@ jobs:
           curl -fL --retry 3 'https://github.com/skylot/jadx/releases/download/v1.5.6/jadx-1.5.6.zip' -o /tmp/jadx.zip
           unzip -q /tmp/jadx.zip -d /tmp/jadx
           chmod +x /tmp/jadx/bin/jadx
-      - name: Decompile backup crypto and channel editor code
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+      - name: Decompile probes
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/jadx-out /tmp/probe && mkdir -p /tmp/probe
+          rm -rf /tmp/jadx-out /tmp/apk-out /tmp/probe && mkdir -p /tmp/probe
           /tmp/jadx/bin/jadx --no-res --show-bad-code -d /tmp/jadx-out /tmp/projectivy.apk >/tmp/jadx.log 2>&1 || true
-
-          grep -RIl -E '\.plbackup|BackupParams|ImportSettingsActivity|exportAppearanceSettings|appearance\.plbackup' /tmp/jadx-out/sources | sort > /tmp/probe/matches.txt || true
-          test -f /tmp/jadx-out/sources/defpackage/s71.java && echo /tmp/jadx-out/sources/defpackage/s71.java >> /tmp/probe/matches.txt
-          sort -u /tmp/probe/matches.txt -o /tmp/probe/matches.txt
-          while IFS= read -r f; do
-            [ -f "$f" ] || continue
-            rel="${f#/tmp/jadx-out/sources/}"
-            mkdir -p "/tmp/probe/$(dirname "$rel")"
-            cp "$f" "/tmp/probe/$rel"
-          done < /tmp/probe/matches.txt
-
-          grep -RIn -E 'AES/CBC/PKCS5Padding|Cipher\.getInstance|SecretKeySpec|IvParameterSpec|plbackup|BackupParams' /tmp/jadx-out/sources > /tmp/probe/crypto-hits.txt || true
-          grep -RIn -E 'TvContract\.Channels|TvContract\.PreviewPrograms|internal_provider_id|getApplicationLabel|getApplicationInfo|applicationInfo\.packageName|packageName' /tmp/jadx-out/sources/com/spocky /tmp/jadx-out/sources/defpackage > /tmp/probe/channel-hits.txt || true
-          grep -RIn -E 'e70\.b\(|e70\.a\(|m60|package_name.*display_name|display_name.*package_name' /tmp/jadx-out/sources/com/spocky /tmp/jadx-out/sources/defpackage > /tmp/probe/channel-ref-hits.txt || true
-
-          {
-            grep -RIl -E 'TvContract\.Channels|internal_provider_id|getApplicationLabel' /tmp/jadx-out/sources/com/spocky /tmp/jadx-out/sources/defpackage || true
-            grep -RIl -E 'e70\.b\(|e70\.a\(|m60' /tmp/jadx-out/sources/com/spocky /tmp/jadx-out/sources/defpackage || true
-          } | sort -u | head -140 > /tmp/probe/channel-files.txt
-          while IFS= read -r f; do
-            [ -f "$f" ] || continue
-            rel="${f#/tmp/jadx-out/sources/}"
-            mkdir -p "/tmp/probe/channel-src/$(dirname "$rel")"
-            cp "$f" "/tmp/probe/channel-src/$rel"
-          done < /tmp/probe/channel-files.txt
-
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/apk-out >/tmp/apktool.log 2>&1
+          find /tmp/apk-out -name 'g70.smali' -print -exec cp '{}' /tmp/probe/g70.smali \;
+          find /tmp/apk-out -name 'e70.smali' -print -exec cp '{}' /tmp/probe/e70.smali \;
+          find /tmp/apk-out -name 'm60.smali' -print -exec cp '{}' /tmp/probe/m60.smali \;
+          cp /tmp/jadx-out/sources/defpackage/g70.java /tmp/probe/g70.java
+          cp /tmp/jadx-out/sources/defpackage/e70.java /tmp/probe/e70.java
+          cp /tmp/jadx-out/sources/defpackage/m60.java /tmp/probe/m60.java
           cp /tmp/jadx.log /tmp/probe/jadx.log
-          find /tmp/probe -type f -maxdepth 14 -print
+          cp /tmp/apktool.log /tmp/probe/apktool.log
       - uses: actions/upload-artifact@v4
         with:
           name: projectivy-backup-probe
