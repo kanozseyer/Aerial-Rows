@@ -46,9 +46,12 @@ jobs:
 
           grep -RIn -E 'AES/CBC/PKCS5Padding|Cipher\.getInstance|SecretKeySpec|IvParameterSpec|plbackup|BackupParams' /tmp/jadx-out/sources > /tmp/probe/crypto-hits.txt || true
           grep -RIn -E 'TvContract\.Channels|TvContract\.PreviewPrograms|internal_provider_id|getApplicationLabel|getApplicationInfo|applicationInfo\.packageName|packageName' /tmp/jadx-out/sources/com/spocky /tmp/jadx-out/sources/defpackage > /tmp/probe/channel-hits.txt || true
+          grep -RIn -E 'e70\.b\(|e70\.a\(|m60|package_name.*display_name|display_name.*package_name' /tmp/jadx-out/sources/com/spocky /tmp/jadx-out/sources/defpackage > /tmp/probe/channel-ref-hits.txt || true
 
-          # Copy a focused set of channel/provider candidates for inspection.
-          grep -RIl -E 'TvContract\.Channels|internal_provider_id|getApplicationLabel' /tmp/jadx-out/sources/com/spocky /tmp/jadx-out/sources/defpackage | head -80 > /tmp/probe/channel-files.txt || true
+          {
+            grep -RIl -E 'TvContract\.Channels|internal_provider_id|getApplicationLabel' /tmp/jadx-out/sources/com/spocky /tmp/jadx-out/sources/defpackage || true
+            grep -RIl -E 'e70\.b\(|e70\.a\(|m60' /tmp/jadx-out/sources/com/spocky /tmp/jadx-out/sources/defpackage || true
+          } | sort -u | head -140 > /tmp/probe/channel-files.txt
           while IFS= read -r f; do
             [ -f "$f" ] || continue
             rel="${f#/tmp/jadx-out/sources/}"
