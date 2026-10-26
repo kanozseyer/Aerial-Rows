@@ -130,11 +130,11 @@ jobs:
           print('Aerial Rows native provider injected:', native_id)
           PY
 
-      - name: Rebuild Projectivy APK
+      - name: Rebuild Projectivy APK preserving original resources
         shell: bash
         run: |
           set -euo pipefail
-          java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-native-unsigned.apk
+          java -jar /tmp/apktool.jar b -r /tmp/projectivy-decoded -o /tmp/projectivy-native-unsigned.apk
 
       - name: Align and sign test APK
         shell: bash
