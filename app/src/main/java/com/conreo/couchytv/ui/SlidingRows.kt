@@ -541,6 +541,15 @@ private fun AppCategoryRow(
     val itemFocus = remember(rowId, itemIds) { itemIds.associateWith { FocusRequester() } }
     val horizontalState = rememberLazyListState()
 
+    LaunchedEffect(movePkg, row.apps) {
+        val pkg = movePkg ?: return@LaunchedEffect
+        val index = row.apps.indexOfFirst { it.pkg == pkg }
+        if (index < 0) return@LaunchedEffect
+        horizontalState.scrollToItem(index)
+        withFrameNanos { }
+        runCatching { moveFocus.requestFocus() }
+    }
+
     LaunchedEffect(restoreItemId, itemIds) {
         val target = restoreItemId ?: return@LaunchedEffect
         val index = itemIds.indexOf(target)

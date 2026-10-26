@@ -55,6 +55,9 @@ fun WallpaperHost(
     val aerialCandidate = plan.candidates
         .filterIsInstance<WallpaperCandidate.BuiltinAerials>()
         .firstOrNull()
+    val onlineCandidate = plan.candidates
+        .filterIsInstance<WallpaperCandidate.OnlinePhoto>()
+        .firstOrNull()
     val photoCandidate = WallpaperCandidate.CustomPhoto.takeIf { it in plan.candidates }
 
     val photoProvider = remember(context) { createLocalPhotoProvider(context) }
@@ -77,6 +80,33 @@ fun WallpaperHost(
                 )
             } else {
                 WallpaperEvent.SourceRecovered(WallpaperCandidate.CustomPhoto)
+            }
+        )
+    }
+
+    val onlineProvider = remember(context) { createWikimediaOnlinePhotoProvider(context) }
+    var onlineAsset by remember { mutableStateOf<PhotoWallpaperAsset?>(null) }
+
+    LaunchedEffect(onlineCandidate, networkConnected) {
+        val candidate = onlineCandidate ?: run {
+            onlineAsset = null
+            return@LaunchedEffect
+        }
+        val asset = onlineProvider.load(
+            sourceId = candidate.sourceId,
+            revision = candidate.revision,
+            networkConnected = networkConnected,
+        )
+        onlineAsset = asset
+        engine = engine.reduce(
+            if (asset != null) {
+                WallpaperEvent.SourceRecovered(candidate)
+            } else {
+                WallpaperEvent.SourceUnavailable(
+                    candidate,
+                    if (networkConnected) WallpaperUnavailableReason.LOAD_FAILED
+                    else WallpaperUnavailableReason.NETWORK,
+                )
             }
         )
     }
@@ -223,6 +253,20 @@ fun WallpaperHost(
                 )
             }
 
+            is WallpaperCandidate.OnlinePhoto -> {
+                val image = onlineAsset?.sharp
+                if (image != null) {
+                    Image(
+                        bitmap = image,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize().background(presetBrush))
+                }
+            }
+
             WallpaperCandidate.CustomPhoto -> {
                 val image = photoAsset?.sharp
                 if (image != null) {
@@ -250,7 +294,12 @@ fun WallpaperHost(
             label = "dockOverlay",
         )
         if (overlayAlpha > 0.01f) {
-            photoAsset?.blurred?.let { blurred ->
+            val selectedBlurred = when (selected) {
+                is WallpaperCandidate.OnlinePhoto -> onlineAsset?.blurred
+                WallpaperCandidate.CustomPhoto -> photoAsset?.blurred
+                else -> null
+            }
+            selectedBlurred?.let { blurred ->
                 Image(
                     bitmap = blurred,
                     contentDescription = null,

@@ -35,6 +35,12 @@ data class LauncherConfig(
     val newInstallPolicy: NewInstallPolicy = NewInstallPolicy.FIRST_SECTION,
     val wallpaper: Int = 1, // Aurora
     val useCustomWallpaper: Boolean = false,
+    /** Static online wallpaper downloaded/cached on demand. */
+    val useOnlineWallpaper: Boolean = false,
+    /** Extensible provider/source ID; invalid values normalize to the photo collection. */
+    val onlineWallpaperSource: String = ONLINE_WALLPAPER_WIKIMEDIA_PD_PHOTOS,
+    /** Incremented by the user-facing Next photo action; persisted so refresh survives recreation. */
+    val onlineWallpaperRevision: Int = 0,
     /** video wallpaper: persisted content-URI of a local video, looped muted */
     val videoUri: String = "",
     val useVideoWallpaper: Boolean = false,
@@ -66,6 +72,8 @@ data class LauncherConfig(
     val hiddenTvChannels: Set<String> = emptySet(),
     /** Optional per-channel item limit, keyed by TvChannelRow.key. */
     val channelItemLimits: Map<String, Int> = emptyMap(),
+    /** Programme identities hidden by the user, keyed by stable TV channel key. */
+    val hiddenTvPrograms: Map<String, Set<String>> = emptyMap(),
 
     // ----- home row organization -----
     /**
@@ -125,6 +133,13 @@ const val PANEL_SOLID = 1
 const val PANEL_LIQUID_GLASS = 2
 
 val ALL_AERIAL_SOURCES = setOf("A", "Z", "C1", "C2")
+
+const val ONLINE_WALLPAPER_WIKIMEDIA_PD_PHOTOS = "wikimedia_pd_photos"
+const val ONLINE_WALLPAPER_WIKIMEDIA_PD_ART = "wikimedia_pd_art"
+val ALL_ONLINE_WALLPAPER_SOURCES = setOf(
+    ONLINE_WALLPAPER_WIKIMEDIA_PD_PHOTOS,
+    ONLINE_WALLPAPER_WIKIMEDIA_PD_ART,
+)
 
 /** Status bar date formats (SimpleDateFormat patterns); index 0 = off. */
 val DATE_FORMATS = listOf("", "EEE d", "EEE d MMM", "d MMM yyyy", "dd/MM", "MM/dd", "yyyy-MM-dd")

@@ -86,6 +86,9 @@ object WallpaperSettingIds {
     val GradientMode = SettingId("wallpaper.gradient_mode")
     val GradientPreset = SettingId("wallpaper.gradient_preset")
     val CustomPhoto = SettingId("wallpaper.custom_photo")
+    val OnlinePhoto = SettingId("wallpaper.online_photo")
+    val OnlinePhotoSource = SettingId("wallpaper.online_photo.source")
+    val OnlinePhotoNext = SettingId("wallpaper.online_photo.next")
     val BuiltinAerials = SettingId("wallpaper.builtin_aerials")
     val AerialApple = SettingId("wallpaper.aerial.apple")
     val AerialAmazon = SettingId("wallpaper.aerial.amazon")
@@ -99,6 +102,9 @@ object WallpaperSettingIds {
         GradientMode,
         GradientPreset,
         CustomPhoto,
+        OnlinePhoto,
+        OnlinePhotoSource,
+        OnlinePhotoNext,
         BuiltinAerials,
         AerialApple,
         AerialAmazon,

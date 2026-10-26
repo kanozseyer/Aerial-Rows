@@ -13,6 +13,9 @@ class WallpaperPlanTest {
             builtinSources = linkedSetOf("A", "C1"),
             useVideoWallpaper = true,
             videoUri = "content://wallpaper/video",
+            useOnlineWallpaper = true,
+            onlineWallpaperSource = com.conreo.couchytv.data.ONLINE_WALLPAPER_WIKIMEDIA_PD_PHOTOS,
+            onlineWallpaperRevision = 7,
             useCustomWallpaper = true,
             wallpaper = 3,
             videoSpeed = 4,
@@ -24,6 +27,10 @@ class WallpaperPlanTest {
             listOf(
                 WallpaperCandidate.BuiltinAerials(linkedSetOf("A", "C1")),
                 WallpaperCandidate.LocalVideo("content://wallpaper/video"),
+                WallpaperCandidate.OnlinePhoto(
+                    com.conreo.couchytv.data.ONLINE_WALLPAPER_WIKIMEDIA_PD_PHOTOS,
+                    7,
+                ),
                 WallpaperCandidate.CustomPhoto,
                 WallpaperCandidate.Preset(3),
             ),
@@ -39,6 +46,8 @@ class WallpaperPlanTest {
             builtinSources = setOf("UNKNOWN"),
             useVideoWallpaper = true,
             videoUri = "   ",
+            useOnlineWallpaper = true,
+            onlineWallpaperSource = "invalid-online-source",
             useCustomWallpaper = false,
             wallpaper = 2,
         )

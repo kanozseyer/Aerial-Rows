@@ -39,6 +39,7 @@ import com.conreo.couchytv.data.CategoryCfg
 import com.conreo.couchytv.data.ConfigStore
 import com.conreo.couchytv.data.LauncherConfig
 import com.conreo.couchytv.data.TvChannelRow
+import com.conreo.couchytv.data.tvProgramStableKey
 import kotlinx.coroutines.launch
 
 /**
@@ -224,10 +225,12 @@ private fun ChannelContentsEditor(
     store: ConfigStore,
 ) {
     val scope = rememberCoroutineScope()
-    val hidden = channel.key in config.hiddenTvChannels
+    val hidden = channel.isHiddenBy(config.hiddenTvChannels)
     val limits = listOf(4, 6, 8, 10, 12, 16, 20, 24, 30)
-    val currentLimit = config.channelItemLimits[channel.key] ?: config.channelItemLimit
+    val currentLimit = channel.configuredItemLimit(config.channelItemLimits, config.channelItemLimit)
     val currentIndex = limits.indices.minByOrNull { kotlin.math.abs(limits[it] - currentLimit) } ?: 4
+    val hiddenProgramKeys = config.hiddenTvPrograms[channel.key].orEmpty() +
+        config.hiddenTvPrograms[channel.legacyKey].orEmpty()
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         QuickToggleRow(
@@ -237,10 +240,13 @@ private fun ChannelContentsEditor(
             onClick = {
                 scope.launch {
                     store.update { cfg ->
+                        val aliases = setOf(channel.key, channel.legacyKey)
                         cfg.copy(
-                            hiddenTvChannels = if (channel.key in cfg.hiddenTvChannels)
-                                cfg.hiddenTvChannels - channel.key
-                            else cfg.hiddenTvChannels + channel.key
+                            hiddenTvChannels = if (channel.isHiddenBy(cfg.hiddenTvChannels)) {
+                                cfg.hiddenTvChannels - aliases
+                            } else {
+                                (cfg.hiddenTvChannels - channel.legacyKey) + channel.key
+                            },
                         )
                     }
                 }
@@ -248,23 +254,76 @@ private fun ChannelContentsEditor(
         )
         QuickSelectorRow(
             title = "Cards shown",
-            subtitle = "Provider order is preserved; this limits how much of the channel is displayed",
+            subtitle = "Left/Right changes this row without creating a second focus stop in Channels settings",
             value = limits[currentIndex].toString(),
             current = currentIndex,
             steps = limits.size,
             onSelect = { i ->
                 scope.launch {
                     store.update { cfg ->
-                        cfg.copy(channelItemLimits = cfg.channelItemLimits + (channel.key to limits[i]))
+                        cfg.copy(
+                            channelItemLimits = (cfg.channelItemLimits - channel.legacyKey) +
+                                (channel.key to limits[i]),
+                        )
                     }
                 }
             },
         )
         Text(
-            "The provider app controls which programmes belong to this channel and their order.",
-            style = MaterialTheme.typography.bodySmall,
+            "CHANNEL CONTENT  •  OK toggles an item",
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 10.dp, top = 8.dp),
+        )
+        if (channel.programs.isEmpty()) {
+            Text(
+                "This provider is not currently publishing any readable programmes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            )
+        } else {
+            LazyColumn(
+                Modifier.fillMaxWidth().height(280.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                itemsIndexed(channel.programs, key = { _, item -> tvProgramStableKey(item, channel.packageName) }) { _, item ->
+                    val programKey = tvProgramStableKey(item, channel.packageName)
+                    val visible = programKey !in hiddenProgramKeys
+                    ListItem(
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                store.update { cfg ->
+                                    val existing = cfg.hiddenTvPrograms[channel.key].orEmpty() +
+                                        cfg.hiddenTvPrograms[channel.legacyKey].orEmpty()
+                                    val next = if (programKey in existing) existing - programKey else existing + programKey
+                                    val migrated = cfg.hiddenTvPrograms - channel.legacyKey - channel.key
+                                    cfg.copy(
+                                        hiddenTvPrograms = if (next.isEmpty()) migrated
+                                        else migrated + (channel.key to next),
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                        headlineContent = { Text(item.title, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                        supportingContent = if (item.subtitle.isBlank()) null else ({
+                            Text(item.subtitle, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }),
+                        trailingContent = { CheckMark(visible) },
+                        colors = androidx.tv.material3.ListItemDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                        ),
+                    )
+                }
+            }
+        }
+        Text(
+            "The provider still controls which programmes it publishes and their source order; Aerial Rows can hide individual published cards.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 10.dp, top = 4.dp),
         )
     }
 }
