@@ -8,6 +8,9 @@ object ConfigNormalizer {
     ): LauncherConfig {
         val validSources = config.builtinSources.filterTo(linkedSetOf()) { it in ALL_AERIAL_SOURCES }
         val sources = if (validSources.isEmpty()) ALL_AERIAL_SOURCES else validSources
+        val onlineWallpaperSource = config.onlineWallpaperSource
+            .takeIf { it in ALL_ONLINE_WALLPAPER_SOURCES }
+            ?: ONLINE_WALLPAPER_WIKIMEDIA_PD_PHOTOS
 
         val categories = config.categories
             .asSequence()
@@ -36,6 +39,8 @@ object ConfigNormalizer {
         return config.copy(
             categories = categories,
             builtinSources = sources,
+            onlineWallpaperSource = onlineWallpaperSource,
+            onlineWallpaperRevision = config.onlineWallpaperRevision.coerceAtLeast(0),
             rowsTopMarginPercent = config.rowsTopMarginPercent.coerceIn(0, 50),
             watchNextPerProviderLimit = config.watchNextPerProviderLimit.coerceIn(1, 30),
             excludedWatchNextProviders = excludedWatchNextProviders,

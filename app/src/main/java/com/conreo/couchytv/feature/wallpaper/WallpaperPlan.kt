@@ -1,6 +1,7 @@
 package com.conreo.couchytv.feature.wallpaper
 
 import com.conreo.couchytv.data.ALL_AERIAL_SOURCES
+import com.conreo.couchytv.data.ALL_ONLINE_WALLPAPER_SOURCES
 import com.conreo.couchytv.data.LauncherConfig
 
 /**
@@ -35,6 +36,14 @@ sealed interface WallpaperCandidate {
         }
     }
 
+    /** Cached on-demand online still image. Revision changes only for explicit Next. */
+    data class OnlinePhoto(val sourceId: String, val revision: Int) : WallpaperCandidate {
+        init {
+            require(sourceId in ALL_ONLINE_WALLPAPER_SOURCES)
+            require(revision >= 0)
+        }
+    }
+
     /** App-private wallpaper.jpg. Availability/decoding is checked by the adapter. */
     data object CustomPhoto : WallpaperCandidate
 
@@ -55,6 +64,17 @@ object WallpaperPlanResolver {
 
             if (config.useVideoWallpaper && config.videoUri.isNotBlank()) {
                 add(WallpaperCandidate.LocalVideo(config.videoUri.trim()))
+            }
+
+            val onlineSource = config.onlineWallpaperSource
+                .takeIf { it in ALL_ONLINE_WALLPAPER_SOURCES }
+            if (config.useOnlineWallpaper && onlineSource != null) {
+                add(
+                    WallpaperCandidate.OnlinePhoto(
+                        sourceId = onlineSource,
+                        revision = config.onlineWallpaperRevision.coerceAtLeast(0),
+                    )
+                )
             }
 
             if (config.useCustomWallpaper) {

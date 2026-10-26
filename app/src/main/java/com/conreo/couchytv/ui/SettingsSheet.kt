@@ -104,6 +104,8 @@ import com.conreo.couchytv.data.LAYOUT_SLIDING_ROWS
 import com.conreo.couchytv.data.LauncherConfig
 import com.conreo.couchytv.data.PANEL_CLEAR
 import com.conreo.couchytv.data.PANEL_LIQUID_GLASS
+import com.conreo.couchytv.data.ONLINE_WALLPAPER_WIKIMEDIA_PD_ART
+import com.conreo.couchytv.data.ONLINE_WALLPAPER_WIKIMEDIA_PD_PHOTOS
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.launch
@@ -166,6 +168,7 @@ fun SettingsSheet(
                 store.update {
                     it.copy(
                         useCustomWallpaper = true,
+                        useOnlineWallpaper = false,
                         useVideoWallpaper = false,
                         useBuiltinAerials = false,
                     )
@@ -192,6 +195,7 @@ fun SettingsSheet(
                         videoUri = uri.toString(),
                         useVideoWallpaper = true,
                         useCustomWallpaper = false,
+                        useOnlineWallpaper = false,
                         useBuiltinAerials = false,
                     )
                 }
@@ -267,6 +271,7 @@ fun SettingsSheet(
                                         useBuiltinAerials = true,
                                         useVideoWallpaper = false,
                                         useCustomWallpaper = false,
+                                        useOnlineWallpaper = false,
                                     )
                                 }
                             }
@@ -278,6 +283,45 @@ fun SettingsSheet(
                                     val next = if (key in cfg.builtinSources) cfg.builtinSources - key
                                     else cfg.builtinSources + key
                                     if (next.isEmpty()) cfg else cfg.copy(builtinSources = next)
+                                }
+                            }
+                        },
+                        onSelectOnlinePhoto = {
+                            scope.launch {
+                                store.update {
+                                    it.copy(
+                                        useOnlineWallpaper = true,
+                                        useCustomWallpaper = false,
+                                        useVideoWallpaper = false,
+                                        useBuiltinAerials = false,
+                                    )
+                                }
+                            }
+                        },
+                        onSelectOnlineSource = { sourceId ->
+                            scope.launch {
+                                store.update {
+                                    it.copy(
+                                        onlineWallpaperSource = sourceId,
+                                        onlineWallpaperRevision = it.onlineWallpaperRevision + 1,
+                                        useOnlineWallpaper = true,
+                                        useCustomWallpaper = false,
+                                        useVideoWallpaper = false,
+                                        useBuiltinAerials = false,
+                                    )
+                                }
+                            }
+                        },
+                        onNextOnlinePhoto = {
+                            scope.launch {
+                                store.update {
+                                    it.copy(
+                                        onlineWallpaperRevision = it.onlineWallpaperRevision + 1,
+                                        useOnlineWallpaper = true,
+                                        useCustomWallpaper = false,
+                                        useVideoWallpaper = false,
+                                        useBuiltinAerials = false,
+                                    )
                                 }
                             }
                         },
@@ -299,6 +343,7 @@ fun SettingsSheet(
                                     it.copy(
                                         wallpaper = i,
                                         useCustomWallpaper = false,
+                                        useOnlineWallpaper = false,
                                         useVideoWallpaper = false,
                                         useBuiltinAerials = false,
                                     )
@@ -1538,6 +1583,9 @@ private fun WallpaperScreen(
     onFocus: (SettingId) -> Unit,
     onSelectBuiltinAerials: () -> Unit,
     onSelectBuiltinSource: (Int) -> Unit,
+    onSelectOnlinePhoto: () -> Unit,
+    onSelectOnlineSource: (String) -> Unit,
+    onNextOnlinePhoto: () -> Unit,
     onSetScrim: (Int) -> Unit,
     onSetSpeed: (Int) -> Unit,
     onPreset: (Int) -> Unit,
@@ -1554,13 +1602,18 @@ private fun WallpaperScreen(
             modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
         )
         val staticActive = !config.useBuiltinAerials &&
-            !config.useVideoWallpaper && !config.useCustomWallpaper
-        val wallpaperFocusIds = remember(staticActive, config.useBuiltinAerials) {
+            !config.useVideoWallpaper && !config.useCustomWallpaper && !config.useOnlineWallpaper
+        val wallpaperFocusIds = remember(staticActive, config.useBuiltinAerials, config.useOnlineWallpaper) {
             buildList {
                 add(WallpaperSettingIds.Scrim)
                 add(WallpaperSettingIds.GradientMode)
                 if (staticActive) add(WallpaperSettingIds.GradientPreset)
                 add(WallpaperSettingIds.CustomPhoto)
+                add(WallpaperSettingIds.OnlinePhoto)
+                if (config.useOnlineWallpaper) {
+                    add(WallpaperSettingIds.OnlinePhotoSource)
+                    add(WallpaperSettingIds.OnlinePhotoNext)
+                }
                 add(WallpaperSettingIds.BuiltinAerials)
                 if (config.useBuiltinAerials) {
                     add(WallpaperSettingIds.AerialApple)
@@ -1642,6 +1695,41 @@ private fun WallpaperScreen(
             leadingContent = { Icon(AppIcons.Image, contentDescription = null) },
             trailingContent = { CheckMark(checked = config.useCustomWallpaper) },
         )
+
+        SettingsItem(
+            selected = false,
+            onClick = onSelectOnlinePhoto,
+            modifier = focus.modifier(WallpaperSettingIds.OnlinePhoto),
+            headlineContent = { Text("Online featured photos") },
+            supportingContent = { Text("Public-domain Wikimedia Commons images, downloaded only when selected and cached for offline use") },
+            leadingContent = { Icon(AppIcons.Image, contentDescription = null) },
+            trailingContent = { CheckMark(checked = config.useOnlineWallpaper) },
+        )
+        if (config.useOnlineWallpaper) {
+            val onlineSources = listOf(
+                ONLINE_WALLPAPER_WIKIMEDIA_PD_PHOTOS to "Featured photography",
+                ONLINE_WALLPAPER_WIKIMEDIA_PD_ART to "Featured art & archives",
+            )
+            val onlineIndex = onlineSources.indexOfFirst { it.first == config.onlineWallpaperSource }
+                .coerceAtLeast(0)
+            SelectorRow(
+                modifier = focus.modifier(WallpaperSettingIds.OnlinePhotoSource),
+                label = "Online collection",
+                value = onlineSources[onlineIndex].second,
+                options = onlineSources.map { it.second },
+                steps = onlineSources.size,
+                current = onlineIndex,
+                onSelect = { index -> onSelectOnlineSource(onlineSources[index].first) },
+            )
+            SettingsItem(
+                selected = false,
+                onClick = onNextOnlinePhoto,
+                modifier = focus.modifier(WallpaperSettingIds.OnlinePhotoNext),
+                headlineContent = { Text("Next online photo") },
+                supportingContent = { Text("Fetch another landscape image from the selected collection") },
+                leadingContent = { Icon(AppIcons.Play, contentDescription = null) },
+            )
+        }
 
         /* ---------------- VIDEO: built-in aerials + your own video ---------------- */
         SectionLabel(stringResource(R.string.wp_section_video))
