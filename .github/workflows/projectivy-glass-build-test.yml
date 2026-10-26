@@ -26,6 +26,14 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Validate local helper syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n projectivy-mod/build_projectivy_glass.sh
+          bash -n projectivy-mod/install_overflight.sh
+          python3 -m py_compile projectivy-mod/patch_ox3.py
+
       - name: Download and verify official inputs
         shell: bash
         run: |
