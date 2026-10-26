@@ -304,10 +304,20 @@ public final class RedLightEngine {
                 String media=q(u,"media_type");String dbType=("movie".equals(media)||"movie".equalsIgnoreCase(e.mediaType))?"movie":"tvshow";
                 try(Cursor c=db.query("metadata",new String[]{"meta"},"db_type=? AND tmdb_id=?",new String[]{dbType,tmdb},null,null,null,"1")) {
                     if(c==null||!c.moveToFirst())return null;JSONObject meta=new JSONObject(c.getString(0));
-                    String[] keys={"rpdb_poster","poster","landscape","fanart"};for(String key:keys){String v=meta.optString(key,"");if(v.startsWith("http://")||v.startsWith("https://"))return v;}
+                    String[] keys={"poster","landscape","fanart","rpdb_poster"};
+                    for(String key:keys){
+                        String v=validArtwork(meta.optString(key,""));
+                        if(!v.isEmpty())return v;
+                    }
                 }
             }catch(Throwable ignored){}
             return null;
+        }
+        private static String validArtwork(String value) {
+            if(value==null)return "";
+            String v=value.trim();
+            if(v.isEmpty()||v.contains("%s"))return "";
+            return (v.startsWith("http://")||v.startsWith("https://"))?v:"";
         }
         void close(){try{if(db!=null)db.close();}catch(Throwable ignored){}}
     }
