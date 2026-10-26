@@ -27,12 +27,19 @@ if 'org.xbmc.kodi.file' not in text:
 # package name with this metadata value when its Configure action is clicked.
 if 'com.spocky.projengmenu.embedded.AerialService' not in text:
     app_end = '    </application>'
-    components = '''        <provider android:authorities="com.spocky.projengmenu.embedded.bootstrap" android:exported="false" android:initOrder="110" android:name="com.spocky.projengmenu.embedded.EmbeddedRuntime$BootstrapProvider"/>\n        <activity android:excludeFromRecents="true" android:exported="false" android:name="com.spocky.projengmenu.embedded.AerialSettingsActivity" android:screenOrientation="landscape" android:theme="@android:style/Theme.DeviceDefault"/>\n        <service android:exported="true" android:label="Aerial Rows" android:name="com.spocky.projengmenu.embedded.AerialService">\n            <intent-filter>\n                <action android:name="tv.projectivy.plugin.WALLPAPER_PROVIDER"/>\n            </intent-filter>\n            <meta-data android:name="apiVersion" android:value="1"/>\n            <meta-data android:name="uuid" android:value="8c00feaf-c7be-43c2-80f9-d49853aaa99a"/>\n            <meta-data android:name="name" android:value="Aerial Rows"/>\n            <meta-data android:name="settingsActivity" android:value=".embedded.AerialSettingsActivity"/>\n            <meta-data android:name="itemsCacheDurationMillis" android:value="21600000"/>\n            <meta-data android:name="updateMode" android:value="1"/>\n        </service>\n        <service android:exported="false" android:name="com.spocky.projengmenu.embedded.EmbeddedRuntime$SyncJob" android:permission="android.permission.BIND_JOB_SERVICE"/>\n        <receiver android:enabled="true" android:exported="true" android:name="com.spocky.projengmenu.embedded.EmbeddedRuntime$BootReceiver">\n            <intent-filter>\n                <action android:name="android.intent.action.BOOT_COMPLETED"/>\n            </intent-filter>\n        </receiver>\n'''
+    components = '''        <provider android:authorities="com.spocky.projengmenu.embedded.bootstrap" android:exported="false" android:initOrder="110" android:name="com.spocky.projengmenu.embedded.EmbeddedRuntime$BootstrapProvider"/>\n        <activity android:excludeFromRecents="true" android:exported="false" android:name="com.spocky.projengmenu.embedded.AerialSettingsActivity" android:screenOrientation="landscape" android:theme="@android:style/Theme.DeviceDefault"/>\n        <activity android:excludeFromRecents="true" android:exported="false" android:name="com.spocky.projengmenu.embedded.RedLightLaunchActivity" android:noHistory="true" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>\n        <service android:exported="true" android:label="Aerial Rows" android:name="com.spocky.projengmenu.embedded.AerialService">\n            <intent-filter>\n                <action android:name="tv.projectivy.plugin.WALLPAPER_PROVIDER"/>\n            </intent-filter>\n            <meta-data android:name="apiVersion" android:value="1"/>\n            <meta-data android:name="uuid" android:value="8c00feaf-c7be-43c2-80f9-d49853aaa99a"/>\n            <meta-data android:name="name" android:value="Aerial Rows"/>\n            <meta-data android:name="settingsActivity" android:value=".embedded.AerialSettingsActivity"/>\n            <meta-data android:name="itemsCacheDurationMillis" android:value="21600000"/>\n            <meta-data android:name="updateMode" android:value="1"/>\n        </service>\n        <service android:exported="false" android:name="com.spocky.projengmenu.embedded.EmbeddedRuntime$SyncJob" android:permission="android.permission.BIND_JOB_SERVICE"/>\n        <receiver android:enabled="true" android:exported="true" android:name="com.spocky.projengmenu.embedded.EmbeddedRuntime$BootReceiver">\n            <intent-filter>\n                <action android:name="android.intent.action.BOOT_COMPLETED"/>\n            </intent-filter>\n        </receiver>\n'''
     if app_end not in text:
         raise SystemExit('manifest application end missing')
     text = text.replace(app_end, components + app_end, 1)
+
+if 'android:name="com.spocky.projengmenu.embedded.AerialSettingsActivity"' not in text:
+    raise SystemExit('Aerial settings activity missing after manifest patch')
+if 'android:name="settingsActivity" android:value=".embedded.AerialSettingsActivity"' not in text:
+    raise SystemExit('Aerial Configure metadata missing after manifest patch')
+if 'android:name="com.spocky.projengmenu.embedded.RedLightLaunchActivity"' not in text:
+    raise SystemExit('Red Light launch trampoline missing after manifest patch')
 manifest.write_text(text)
-print('patched embedded runtime manifest components')
+print('patched and verified embedded runtime manifest components')
 
 # Every launcher resume refreshes Aerial immediately and asks the Red Light engine
 # to rescan. This fixes the previous need to open the left header before video starts.
@@ -52,9 +59,8 @@ if 'EmbeddedRuntime;->onLauncherResume' not in method:
     print('patched MainActivity embedded runtime resume hook')
 
 # Projectivy normally overwrites every Android-TV program intent with the package
-# which owns that TV row. Embedded Red Light rows are owned by Projectivy, while
-# their intent deliberately contains an explicit Kodi component. Preserve any
-# explicit component; only apply Projectivy's package pinning to implicit intents.
+# which owns that TV row. Preserve explicit components. Red Light cards now point
+# to a Projectivy-owned trampoline, which then forwards the exact plugin:// URI to Kodi.
 ck3 = root / 'smali/ck3.smali'
 text = ck3.read_text()
 start = text.index('.method public final t(Landroid/content/Context;Landroid/os/Bundle;)Landroid/content/Intent;')
@@ -73,6 +79,6 @@ if 'embedded_explicit_component_ready' not in method:
     method = method.replace(launch_anchor, launch_replacement, 1)
     text = text[:start] + method + text[end:]
     ck3.write_text(text)
-    print('patched preview program explicit Kodi intents')
+    print('patched preview program explicit components')
 
 print('single-package Projectivy patch complete')
