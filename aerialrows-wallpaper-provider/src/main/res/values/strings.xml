@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugin_name">Aerial Rows</string>
+    <string name="plugin_description">Aerial Rows v%1$s\nChoose any combination of Apple, Amazon and community aerial video collections.</string>
+    <string name="settings">Wallpaper sources</string>
+    <string name="projectivy_not_installed">Projectivy Launcher is not installed.</string>
+    <string name="select_all">Select all sources</string>
+    <string name="clear_all">Clear all sources</string>
+    <string name="selected_wallpapers">Selected wallpapers</string>
+    <string name="video_count">%1$d videos</string>
+</resources>
