@@ -9,7 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.kanozseyer.aerialrows.kodibridge"
-        minSdk = 23
+        // Preview channels/TvProvider are an Android TV O+ API. The bridge is
+        // specifically for modern Shield/Android TV devices, so don't pretend
+        // to support API levels that cannot host this feature correctly.
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
