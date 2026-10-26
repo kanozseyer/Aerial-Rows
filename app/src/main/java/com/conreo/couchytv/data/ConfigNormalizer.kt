@@ -21,6 +21,17 @@ object ConfigNormalizer {
             .map(String::trim)
             .filter(String::isNotEmpty)
             .toCollection(linkedSetOf())
+        val hiddenTvPrograms = config.hiddenTvPrograms
+            .asSequence()
+            .mapNotNull { (channelKey, programKeys) ->
+                val key = channelKey.trim()
+                val values = programKeys.asSequence()
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .toCollection(linkedSetOf())
+                if (key.isEmpty() || values.isEmpty()) null else key to values
+            }
+            .toMap()
 
         return config.copy(
             categories = categories,
@@ -30,6 +41,7 @@ object ConfigNormalizer {
             excludedWatchNextProviders = excludedWatchNextProviders,
             channelItemLimit = config.channelItemLimit.coerceIn(4, 30),
             channelItemLimits = config.channelItemLimits.mapValues { (_, value) -> value.coerceIn(4, 30) },
+            hiddenTvPrograms = hiddenTvPrograms,
             homeRowOrder = config.homeRowOrder.distinct(),
         )
     }

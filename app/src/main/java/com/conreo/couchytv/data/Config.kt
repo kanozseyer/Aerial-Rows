@@ -66,6 +66,8 @@ data class LauncherConfig(
     val hiddenTvChannels: Set<String> = emptySet(),
     /** Optional per-channel item limit, keyed by TvChannelRow.key. */
     val channelItemLimits: Map<String, Int> = emptyMap(),
+    /** Programme identities hidden by the user, keyed by stable TV channel key. */
+    val hiddenTvPrograms: Map<String, Set<String>> = emptyMap(),
 
     // ----- home row organization -----
     /**

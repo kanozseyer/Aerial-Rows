@@ -62,6 +62,7 @@ fun ChannelsSettingsScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var channelRefresh by remember { mutableStateOf(0) }
+    var editingChannelKey by remember { mutableStateOf<String?>(null) }
     val channels by produceState(emptyList<TvChannelRow>(), channelRefresh) {
         value = TvContentRepository.discoverChannels(context)
     }
@@ -79,7 +80,6 @@ fun ChannelsSettingsScreen(
             add(ChannelSettingsIds.DefaultChannelLimit)
             channels.forEach { channel ->
                 add(ChannelSettingsIds.channel(channel.key))
-                if (channel.browsable && channel.programs.isNotEmpty()) add(ChannelSettingsIds.channelLimit(channel.key))
             }
         }
     }
@@ -202,82 +202,83 @@ fun ChannelsSettingsScreen(
         } else {
             channels.forEach { channel ->
                 val hidden = channel.isHiddenBy(config.hiddenTvChannels)
+                val value = channel.configuredItemLimit(config.channelItemLimits, config.channelItemLimit)
+                val index = limits.indices.minByOrNull { kotlin.math.abs(limits[it] - value) } ?: current
+                val owner = channel.packageName.ifBlank { "Android TV channel" }
                 val subtitle = when {
-                    !channel.browsable -> {
-                        val owner = channel.packageName.ifBlank { "Android TV channel" }
-                        "$owner · Not approved for TV home — press OK to request"
-                    }
-                    channel.programs.isEmpty() -> {
-                        val owner = channel.packageName.ifBlank { "Android TV channel" }
-                        "$owner · No programmes currently published"
-                    }
-                    else -> channel.packageName.ifBlank { "Android TV channel" }
+                    !channel.browsable -> "$owner · Not approved for TV home — OK requests access"
+                    channel.programs.isEmpty() -> "$owner · No programmes currently published · OK opens settings"
+                    hidden -> "$owner · Hidden · OK customizes · Left/Right changes cards shown"
+                    else -> "$owner · OK customizes content · Left/Right changes cards shown"
                 }
-                ExtraSettingRow(
+                ExtraListItem(
                     title = channel.name,
                     subtitle = subtitle,
-                    checked = channel.browsable && !hidden,
-                    modifier = channelFocus.modifier(ChannelSettingsIds.channel(channel.key)),
+                    modifier = channelFocus.modifier(ChannelSettingsIds.channel(channel.key))
+                        .onPreviewKeyEvent { event ->
+                            if (!channel.browsable || channel.programs.isEmpty() || event.type != KeyEventType.KeyDown) {
+                                return@onPreviewKeyEvent false
+                            }
+                            val next = when (event.key) {
+                                Key.DirectionLeft -> (index - 1).coerceAtLeast(0)
+                                Key.DirectionRight -> (index + 1).coerceAtMost(limits.lastIndex)
+                                else -> return@onPreviewKeyEvent false
+                            }
+                            if (next != index) {
+                                scope.launch {
+                                    store.update { cfg ->
+                                        cfg.copy(
+                                            channelItemLimits = (cfg.channelItemLimits - channel.legacyKey) +
+                                                (channel.key to limits[next]),
+                                        )
+                                    }
+                                }
+                            }
+                            true
+                        },
+                    trailing = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ExtraCheck(channel.browsable && !hidden)
+                            if (channel.browsable && channel.programs.isNotEmpty()) {
+                                Text("◄ ${limits[index]} ►", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    },
                     onClick = {
                         if (!channel.browsable) {
                             if (TvContentRepository.requestChannelBrowsable(context, channel.id)) {
-                                // The platform updates COLUMN_BROWSABLE asynchronously.
-                                // Refresh once shortly after the system request so the
-                                // Settings row reflects the approved state without the
-                                // user having to leave/re-enter this screen.
                                 scope.launch {
                                     delay(750L)
                                     channelRefresh++
                                 }
                             }
                         } else {
-                            scope.launch {
-                                store.update { cfg ->
-                                    val aliases = setOf(channel.key, channel.legacyKey)
-                                    cfg.copy(
-                                        hiddenTvChannels = if (channel.isHiddenBy(cfg.hiddenTvChannels)) {
-                                            cfg.hiddenTvChannels - aliases
-                                        } else {
-                                            (cfg.hiddenTvChannels - channel.legacyKey) + channel.key
-                                        },
-                                    )
-                                }
-                            }
+                            editingChannelKey = channel.key
                         }
                     },
                 )
-                if (channel.browsable && !hidden && channel.programs.isNotEmpty()) {
-                    val value = channel.configuredItemLimit(
-                        config.channelItemLimits,
-                        config.channelItemLimit,
-                    )
-                    val index = limits.indices.minByOrNull { kotlin.math.abs(limits[it] - value) } ?: current
-                    ExtraSelector(
-                        title = "↳ ${channel.name}: cards shown",
-                        value = limits[index].toString(),
-                        steps = limits.size,
-                        current = index,
-                        modifier = channelFocus.modifier(ChannelSettingsIds.channelLimit(channel.key)),
-                        onSelect = { i ->
-                            scope.launch {
-                                store.update { cfg ->
-                                    cfg.copy(
-                                        channelItemLimits = (cfg.channelItemLimits - channel.legacyKey) +
-                                            (channel.key to limits[i]),
-                                    )
-                                }
-                            }
-                        },
-                    )
-                }
             }
         }
 
         Text(
-            "The provider app decides which programmes belong to a preview channel and their programme order. Aerial Rows controls which channel rows are visible and how many cards each row displays.",
+            "Provider apps decide what they publish and the source order. Aerial Rows can show/hide channels, set row size, and hide individual published cards.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp, top = 14.dp, end = 8.dp),
+        )
+    }
+
+    channels.firstOrNull { it.key == editingChannelKey }?.let { channel ->
+        RowQuickEditor(
+            title = channel.name,
+            icon = "▣",
+            category = null,
+            channel = channel,
+            isWatchNext = false,
+            allApps = emptyList(),
+            config = config,
+            store = store,
+            onDismiss = { editingChannelKey = null },
         )
     }
 }

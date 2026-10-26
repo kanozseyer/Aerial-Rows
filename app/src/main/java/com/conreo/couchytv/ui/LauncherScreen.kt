@@ -872,6 +872,14 @@ private fun CarouselSection(
     onMenu: (AppEntry) -> Unit,
 ) {
     val state = rememberLazyListState()
+    LaunchedEffect(movePkg, catApps) {
+        val pkg = movePkg ?: return@LaunchedEffect
+        val index = catApps.indexOfFirst { it.pkg == pkg }
+        if (index < 0) return@LaunchedEffect
+        state.scrollToItem(index)
+        withFrameNanos { }
+        runCatching { moveFocus.requestFocus() }
+    }
     // Pivot scrolling done RIGHT: instead of letting the default
     // bring-into-view scroll minimally and then re-pinning by hand (two
     // fighting animations = the janky feel), we replace the scroll spec so

@@ -1446,22 +1446,19 @@ private fun CategoriesScreen(
     }
 
     appsFor?.let { cat ->
-        // Keep the dialog's category object in sync with the live config
+        // Keep the editor's category object in sync with the live config. The
+        // shared row editor supports both membership and explicit app ordering:
+        // OK adds/removes, Left/Right moves an included app earlier/later.
         val liveCat = config.categories.firstOrNull { it.id == cat.id } ?: cat
-        SectionAppsDialog(
-            cat = liveCat,
-            apps = apps,
+        RowQuickEditor(
+            title = liveCat.name,
+            icon = "▦",
+            category = liveCat,
+            channel = null,
+            isWatchNext = false,
+            allApps = apps,
             config = config,
-            onToggle = { app ->
-                scope.launch {
-                    store.update { cfg ->
-                        val current = AppRepository.sectionsOf(app, cfg)
-                        val next = if (liveCat.id in current) current - liveCat.id
-                        else current + liveCat.id
-                        cfg.copy(sections = cfg.sections + (app.pkg to next))
-                    }
-                }
-            },
+            store = store,
             onDismiss = { appsFor = null },
         )
     }

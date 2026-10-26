@@ -70,6 +70,23 @@ data class WatchNextProviderPolicy(
     val excludedPackages: Set<String>,
 )
 
+fun tvProgramStableKey(item: TvProgramItem, ownerFallback: String = ""): String {
+    val owner = item.packageName.ifBlank { ownerFallback }.ifBlank { "unknown" }
+    val identity = item.intentUri.trim().takeIf(String::isNotEmpty) ?: "id:${item.id}"
+    return "$owner|$identity"
+}
+
+fun visibleTvPrograms(
+    programs: List<TvProgramItem>,
+    hiddenKeys: Set<String>,
+    ownerFallback: String,
+    limit: Int,
+): List<TvProgramItem> = programs
+    .asSequence()
+    .filterNot { tvProgramStableKey(it, ownerFallback) in hiddenKeys }
+    .take(limit.coerceIn(1, 30))
+    .toList()
+
 class WatchNextProviderLimiter(policy: WatchNextProviderPolicy) {
     private val maxItemsPerProvider = policy.maxItemsPerProvider.coerceIn(1, 30)
     private val excludedPackages = policy.excludedPackages
@@ -248,6 +265,7 @@ object TvContentRepository {
                     defaultLimit = defaultLimit,
                     hidden = config.hiddenTvChannels,
                     perChannelLimits = config.channelItemLimits,
+                    hiddenPrograms = config.hiddenTvPrograms,
                     mode = TvChannelQueryMode.HOME,
                 )
             }.getOrDefault(emptyList())
@@ -266,9 +284,10 @@ object TvContentRepository {
         runCatching {
             queryChannels(
                 context = context,
-                defaultLimit = 4,
+                defaultLimit = 30,
                 hidden = emptySet(),
                 perChannelLimits = emptyMap(),
+                hiddenPrograms = emptyMap(),
                 mode = TvChannelQueryMode.DISCOVERY,
             )
         }.getOrDefault(emptyList())
@@ -325,6 +344,7 @@ object TvContentRepository {
         defaultLimit: Int,
         hidden: Set<String>,
         perChannelLimits: Map<String, Int>,
+        hiddenPrograms: Map<String, Set<String>>,
         mode: TvChannelQueryMode,
     ): List<TvChannelRow> {
         val projection = arrayOf(
@@ -368,14 +388,25 @@ object TvContentRepository {
                         ?: perChannelLimits[identity.legacyKey]
                         ?: defaultLimit
                     ).coerceIn(4, 30)
-                val programs = runCatching {
+                val discoveredPrograms = runCatching {
                     queryPrograms(
                         context = context,
                         uri = TvContract.buildPreviewProgramsUriForChannel(id),
-                        limit = limit,
+                        // Fetch enough candidates to refill the visible row after
+                        // user-hidden cards are removed. Discovery also needs the
+                        // fuller set for its content editor.
+                        limit = 30,
                         kind = TvProgramQueryKind.PREVIEW_CHANNEL,
                     )
                 }.getOrDefault(emptyList())
+                val hiddenProgramKeys = hiddenPrograms[identity.key].orEmpty() +
+                    hiddenPrograms[identity.legacyKey].orEmpty()
+                val programs = visibleTvPrograms(
+                    programs = discoveredPrograms,
+                    hiddenKeys = if (mode == TvChannelQueryMode.HOME) hiddenProgramKeys else emptySet(),
+                    ownerFallback = packageName,
+                    limit = if (mode == TvChannelQueryMode.DISCOVERY) 30 else limit,
+                )
                 if (!shouldIncludeTvChannel(mode, browsable, programs.isNotEmpty())) continue
 
                 rows += TvChannelRow(
