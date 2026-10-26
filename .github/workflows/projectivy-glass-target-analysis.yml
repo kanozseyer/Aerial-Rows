@@ -1,0 +1,139 @@
+name: Projectivy 4.72 Glass Target Analysis
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-liquid-glass
+    paths:
+      - '.github/workflows/projectivy-glass-target-analysis.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze-glass-target:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download verified Projectivy and analysis tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/projectivy-glass-target"
+          mkdir -p "$WORK"
+          cd "$WORK"
+          curl -fL --retry 3 \
+            'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' \
+            -o projectivy.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  projectivy.apk' | sha256sum -c -
+
+          APKTOOL_URL="$(curl -fsSL https://api.github.com/repos/iBotPeaches/Apktool/releases/latest \
+            | jq -r '.assets[] | select(.name | endswith(".jar")) | .browser_download_url' | head -n1)"
+          curl -fL --retry 3 "$APKTOOL_URL" -o apktool.jar
+
+          JADX_URL="$(curl -fsSL https://api.github.com/repos/skylot/jadx/releases/latest \
+            | jq -r '.assets[] | select((.name | startswith("jadx-")) and (.name | endswith(".zip")) and ((.name | contains("gui")) | not)) | .browser_download_url' | head -n1)"
+          curl -fL --retry 3 "$JADX_URL" -o jadx.zip
+          mkdir jadx
+          unzip -q jadx.zip -d jadx
+
+      - name: Inspect ox3 smali decoration and lu constructor call
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/projectivy-glass-target"
+          cd "$WORK"
+          java -jar apktool.jar d -f -r projectivy.apk -o apktool-out >/tmp/apktool-glass.log 2>&1
+          OX3="$(find apktool-out -type f -name 'ox3.smali' -print -quit)"
+          LU="$(find apktool-out -type f -name 'lu.smali' -print -quit)"
+          test -n "$OX3" && test -n "$LU"
+          echo "ox3_smali=$OX3" >> "$GITHUB_ENV"
+          echo "lu_smali=$LU" >> "$GITHUB_ENV"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          out = Path('glass-target-analysis.txt')
+          ox = Path(os.environ['ox3_smali'])
+          lu = Path(os.environ['lu_smali'])
+          with out.open('w', encoding='utf-8') as f:
+              f.write('=== VERIFIED APK ===\n')
+              f.write('sha256:a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae\n\n')
+              for label, path, patterns in [
+                  ('OX3 SMALI', ox, [r'^\.class', r'^\.super', r'^\.field', r'^\.method', r'Canvas', r'Paint', r'Rect', r'draw', r'Color', r'alpha', r'stroke', r'corner', r'radius']),
+                  ('LU -> OX3 CALL', lu, [r'new-instance .*Lox3;', r'invoke-direct .*Lox3;-><init>', r'Li5;->B:I']),
+              ]:
+                  lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+                  rx = re.compile('|'.join(patterns), re.I)
+                  hits = [i for i,l in enumerate(lines) if rx.search(l)]
+                  f.write(f'=== {label}: {path} ===\n')
+                  for i in hits[:80]:
+                      f.write(f'{i+1:5}: {lines[i]}\n')
+                  f.write('\n--- compact contexts ---\n')
+                  emitted=[]
+                  for i in hits[:24]:
+                      a,b=max(0,i-5),min(len(lines),i+6)
+                      if any(a>=x and b<=y for x,y in emitted):
+                          continue
+                      emitted.append((a,b))
+                      f.write(f'[{a+1}-{b}]\n')
+                      for n in range(a,b): f.write(f'{n+1:5}: {lines[n]}\n')
+                  f.write('\n')
+          PY
+          cat glass-target-analysis.txt
+
+      - name: Inspect ox3 Java view
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/projectivy-glass-target"
+          cd "$WORK"
+          mkdir -p jadx-out
+          set +e
+          ./jadx/bin/jadx --no-res --show-bad-code -d jadx-out projectivy.apk >/tmp/jadx-glass.log 2>&1
+          RC=$?
+          set -e
+          echo "JADX status $RC; usable sources are retained despite unrelated decompile warnings"
+          OX3_JAVA="$(find jadx-out/sources -type f -iname 'ox3.java' -print -quit)"
+          LU_JAVA="$(find jadx-out/sources -type f -iname 'lu.java' -print -quit)"
+          test -n "$OX3_JAVA" && test -n "$LU_JAVA"
+          echo "ox3_java=$OX3_JAVA" >> "$GITHUB_ENV"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,re
+          out=Path('glass-target-analysis.txt')
+          paths=[('OX3 JAVA',Path(os.environ['ox3_java'])),('LU JAVA',next(Path('jadx-out/sources').rglob('lu.java')))]
+          with out.open('a',encoding='utf-8') as f:
+              for label,path in paths:
+                  lines=path.read_text(encoding='utf-8',errors='replace').splitlines()
+                  rx=re.compile(r'class ox3|ox3\(|new ox3|\.B\b|Canvas|Paint|Rect|draw|Color|alpha|stroke|corner|radius|ItemDecoration',re.I)
+                  hits=[i for i,l in enumerate(lines) if rx.search(l)]
+                  f.write(f'\n=== {label}: {path} ===\n')
+                  for i in hits[:80]: f.write(f'{i+1:5}: {lines[i]}\n')
+                  f.write('\n--- compact contexts ---\n')
+                  emitted=[]
+                  for i in hits[:24]:
+                      a,b=max(0,i-5),min(len(lines),i+6)
+                      if any(a>=x and b<=y for x,y in emitted): continue
+                      emitted.append((a,b))
+                      f.write(f'[{a+1}-{b}]\n')
+                      for n in range(a,b): f.write(f'{n+1:5}: {lines[n]}\n')
+          PY
+          tail -n 420 glass-target-analysis.txt
+
+      - name: Upload compact target analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: projectivy-4.72-glass-target-analysis
+          path: ${{ runner.temp }}/projectivy-glass-target/glass-target-analysis.txt
+          retention-days: 3
+          if-no-files-found: error
