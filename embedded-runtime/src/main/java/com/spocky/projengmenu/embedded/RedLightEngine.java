@@ -32,9 +32,9 @@ public final class RedLightEngine {
     private static final String KODI_FILE_AUTHORITY = "org.xbmc.kodi.file";
     private static final String VIDEO_ADDONS = "addons://sources/video/";
     private static final String PREF_FILE = "embedded_redlight_channels";
-    private static final int MAX_DEPTH = 6;
-    private static final int MAX_SCANS = 48;
-    private static final int MAX_CHILDREN = 80;
+    private static final int MAX_DEPTH = 7;
+    private static final int MAX_SCANS = 72;
+    private static final int MAX_CHILDREN = 100;
     private static final int MAX_PROGRAMS = 60;
 
     static final class Entry {
@@ -174,24 +174,50 @@ public final class RedLightEngine {
         String mode = q(u,"mode"), action=q(u,"action"), sort=q(u,"nextep_sort");
         boolean anime = "true".equalsIgnoreCase(q(u,"is_anime_list"));
         String label = norm(e.name);
-        if ("build_continue_watching".equals(mode) || "continue watching".equals(label)) return sec("continue_watching","Continue Watching",e);
+        String media = inferMedia(e, trail, u, mode, anime);
+        String route = norm(mode + " " + action + " " + q(u,"type") + " " + q(u,"list_type"));
+
+        if ("build_continue_watching".equals(mode) || "continue watching".equals(label))
+            return sec("continue_watching","Continue Watching",e);
         if ("build_next_episode".equals(mode) || label.startsWith("next episodes") || label.startsWith("anime next episodes")) {
             String suffix = anime ? "anime" : "last_played".equals(sort) ? "recently_watched" : "first_aired".equals(sort) ? "airdate" : "default";
             return sec("next_episodes:"+suffix, e.name, e);
         }
-        if ("build_in_progress_episode".equals(mode) || label.contains("in progress episodes")) return sec(anime?"in_progress_episodes:anime":"in_progress_episodes", e.name,e);
-        if ("build_recently_watched_episode".equals(mode) || label.contains("recently watched episodes")) return sec(anime?"recently_watched_episodes:anime":"recently_watched_episodes",e.name,e);
+        if ("build_in_progress_episode".equals(mode) || label.contains("in progress episodes"))
+            return sec(anime?"in_progress_episodes:anime":"in_progress_episodes", e.name,e);
+        if ("build_recently_watched_episode".equals(mode) || label.contains("recently watched episodes"))
+            return sec(anime?"recently_watched_episodes:anime":"recently_watched_episodes",e.name,e);
         if ("recent_watched_movies".equals(action)) return sec("recently_watched:movies","Recently Watched Movies",e);
         if ("recent_watched_tvshows".equals(action) && !anime) return sec("recently_watched:shows","Recently Watched TV Shows",e);
         if ("in_progress_movies".equals(action)) return sec("in_progress:movies","Movies In Progress",e);
         if ("in_progress_tvshows".equals(action) && !anime) return sec("in_progress:shows","TV Shows In Progress",e);
-        String media = "build_movie_list".equals(mode)?"movies":"build_tvshow_list".equals(mode)?(anime?"anime":"shows"):"";
+
         if (!media.isEmpty()) {
             if ("trakt_watchlist".equals(action)) return sec("trakt:watchlist:"+media,e.name,e);
             if ("trakt_recommendations".equals(action)) return sec("trakt:recommended:"+media,e.name,e);
             if ("trakt_collection".equals(action)) return sec("trakt:library:"+media,e.name,e);
             if ("trakt_favorites".equals(action)) return sec("trakt:favorites:"+media,e.name,e);
+
+            if (isShelf(label, route, "trending"))
+                return sec("shelf:trending:"+media, shelfTitle("Trending", media, e.name), e);
+            if (isShelf(label, route, "popular"))
+                return sec("shelf:popular:"+media, shelfTitle("Popular", media, e.name), e);
+            if (isShelf(label, route, "anticipated"))
+                return sec("shelf:anticipated:"+media, shelfTitle("Most Anticipated", media, e.name), e);
+            if (isShelf(label, route, "top rated") || isShelf(label, route, "top_rated"))
+                return sec("shelf:top_rated:"+media, shelfTitle("Top Rated", media, e.name), e);
+            if (isShelf(label, route, "premiere") || isShelf(label, route, "premieres"))
+                return sec("shelf:premieres:"+media, shelfTitle("Premieres", media, e.name), e);
+            if (isShelf(label, route, "recently added") || isShelf(label, route, "recent_added") || isShelf(label, route, "recently_added"))
+                return sec("shelf:recently_added:"+media, shelfTitle("Recently Added", media, e.name), e);
+            if (isShelf(label, route, "new releases") || isShelf(label, route, "new_releases"))
+                return sec("shelf:new_releases:"+media, shelfTitle("New Releases", media, e.name), e);
+            if (isShelf(label, route, "most watched") || isShelf(label, route, "most_watched"))
+                return sec("shelf:most_watched:"+media, shelfTitle("Most Watched", media, e.name), e);
+            if (isShelf(label, route, "box office") || isShelf(label, route, "box_office"))
+                return sec("shelf:box_office:"+media, shelfTitle("Box Office", media, e.name), e);
         }
+
         if ("build_my_calendar".equals(mode) || "calendar".equals(label)) return sec("trakt:calendar","Trakt Calendar",e);
         if ("trakt.list.build_trakt_list".equals(mode)) {
             String id=q(u,"list_id"), user=q(u,"user"), slug=q(u,"slug");
@@ -205,12 +231,47 @@ public final class RedLightEngine {
         return null;
     }
 
+    private static String inferMedia(Entry e, List<String> trail, Uri u, String mode, boolean anime) {
+        if ("build_movie_list".equals(mode)) return "movies";
+        if ("build_tvshow_list".equals(mode)) return anime ? "anime" : "shows";
+        String param = norm(q(u,"media_type") + " " + q(u,"media") + " " + q(u,"content_type"));
+        if (param.contains("movie")) return "movies";
+        if (param.contains("anime")) return "anime";
+        if (param.contains("tvshow") || param.contains("tv show") || param.contains("series")) return "shows";
+        String path = norm(join(trail));
+        if (path.contains("anime")) return "anime";
+        if (path.contains("movie")) return "movies";
+        if (path.contains("tv show") || path.contains("series")) return "shows";
+        String mt = norm(e.mediaType);
+        if (mt.equals("movie")) return "movies";
+        if (mt.equals("tvshow") || mt.equals("show")) return "shows";
+        return "";
+    }
+
+    private static boolean isShelf(String label, String route, String token) {
+        String n = norm(token);
+        return label.equals(n) || label.startsWith(n + " ") || label.endsWith(" " + n)
+                || label.contains(" " + n + " ") || route.contains(n);
+    }
+
+    private static String shelfTitle(String base, String media, String original) {
+        String clean = original == null ? "" : original.replaceAll("\\[[^]]*]", "").trim();
+        String n = norm(clean);
+        if (!n.equals(norm(base)) && !clean.isEmpty()) return clean;
+        if ("movies".equals(media)) return base + " Movies";
+        if ("shows".equals(media)) return base + " TV Shows";
+        if ("anime".equals(media)) return base + " Anime";
+        return base;
+    }
+
     private static Section sec(String key,String title,Entry e) { return new Section("redlight:"+key,"Red Light · "+title.trim(),rawUri(e.uri)); }
     private static boolean shouldTraverse(Entry e,List<String> trail) {
         Uri u; try {u=Uri.parse(rawUri(e.uri));}catch(Throwable t){return false;}
         String mode=q(u,"mode"), action=q(u,"action"), label=norm(e.name);
-        if (label.equals("tools")||label.equals("search")||label.equals("people")||label.equals("downloads")||label.equals("my services")||label.equals("discover")||label.equals("random lists")) return false;
+        if (label.equals("tools")||label.equals("search")||label.equals("people")||label.equals("downloads")||label.equals("my services")||label.equals("random lists")) return false;
+        if (label.equals("discover")) return trail.size() <= 4;
         if ("navigator.main".equals(mode)) return action.equals("RootList")||action.equals("MovieList")||action.equals("TVShowList")||action.equals("AnimeList")||trail.size()<=2;
+        if (mode.equals("navigator.discover") || mode.equals("navigator.movies") || mode.equals("navigator.tvshows")) return true;
         if (mode.equals("navigator.my_lists")||mode.equals("navigator.trakt_lists_personal")||mode.equals("navigator.trakt_watchlists")||mode.equals("navigator.trakt_collections")||mode.equals("navigator.trakt_favorites")||mode.equals("navigator.trakt_recommendations")||mode.equals("navigator.favorites")) return true;
         return mode.equals("trakt.list.get_trakt_lists") && "my_lists".equals(q(u,"list_type"));
     }
@@ -218,12 +279,17 @@ public final class RedLightEngine {
     private static ChannelState ensureChannel(Context c, ChannelState st) {
         try {
             if (st.channelId > 0 && channelExists(c, st.channelId)) {
-                ContentValues up = new ContentValues(); up.put("display_name",st.title); up.put("app_link_intent_uri",kodiIntent(st.uri).toUri(0));
+                ContentValues up = new ContentValues();
+                up.put("display_name",st.title);
+                up.put("app_link_intent_uri",projectivyForwardIntent(c, st.uri).toUri(0));
                 c.getContentResolver().update(ContentUris.withAppendedId(TvContract.Channels.CONTENT_URI, st.channelId),up,null,null);
                 return st;
             }
             ContentValues v = new ContentValues();
-            v.put("type","TYPE_PREVIEW"); v.put("display_name",st.title); v.put("internal_provider_id",st.key); v.put("app_link_intent_uri",kodiIntent(st.uri).toUri(0));
+            v.put("type","TYPE_PREVIEW");
+            v.put("display_name",st.title);
+            v.put("internal_provider_id",st.key);
+            v.put("app_link_intent_uri",projectivyForwardIntent(c, st.uri).toUri(0));
             Uri inserted = c.getContentResolver().insert(TvContract.Channels.CONTENT_URI,v);
             if (inserted == null) return null;
             st.channelId=ContentUris.parseId(inserted);
@@ -246,9 +312,14 @@ public final class RedLightEngine {
             if(n>=MAX_PROGRAMS) break;
             if(e.dir() && !rawUri(e.uri).contains("tmdb_id=")) continue;
             ContentValues v=new ContentValues();
-            v.put("channel_id",st.channelId); v.put("title",e.name); v.put("description",e.mediaType!=null?e.mediaType:"Red Light");
-            v.put("type",programType(e)); v.put("intent_uri",kodiIntent(rawUri(e.uri)).toUri(0)); v.put("internal_provider_id",rawUri(e.uri));
-            v.put("weight",MAX_PROGRAMS-n); v.put("poster_art_aspect_ratio",5);
+            v.put("channel_id",st.channelId);
+            v.put("title",e.name);
+            v.put("description",e.mediaType!=null?e.mediaType:"Red Light");
+            v.put("type",programType(e));
+            v.put("intent_uri",projectivyForwardIntent(c, rawUri(e.uri)).toUri(0));
+            v.put("internal_provider_id",rawUri(e.uri));
+            v.put("weight",MAX_PROGRAMS-n);
+            v.put("poster_art_aspect_ratio",5);
             String poster=art==null?null:art.posterFor(e);
             if(poster!=null&&!poster.isEmpty()) v.put("poster_art_uri",poster);
             try { c.getContentResolver().insert(programs,v); } catch(Throwable ignored) {}
@@ -264,9 +335,15 @@ public final class RedLightEngine {
         return 5;
     }
 
-    private static Intent kodiIntent(String uri) {
-        Intent i=new Intent(Intent.ACTION_VIEW); i.setComponent(new ComponentName(KODI_PACKAGE,KODI_PACKAGE+".Splash"));
-        if(uri!=null&&!uri.isEmpty()) i.setData(Uri.parse(uri)); i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); return i;
+    private static Intent projectivyForwardIntent(Context c, String uri) {
+        Intent i = new Intent(Intent.ACTION_VIEW);
+        i.setComponent(new ComponentName(c.getPackageName(), RedLightLaunchActivity.class.getName()));
+        if(uri!=null&&!uri.isEmpty()) {
+            i.setData(Uri.parse(uri));
+            i.putExtra(RedLightLaunchActivity.EXTRA_TARGET, uri);
+        }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        return i;
     }
 
     private static void deleteChannel(Context c,long id) {
