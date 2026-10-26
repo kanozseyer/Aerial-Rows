@@ -26,13 +26,31 @@ object KodiClient {
         context.packageManager.getApplicationInfo(context.kodiPackage, 0)
     }.isSuccess
 
+    /**
+     * Kodi's exported file provider wraps native Kodi routes as
+     * content://org.xbmc.kodi.file#plugin://... . Always keep the native route in
+     * our database so menu traversal and Projectivy launches survive provider/path
+     * changes and do not recursively wrap content:// URIs.
+     */
+    fun rawUri(context: Context, value: String): String {
+        if (value.isBlank()) return value
+        return runCatching {
+            val parsed = Uri.parse(value)
+            if (parsed.scheme.equals("content", true) &&
+                parsed.authority.equals("${context.kodiPackage}.file", true) &&
+                !parsed.fragment.isNullOrBlank()
+            ) parsed.fragment!! else value
+        }.getOrDefault(value)
+    }
+
     /** Null means Kodi/provider is unavailable. Empty means the directory returned no rows. */
     fun list(context: Context, sourceUri: String): List<KodiEntry>? {
         val authority = "${context.kodiPackage}.file"
+        val nativeSource = rawUri(context, sourceUri)
         val queryUri = Uri.Builder()
             .scheme("content")
             .authority(authority)
-            .fragment(sourceUri)
+            .fragment(nativeSource)
             .build()
 
         return runCatching {
@@ -43,8 +61,9 @@ object KodiClient {
                 val mediaType = cursor.getColumnIndex("mediatype")
                 buildList {
                     while (cursor.moveToNext()) {
-                        val itemUri = if (uri >= 0 && !cursor.isNull(uri)) cursor.getString(uri) else null
-                        if (itemUri.isNullOrBlank()) continue
+                        val wrappedUri = if (uri >= 0 && !cursor.isNull(uri)) cursor.getString(uri) else null
+                        if (wrappedUri.isNullOrBlank()) continue
+                        val itemUri = rawUri(context, wrappedUri)
                         add(
                             KodiEntry(
                                 name = if (name >= 0 && !cursor.isNull(name)) cursor.getString(name) else itemUri,
@@ -64,13 +83,15 @@ object KodiClient {
         val addons = list(context, VIDEO_ADDONS_ROOT) ?: return null
         return addons.firstOrNull { it.name.trim().equals(RED_LIGHT_NAME, ignoreCase = true) }
             ?: addons.firstOrNull { it.name.contains(RED_LIGHT_NAME, ignoreCase = true) }
+            ?: addons.firstOrNull { rawUri(context, it.uri).contains("plugin.video.redlight", ignoreCase = true) }
     }
 
     fun intent(context: Context, kodiUri: String? = null): Intent {
         val pkg = context.kodiPackage
-        return Intent(if (kodiUri.isNullOrBlank()) Intent.ACTION_MAIN else Intent.ACTION_GET_CONTENT).apply {
+        val nativeUri = kodiUri?.let { rawUri(context, it) }
+        return Intent(if (nativeUri.isNullOrBlank()) Intent.ACTION_MAIN else Intent.ACTION_VIEW).apply {
             component = ComponentName(pkg, "$pkg.Splash")
-            if (!kodiUri.isNullOrBlank()) data = Uri.parse(kodiUri)
+            if (!nativeUri.isNullOrBlank()) data = Uri.parse(nativeUri)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
