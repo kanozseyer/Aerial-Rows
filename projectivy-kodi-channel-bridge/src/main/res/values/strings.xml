@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kodi → Projectivy Bridge</string>
+    <string name="app_short_name">Kodi Bridge</string>
+    <string name="app_description">Publish Kodi add-on folders as persistent Android TV channels for Projectivy.</string>
+</resources>

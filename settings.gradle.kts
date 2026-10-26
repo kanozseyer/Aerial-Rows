@@ -16,3 +16,4 @@ rootProject.name = "CouchyLauncher"
 include(":app")
 include(":macrobenchmark")
 include(":projectivy-aerial-rows-provider")
+include(":projectivy-kodi-channel-bridge")

@@ -1,0 +1,32 @@
+name: Projectivy Kodi Channel Bridge
+
+on:
+  push:
+    branches: [projectivy-kodi-channel-bridge]
+    paths:
+      - 'projectivy-kodi-channel-bridge/**'
+      - 'settings.gradle.kts'
+      - '.github/workflows/projectivy-kodi-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build and lint Kodi bridge
+        run: ./gradlew :projectivy-kodi-channel-bridge:assembleDebug :projectivy-kodi-channel-bridge:lintDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aerial-Rows-Kodi-Bridge-debug
+          path: projectivy-kodi-channel-bridge/build/outputs/apk/debug/*.apk
+          retention-days: 7
