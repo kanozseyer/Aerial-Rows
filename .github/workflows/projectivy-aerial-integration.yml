@@ -1,4 +1,4 @@
-name: Projectivy Aerial Rows Integration
+name: Projectivy Single APK Integration
 
 on:
   push:
@@ -7,6 +7,10 @@ on:
       - '.github/workflows/projectivy-aerial-integration.yml'
       - '.github/projectivy-aerial-integration.py'
       - '.github/projectivy-aerial-enhancements.py'
+      - '.github/projectivy-single-apk.py'
+      - 'embedded-runtime/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
   workflow_dispatch:
 
 permissions:
@@ -15,13 +19,23 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Build framework-only embedded runtime DEX
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :embedded-runtime:assembleDebug --stacktrace
+          unzip -p embedded-runtime/build/outputs/apk/debug/embedded-runtime-debug.apk classes.dex > /tmp/classes4.dex
+          test -s /tmp/classes4.dex
+          ls -lh /tmp/classes4.dex
 
       - name: Download exact Projectivy 4.72 and apktool
         shell: bash
@@ -31,30 +45,48 @@ jobs:
           echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
           curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
 
-      - name: Decode code only with original resources intact
+      - name: Decode Projectivy code with original resources intact
         run: java -jar /tmp/apktool.jar d -f -r /tmp/projectivy.apk -o /tmp/projectivy-decoded
 
-      - name: Integrate Aerial Rows
+      - name: Add Aerial catalogue asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/projectivy-decoded/assets
+          curl -fL --retry 3 'https://raw.githubusercontent.com/kanozseyer/Aerial-Rows/projectivy-aerial-rows-provider/projectivy-aerial-rows-provider/src/main/assets/aerials.json' -o /tmp/projectivy-decoded/assets/aerials.json
+          test -s /tmp/projectivy-decoded/assets/aerials.json
+
+      - name: Patch Projectivy for embedded Aerial and Red Light
         run: |
           python3 .github/projectivy-aerial-integration.py
           python3 .github/projectivy-aerial-enhancements.py
+          python3 .github/projectivy-single-apk.py
 
-      - name: Rebuild Projectivy
-        run: java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-aerial-unsigned.apk
+      - name: Rebuild Projectivy and inject embedded DEX
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-single-unsigned.apk
+          zip -q -j /tmp/projectivy-single-unsigned.apk /tmp/classes4.dex
+          unzip -l /tmp/projectivy-single-unsigned.apk | grep -E 'classes4.dex|aerials.json'
 
-      - name: Align, sign and verify
+      - name: Align, generic-sign and verify
         shell: bash
         run: |
           set -euo pipefail
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
-          keytool -genkeypair -v -keystore /tmp/aerialrows-projectivy-debug.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Aerial Rows Projectivy Test,O=Aerial Rows,C=GB'
-          "$BUILD_TOOLS/zipalign" -p -f 4 /tmp/projectivy-aerial-unsigned.apk /tmp/Projectivy-4.72-Aerial-Rows-aligned.apk
-          "$BUILD_TOOLS/apksigner" sign --ks /tmp/aerialrows-projectivy-debug.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-4.72-Aerial-Rows.apk /tmp/Projectivy-4.72-Aerial-Rows-aligned.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-4.72-Aerial-Rows.apk
-          sha256sum /tmp/Projectivy-4.72-Aerial-Rows.apk
+          "$BUILD_TOOLS/zipalign" -p -f 4 /tmp/projectivy-single-unsigned.apk /tmp/Projectivy-Single-Embedded-aligned-unsigned.apk
+          keytool -genkeypair -v -keystore /tmp/projectivy-single-debug.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Projectivy Embedded Test,O=Launcher,C=GB'
+          "$BUILD_TOOLS/apksigner" sign --ks /tmp/projectivy-single-debug.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-Single-Embedded-generic.apk /tmp/Projectivy-Single-Embedded-aligned-unsigned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-Single-Embedded-generic.apk
+          mkdir -p /tmp/single-apk-artifact
+          cp /tmp/Projectivy-Single-Embedded-aligned-unsigned.apk /tmp/single-apk-artifact/
+          cp /tmp/Projectivy-Single-Embedded-generic.apk /tmp/single-apk-artifact/
+          cp "$BUILD_TOOLS/lib/apksigner.jar" /tmp/single-apk-artifact/
+          sha256sum /tmp/Projectivy-Single-Embedded-generic.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Projectivy-4.72-Aerial-Rows
-          path: /tmp/Projectivy-4.72-Aerial-Rows.apk
+          name: Projectivy-Single-Embedded
+          path: /tmp/single-apk-artifact/*
           retention-days: 7
