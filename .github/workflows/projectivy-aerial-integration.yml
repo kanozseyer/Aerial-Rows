@@ -8,6 +8,8 @@ on:
       - '.github/projectivy-aerial-integration.py'
       - '.github/projectivy-aerial-enhancements.py'
       - '.github/projectivy-single-apk.py'
+      - '.github/patch-redlight-runtime.py'
+      - '.github/projectivy-redlight-routing.py'
       - 'embedded-runtime/**'
       - 'settings.gradle.kts'
       - 'build.gradle.kts'
@@ -26,6 +28,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Patch embedded Red Light runtime for installed menu structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/patch-redlight-runtime.py
+          grep -q 'classifyDirectMenuShelf' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
 
       - name: Build framework-only embedded runtime DEX
         shell: bash
@@ -97,6 +106,8 @@ jobs:
           python3 .github/projectivy-aerial-integration.py
           python3 .github/projectivy-aerial-enhancements.py
           python3 .github/projectivy-single-apk.py
+          python3 .github/projectivy-redlight-routing.py
+          grep -q 'android:host="plugin.video.redlight"' /tmp/projectivy-decoded/AndroidManifest.xml
 
       - name: Rebuild Projectivy and inject embedded DEX
         shell: bash
