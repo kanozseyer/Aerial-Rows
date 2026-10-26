@@ -33,9 +33,18 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           ./gradlew :embedded-runtime:assembleDebug --stacktrace
-          unzip -p embedded-runtime/build/outputs/apk/debug/embedded-runtime-debug.apk classes.dex > /tmp/classes4.dex
+          APK='embedded-runtime/build/outputs/apk/debug/embedded-runtime-debug.apk'
+          echo 'Embedded runtime DEX entries:'
+          unzip -l "$APK" | grep -E 'classes[0-9]*\.dex'
+          rm -rf /tmp/runtime-dex && mkdir -p /tmp/runtime-dex
+          unzip -q "$APK" 'classes*.dex' -d /tmp/runtime-dex
+          i=4
+          for src in $(find /tmp/runtime-dex -maxdepth 1 -name 'classes*.dex' | sort -V); do
+            cp "$src" "/tmp/classes${i}.dex"
+            echo "runtime $(basename "$src") -> classes${i}.dex ($(stat -c%s "$src") bytes)"
+            i=$((i+1))
+          done
           test -s /tmp/classes4.dex
-          ls -lh /tmp/classes4.dex
 
       - name: Download exact Projectivy 4.72 and apktool
         shell: bash
@@ -45,8 +54,14 @@ jobs:
           echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
           curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
 
-      - name: Decode Projectivy code with original resources intact
-        run: java -jar /tmp/apktool.jar d -f -r /tmp/projectivy.apk -o /tmp/projectivy-decoded
+      - name: Decode Projectivy code and manifest with original resources intact
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar /tmp/apktool.jar d -f -r --force-manifest /tmp/projectivy.apk -o /tmp/projectivy-decoded
+          file /tmp/projectivy-decoded/AndroidManifest.xml
+          head -c 64 /tmp/projectivy-decoded/AndroidManifest.xml
+          grep -q '<manifest' /tmp/projectivy-decoded/AndroidManifest.xml
 
       - name: Add Aerial catalogue asset
         shell: bash
@@ -67,8 +82,12 @@ jobs:
         run: |
           set -euo pipefail
           java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-single-unsigned.apk
-          zip -q -j /tmp/projectivy-single-unsigned.apk /tmp/classes4.dex
-          unzip -l /tmp/projectivy-single-unsigned.apk | grep -E 'classes4.dex|aerials.json'
+          for dex in /tmp/classes[4-9].dex /tmp/classes[1-9][0-9].dex; do
+            [ -f "$dex" ] || continue
+            zip -q -j /tmp/projectivy-single-unsigned.apk "$dex"
+          done
+          echo 'Final embedded entries:'
+          unzip -l /tmp/projectivy-single-unsigned.apk | grep -E 'classes[4-9][0-9]*\.dex|aerials.json'
 
       - name: Align, generic-sign and verify
         shell: bash
