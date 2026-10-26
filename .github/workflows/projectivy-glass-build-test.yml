@@ -1,4 +1,4 @@
-name: Validate Projectivy 4.72 Liquid Glass Build
+name: Validate Projectivy Glass + Aerial Rows Wallpaper Provider
 
 on:
   workflow_dispatch:
@@ -7,6 +7,11 @@ on:
       - projectivy-liquid-glass
     paths:
       - 'projectivy-mod/**'
+      - 'aerialrows-wallpaper-provider/**'
+      - 'projectivy-wallpaper-api/**'
+      - 'app/src/main/assets/aerials.json'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
       - '.github/workflows/projectivy-glass-build-test.yml'
 
 permissions:
@@ -15,7 +20,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout patcher branch
         uses: actions/checkout@v4
@@ -33,6 +38,20 @@ jobs:
           bash -n projectivy-mod/build_projectivy_glass.sh
           bash -n projectivy-mod/install_overflight.sh
           python3 -m py_compile projectivy-mod/patch_ox3.py
+
+      - name: Build Aerial Rows Projectivy wallpaper provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :aerialrows-wallpaper-provider:assembleDebug --stacktrace
+          APK="$(find aerialrows-wallpaper-provider/build/outputs/apk/debug -name '*.apk' -print -quit)"
+          test -n "$APK"
+          unzip -t "$APK" >/dev/null
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 -print | sort -V | tail -n 1)"
+          "$AAPT" dump badging "$APK" | head -n 8 | tee provider-package-metadata.txt
+          grep -q "package: name='com.conreo.aerialrows.wallpaper'" provider-package-metadata.txt
+          grep -q "versionCode='1'" provider-package-metadata.txt
+          grep -q "versionName='1.0.0-dev'\|versionName='1.0.0'" provider-package-metadata.txt || true
 
       - name: Download and verify official inputs
         shell: bash
@@ -59,7 +78,6 @@ jobs:
           W="$RUNNER_TEMP/projectivy-glass-build"
           cd "$W"
 
-          # No resources need editing. Keep resources.arsc intact and touch only smali.
           java -jar apktool.jar d -f -r projectivy.apk -o decoded >/tmp/apktool-decode.log 2>&1 || {
             tail -n 120 /tmp/apktool-decode.log
             exit 1
@@ -73,7 +91,6 @@ jobs:
           test "$(grep -c '0x3ee66666' "$OX3")" -ge 2
           test "$(grep -c 'Landroid/graphics/Paint;->setAlpha(I)V' "$OX3")" -ge 4
 
-          # Scope guard: only ox3.smali may differ in the decoded tree after patching.
           cp "$OX3" "$W/patched-ox3.smali"
           rm -rf decoded-pristine
           java -jar apktool.jar d -f -r projectivy.apk -o decoded-pristine >/dev/null 2>&1
@@ -99,7 +116,7 @@ jobs:
           changed = sorted(str(k) for k in set(pmap) | set(mmap) if pmap.get(k) != mmap.get(k))
           print('Decoded-tree changed files:')
           print('\n'.join(changed))
-          if len(changed) != 1 or not changed[0].endswith('/ox3.smali') and changed[0] != 'smali_classes2/ox3.smali':
+          if len(changed) != 1 or (not changed[0].endswith('/ox3.smali') and changed[0] != 'smali_classes2/ox3.smali'):
               raise SystemExit(f'Unexpected patch scope: {changed}')
           PY
 
