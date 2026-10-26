@@ -10,6 +10,7 @@ on:
       - '.github/projectivy-single-apk.py'
       - '.github/patch-redlight-runtime.py'
       - '.github/patch-v6-runtime.py'
+      - '.github/patch-v7-runtime.py'
       - '.github/projectivy-redlight-routing.py'
       - '.github/projectivy-redlight-label.py'
       - 'embedded-runtime/**'
@@ -31,16 +32,21 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Patch embedded Red Light runtime for installed menu structure and v6 fixes
+      - name: Patch embedded Red Light runtime for installed menu structure and v7 fixes
         shell: bash
         run: |
           set -euo pipefail
           python3 .github/patch-redlight-runtime.py
           python3 .github/patch-v6-runtime.py
+          python3 .github/patch-v7-runtime.py
           grep -q 'classifyDirectMenuShelf' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'notifyProjectivyChannelsChanged' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'restoreBundledChannelLayoutOnce' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'pruneObsoletePersonalListChannels' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'GUI.ActivateWindow' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightLaunchActivity.java
-          grep -q 'syncRedLightAsync(c)' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q '6500L' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          ! grep -q 'Red Light · couchy-' embedded-runtime/src/main/assets/launcher_default_profile.json
+          ! grep -q 'Red Light · ishows-' embedded-runtime/src/main/assets/launcher_default_profile.json
 
       - name: Build framework-only embedded runtime DEX
         shell: bash
@@ -108,6 +114,10 @@ jobs:
           python3 -m json.tool /tmp/projectivy-decoded/assets/launcher_default_profile.json >/dev/null
           grep -q 'Red Light · Trending Movies' /tmp/projectivy-decoded/assets/launcher_default_profile.json
           grep -q 'Red Light · Trending TV Shows' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · In Progress Episodes' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · Continue Watching' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          ! grep -q 'Red Light · couchy-' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          ! grep -q 'Red Light · ishows-' /tmp/projectivy-decoded/assets/launcher_default_profile.json
 
       - name: Patch Projectivy for embedded Aerial and Red Light
         shell: bash
