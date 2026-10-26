@@ -1,5 +1,6 @@
 package com.kanozseyer.aerialrows.kodibridge
 
+import android.annotation.SuppressLint
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
@@ -7,6 +8,7 @@ import androidx.tvprovider.media.tv.Channel
 import androidx.tvprovider.media.tv.PreviewProgram
 import androidx.tvprovider.media.tv.TvContractCompat
 
+@SuppressLint("RestrictedApi")
 object TvPublisher {
     private const val MAX_PROGRAMS = 60
 
