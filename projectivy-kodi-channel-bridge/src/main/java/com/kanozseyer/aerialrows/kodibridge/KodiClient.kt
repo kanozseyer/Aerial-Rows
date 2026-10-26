@@ -20,6 +20,7 @@ data class KodiEntry(
 
 object KodiClient {
     const val VIDEO_ADDONS_ROOT = "addons://sources/video/"
+    const val RED_LIGHT_NAME = "Red Light"
 
     fun isInstalled(context: Context): Boolean = runCatching {
         context.packageManager.getApplicationInfo(context.kodiPackage, 0)
@@ -56,6 +57,13 @@ object KodiClient {
                 }
             }
         }.getOrNull()
+    }
+
+    /** Find the installed Red Light video add-on by its Kodi-visible display name. */
+    fun redLightRoot(context: Context): KodiEntry? {
+        val addons = list(context, VIDEO_ADDONS_ROOT) ?: return null
+        return addons.firstOrNull { it.name.trim().equals(RED_LIGHT_NAME, ignoreCase = true) }
+            ?: addons.firstOrNull { it.name.contains(RED_LIGHT_NAME, ignoreCase = true) }
     }
 
     fun intent(context: Context, kodiUri: String? = null): Intent {
