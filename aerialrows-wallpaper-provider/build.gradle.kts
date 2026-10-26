@@ -40,5 +40,5 @@ dependencies {
     implementation(project(":projectivy-wallpaper-api"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.fragment:fragment-ktx:1.8.4")
-    implementation("androidx.leanback:leanback:1.2.0")
+    implementation("androidx.leanback:leanback:1.1.0")
 }
