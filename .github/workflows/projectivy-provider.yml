@@ -1,0 +1,48 @@
+name: Projectivy Aerial Rows Provider
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['projectivy-aerial-rows-provider']
+    paths:
+      - 'projectivy-aerial-rows-provider/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle/**'
+      - '.github/workflows/projectivy-provider.yml'
+  pull_request:
+    paths:
+      - 'projectivy-aerial-rows-provider/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle/**'
+      - '.github/workflows/projectivy-provider.yml'
+
+concurrency:
+  group: projectivy-provider-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Test, build and lint provider
+        run: ./gradlew :projectivy-aerial-rows-provider:testDebugUnitTest :projectivy-aerial-rows-provider:assembleDebug :projectivy-aerial-rows-provider:assembleRelease :projectivy-aerial-rows-provider:lintRelease --no-daemon
+      - name: Verify build does not mutate tracked source
+        run: git diff --exit-code
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aerial-Rows-Projectivy-debug
+          path: projectivy-aerial-rows-provider/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

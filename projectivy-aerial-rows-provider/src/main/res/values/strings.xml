@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugin_name">Aerial Rows for Projectivy</string>
+    <string name="plugin_short_name">Aerial Rows</string>
+    <string name="plugin_uuid" translatable="false">8c00feaf-c7be-43c2-80f9-d49853aaa99a</string>
+    <string name="plugin_description">Apple TV, Amazon Fire TV and community aerial video wallpapers, with selectable sources and quality preferences.</string>
+    <string name="settings">Wallpaper settings</string>
+    <string name="projectivy_not_installed">Projectivy Launcher is not installed.</string>
+
+    <string name="source_apple">Apple TV Aerials</string>
+    <string name="source_amazon">Amazon Fire TV</string>
+    <string name="source_community_1">Community collection 1</string>
+    <string name="source_community_2">Community collection 2</string>
+    <string name="source_custom">Custom JSON / M3U source</string>
+    <string name="source_custom_url">Custom source URL</string>
+
+    <string name="prefer_4k">Prefer 4K</string>
+    <string name="prefer_hdr">Prefer HDR</string>
+    <string name="quality_fallback">Fall back to the closest available quality</string>
+    <string name="cache_hours">Remote catalogue cache (hours)</string>
+    <string name="filter_keywords">Title/source filter (comma separated)</string>
+    <string name="wallpaper_count">Available wallpapers</string>
+    <string name="refresh_now">Refresh Projectivy now</string>
+    <string name="refresh_now_desc">Discard the current provider list and request Aerial Rows again.</string>
+    <string name="loading">Loading…</string>
+    <string name="source_note">Projectivy handles transitions, playback, manual next and recently-shown avoidance.</string>
+</resources>
