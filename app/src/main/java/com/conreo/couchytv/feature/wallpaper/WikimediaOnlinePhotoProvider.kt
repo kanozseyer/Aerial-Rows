@@ -138,7 +138,9 @@ class WikimediaOnlinePhotoProvider(private val context: Context) {
         }
         try {
             if (connection.responseCode !in 200..299) return false
-            val declared = connection.contentLengthLong
+            // URLConnection.contentLengthLong is API 24+. Reading the header directly
+            // keeps the preflight size guard compatible with Aerial Rows' API 21 floor.
+            val declared = connection.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
             if (declared > MAX_DOWNLOAD_BYTES) return false
             var total = 0L
             connection.inputStream.use { input ->
