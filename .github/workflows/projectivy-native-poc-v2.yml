@@ -1,0 +1,57 @@
+name: Projectivy Native Aerial Rows POC v2
+
+on:
+  push:
+    branches: [projectivy-native-mod]
+    paths:
+      - '.github/workflows/projectivy-native-poc-v2.yml'
+      - '.github/projectivy-native-poc.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact Projectivy 4.72 and apktool
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/projectivy.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+
+      - name: Decode code only and keep original resource table
+        run: java -jar /tmp/apktool.jar d -f -r /tmp/projectivy.apk -o /tmp/projectivy-decoded
+
+      - name: Inject native Aerial Rows provider
+        run: python3 .github/projectivy-native-poc.py
+
+      - name: Rebuild code with original resources
+        run: java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-native-unsigned.apk
+
+      - name: Align, sign and verify test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          keytool -genkeypair -v -keystore /tmp/aerialrows-projectivy-debug.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Aerial Rows Projectivy Test,O=Aerial Rows,C=GB'
+          "$BUILD_TOOLS/zipalign" -p -f 4 /tmp/projectivy-native-unsigned.apk /tmp/Projectivy-4.72-Aerial-Rows-POC-aligned.apk
+          "$BUILD_TOOLS/apksigner" sign --ks /tmp/aerialrows-projectivy-debug.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-4.72-Aerial-Rows-POC.apk /tmp/Projectivy-4.72-Aerial-Rows-POC-aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-4.72-Aerial-Rows-POC.apk
+          sha256sum /tmp/Projectivy-4.72-Aerial-Rows-POC.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Aerial-Rows-POC-v2
+          path: /tmp/Projectivy-4.72-Aerial-Rows-POC.apk
+          retention-days: 7
