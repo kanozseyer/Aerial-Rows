@@ -13,11 +13,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class BrowserActivity : FragmentActivity() {
-    val sourceUri: String by lazy { intent.getStringExtra(EXTRA_URI) ?: KodiClient.VIDEO_ADDONS_ROOT }
-    val displayName: String by lazy { intent.getStringExtra(EXTRA_NAME) ?: "Video add-ons" }
+    var sourceUri: String? = null
+    var displayName: String = KodiClient.RED_LIGHT_NAME
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        sourceUri = intent.getStringExtra(EXTRA_URI)
+        displayName = intent.getStringExtra(EXTRA_NAME) ?: KodiClient.RED_LIGHT_NAME
         if (savedInstanceState == null) {
             GuidedStepSupportFragment.addAsRoot(this, KodiBrowserFragment(), android.R.id.content)
         }
@@ -35,14 +37,13 @@ class KodiBrowserFragment : GuidedStepSupportFragment() {
 
     override fun onCreateGuidance(savedInstanceState: Bundle?): Guidance = Guidance(
         host.displayName,
-        host.sourceUri,
-        "Kodi browser",
+        host.sourceUri ?: "Auto-detecting Red Light…",
+        "Red Light browser",
         null,
     )
 
     override fun onCreateActions(actions: MutableList<GuidedAction>, savedInstanceState: Bundle?) {
-        addFixedActions(actions)
-        actions += GuidedAction.Builder(context).id(ACTION_LOADING).title("Loading Kodi folder…").infoOnly(true).build()
+        actions += GuidedAction.Builder(context).id(ACTION_LOADING).title("Loading Red Light…").infoOnly(true).build()
     }
 
     override fun onViewCreated(view: android.view.View, savedInstanceState: Bundle?) {
@@ -52,31 +53,38 @@ class KodiBrowserFragment : GuidedStepSupportFragment() {
 
     private fun load() {
         lifecycleScope.launch {
-            val loaded = withContext(Dispatchers.IO) { KodiClient.list(requireContext(), host.sourceUri) }
-            if (loaded == null) {
-                val actions = mutableListOf<GuidedAction>()
-                addFixedActions(actions)
-                actions += GuidedAction.Builder(context)
-                    .id(ACTION_LOADING)
-                    .title("Kodi folder unavailable")
-                    .description("Open Kodi, return here, then reopen this folder.")
-                    .infoOnly(true)
-                    .build()
-                setActions(actions)
+            val resolved = withContext(Dispatchers.IO) {
+                val source = host.sourceUri ?: KodiClient.redLightRoot(requireContext())?.uri
+                if (source == null) null else source to KodiClient.list(requireContext(), source)
+            }
+
+            if (resolved == null || resolved.second == null) {
+                setActions(
+                    listOf(
+                        GuidedAction.Builder(context)
+                            .id(ACTION_LOADING)
+                            .title("Red Light unavailable")
+                            .description("Open Kodi once and make sure Red Light is installed, then retry.")
+                            .infoOnly(true)
+                            .build(),
+                    ),
+                )
                 return@launch
             }
-            entries = loaded.take(MAX_ENTRIES)
+
+            host.sourceUri = resolved.first
+            entries = resolved.second.orEmpty().take(MAX_ENTRIES)
             val actions = mutableListOf<GuidedAction>()
             addFixedActions(actions)
             entries.forEachIndexed { index, item ->
                 actions += GuidedAction.Builder(context)
                     .id(ENTRY_BASE + index)
                     .title(item.name)
-                    .description(if (item.isDirectory) "Folder · ${item.uri}" else (item.mediaType ?: item.category ?: item.uri))
+                    .description(if (item.isDirectory) "Red Light folder" else (item.mediaType ?: item.category ?: "Red Light item"))
                     .build()
             }
             if (entries.isEmpty()) {
-                actions += GuidedAction.Builder(context).id(ACTION_LOADING).title("No items returned by Kodi").infoOnly(true).build()
+                actions += GuidedAction.Builder(context).id(ACTION_LOADING).title("No items returned by Red Light").infoOnly(true).build()
             }
             setActions(actions)
         }
@@ -85,20 +93,20 @@ class KodiBrowserFragment : GuidedStepSupportFragment() {
     private fun addFixedActions(actions: MutableList<GuidedAction>) {
         actions += GuidedAction.Builder(context)
             .id(ACTION_USE_FOLDER)
-            .title("Use this folder as Projectivy channel")
+            .title("Use this Red Light section as Projectivy channel")
             .description("Publish up to 60 items and keep them cached when Kodi closes")
             .build()
         actions += GuidedAction.Builder(context)
             .id(ACTION_OPEN_FOLDER)
-            .title("Open this folder in Kodi")
-            .description(host.sourceUri)
+            .title("Open this section in Kodi")
+            .description(host.sourceUri ?: "Red Light")
             .build()
     }
 
     override fun onGuidedActionClicked(action: GuidedAction) {
         when (action.id) {
             ACTION_USE_FOLDER -> addChannel()
-            ACTION_OPEN_FOLDER -> KodiClient.open(requireContext(), host.sourceUri)
+            ACTION_OPEN_FOLDER -> host.sourceUri?.let { KodiClient.open(requireContext(), it) }
             else -> if (action.id >= ENTRY_BASE) {
                 entries.getOrNull((action.id - ENTRY_BASE).toInt())?.let { item ->
                     if (item.isDirectory) {
@@ -115,13 +123,14 @@ class KodiBrowserFragment : GuidedStepSupportFragment() {
 
     private fun addChannel() {
         val context = requireContext()
-        val title = "Kodi · ${host.displayName}"
-        val config = BridgePrefs.add(context, title, host.sourceUri)
+        val source = host.sourceUri ?: return
+        val title = "Red Light · ${host.displayName}"
+        val config = BridgePrefs.add(context, title, source)
         lifecycleScope.launch {
             val synced = withContext(Dispatchers.IO) { TvPublisher.sync(context.applicationContext, config) }
             Toast.makeText(
                 context,
-                if (synced) "$title added to Android TV channels" else "$title saved; open Kodi and refresh to populate it",
+                if (synced) "$title added to Projectivy channels" else "$title saved; open Kodi and refresh to populate it",
                 Toast.LENGTH_LONG,
             ).show()
             requireActivity().finish()
