@@ -81,13 +81,16 @@ jobs:
           print('Material attrs added:', additions)
           PY
 
-      - name: Add Aerial catalogue asset
+      - name: Add embedded launcher assets
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/projectivy-decoded/assets
           curl -fL --retry 3 'https://raw.githubusercontent.com/kanozseyer/Aerial-Rows/projectivy-aerial-rows-provider/projectivy-aerial-rows-provider/src/main/assets/aerials.json' -o /tmp/projectivy-decoded/assets/aerials.json
+          cp embedded-runtime/src/main/assets/launcher_default_profile.json /tmp/projectivy-decoded/assets/launcher_default_profile.json
           test -s /tmp/projectivy-decoded/assets/aerials.json
+          test -s /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          python3 -m json.tool /tmp/projectivy-decoded/assets/launcher_default_profile.json >/dev/null
 
       - name: Patch Projectivy for embedded Aerial and Red Light
         run: |
@@ -105,7 +108,8 @@ jobs:
             zip -q -j /tmp/projectivy-single-unsigned.apk "$dex"
           done
           echo 'Final embedded entries:'
-          unzip -l /tmp/projectivy-single-unsigned.apk | grep -E 'classes[4-9][0-9]*\.dex|aerials.json'
+          unzip -l /tmp/projectivy-single-unsigned.apk | grep -E 'classes[4-9][0-9]*\.dex|aerials.json|launcher_default_profile.json'
+          unzip -l /tmp/projectivy-single-unsigned.apk | grep -q 'assets/launcher_default_profile.json'
 
       - name: Align, generic-sign and verify
         shell: bash
