@@ -163,3 +163,6 @@ embedded = Path('embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/
 resume_anchor = '''        h.postDelayed(() -> notifyAerial(app), 1400L);\n        scheduleRedLight(app);\n        syncRedLightAsync(app);'''
 resume_replacement = '''        h.postDelayed(() -> notifyAerial(app), 1400L);\n        scheduleRedLight(app);\n        syncRedLightAsync(app);\n        h.postDelayed(() -> syncRedLightAsync(app), 2500L);\n        h.postDelayed(() -> syncRedLightAsync(app), 6500L);'''
 replace_once(embedded, resume_anchor, resume_replacement, 'delayed Red Light rescans')
+
+# v8: defer Home categories until channels exist, then reload Projectivy's live model.
+exec(Path('.github/patch-v8-runtime.py').read_text(), globals())
