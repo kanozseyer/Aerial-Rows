@@ -59,56 +59,31 @@ jobs:
           ./jadx/bin/jadx --version
           java -jar apktool.jar --version
 
-      - name: Locate Projectivy dock renderer in JADX
+      - name: Decode exact smali and locate row presenter
         shell: bash
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/projectivy-analysis"
           APK="$PWD/ProjectivyLauncher-4.72-c97-xda-release.apk"
-          mkdir -p jadx-out
-          ./jadx/bin/jadx --no-res --show-bad-code -d jadx-out "$APK" >/tmp/jadx.log 2>&1 || {
-            tail -n 100 /tmp/jadx.log
-            exit 1
-          }
-
-          LU_FILE="$(find jadx-out/sources -type f -path '*/defpackage/lu.java' -print -quit)"
-          if [[ -z "$LU_FILE" ]]; then
-            LU_FILE="$(grep -RIl --include='*.java' -m1 -E '(^|[[:space:]])class[[:space:]]+lu([[:space:]]|\{|extends)' jadx-out/sources | head -n 1 || true)"
-          fi
-          test -n "$LU_FILE"
-          echo "lu_java=$LU_FILE" >> "$GITHUB_ENV"
-
-          {
-            echo '=== VERIFIED INPUT ==='
-            sha256sum "$APK"
-            echo
-            echo '=== JADX DOCK RENDERER FILE ==='
-            echo "$LU_FILE"
-            echo
-            echo '=== LU METHOD / DRAWABLE SIGNALS ==='
-            grep -nE 'GradientDrawable|MaterialShapeDrawable|setBackground|setBackgroundColor|setColor\(|setCornerRadius|setCornerRadii|setStroke|setPadding|background|HorizontalGridView' "$LU_FILE" || true
-            echo
-            echo '=== ROW PRESENTER REFERENCES ==='
-            grep -RIn --include='*.java' -E 'extends[[:space:]]+lu|new[[:space:]]+lu|class[[:space:]]+(jo4|f23)' jadx-out/sources | head -n 120 || true
-          } | tee dock-analysis.txt
-
-      - name: Locate exact smali class and dock drawing instructions
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP/projectivy-analysis"
-          APK="$PWD/ProjectivyLauncher-4.72-c97-xda-release.apk"
-          rm -rf apktool-out
           java -jar apktool.jar d -f -r "$APK" -o apktool-out >/tmp/apktool.log 2>&1 || {
             tail -n 100 /tmp/apktool.log
             exit 1
           }
 
-          LU_SMALI="$(find apktool-out -type f -path '*/defpackage/lu.smali' -print -quit)"
-          test -n "$LU_SMALI"
+          # JADX represents APK classes with no Java package as defpackage.*;
+          # apktool keeps the original DEX identity at the smali root.
+          LU_SMALI="$(find apktool-out -type f -name 'lu.smali' -print -quit)"
+          if [[ -z "$LU_SMALI" ]]; then
+            echo 'lu.smali not found; listing HorizontalGridView/background candidates'
+            grep -RIl --include='*.smali' 'Landroidx/leanback/widget/HorizontalGridView;' apktool-out \
+              | head -n 100 || true
+            exit 1
+          fi
           echo "lu_smali=$LU_SMALI" >> "$GITHUB_ENV"
 
           {
+            echo '=== VERIFIED INPUT ==='
+            sha256sum "$APK"
             echo
             echo '=== SMALI DOCK RENDERER FILE ==='
             echo "$LU_SMALI"
@@ -120,7 +95,53 @@ jobs:
             grep -nE 'GradientDrawable|MaterialShapeDrawable|setBackground|setBackgroundColor|setColor|setCornerRadius|setCornerRadii|setStroke|setPadding' "$LU_SMALI" || true
             echo
             echo '=== CATEGORY BACKGROUND FIELD READS NEAR LU ==='
-            grep -nE 'Ldefpackage/i5;->B:|iget.*->B:' "$LU_SMALI" || true
+            grep -nE 'Li5;->B:|Ldefpackage/i5;->B:|iget.*->B:' "$LU_SMALI" || true
+            echo
+            echo '=== ROW PRESENTER INHERITANCE CANDIDATES ==='
+            grep -RIn --include='*.smali' -E '^\.super Llu;|^\.class .* L(jo4|f23);' apktool-out | head -n 100 || true
+          } | tee dock-analysis.txt
+
+      - name: Decompile Java view of renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/projectivy-analysis"
+          APK="$PWD/ProjectivyLauncher-4.72-c97-xda-release.apk"
+          mkdir -p jadx-out
+
+          # A few unrelated methods in this heavily optimized APK do not decompile
+          # cleanly in stock JADX. That must not discard the thousands of usable
+          # source files produced before JADX returns its non-zero warning status.
+          set +e
+          ./jadx/bin/jadx --no-res --show-bad-code -d jadx-out "$APK" >/tmp/jadx.log 2>&1
+          JADX_RC=$?
+          set -e
+          echo "JADX exit status: $JADX_RC (non-zero is tolerated when sources exist)"
+          tail -n 8 /tmp/jadx.log || true
+          test -d jadx-out/sources
+
+          LU_FILE="$(find jadx-out/sources -type f -iname 'lu.java' -print -quit)"
+          if [[ -z "$LU_FILE" ]]; then
+            LU_FILE="$(grep -RIl --include='*.java' -m1 -E '(^|[[:space:]])(public[[:space:]]+)?(abstract[[:space:]]+)?class[[:space:]]+lu([[:space:]]|\{|extends)' jadx-out/sources | head -n 1 || true)"
+          fi
+          if [[ -z "$LU_FILE" ]]; then
+            echo 'JADX lu class not found; falling back to signature candidates.'
+            LU_FILE="$(grep -RIl --include='*.java' -m1 'HorizontalGridView' jadx-out/sources \
+              | while read -r f; do grep -Eq 'setBackground|GradientDrawable|MaterialShapeDrawable' "$f" && { echo "$f"; break; }; done || true)"
+          fi
+          test -n "$LU_FILE"
+          echo "lu_java=$LU_FILE" >> "$GITHUB_ENV"
+
+          {
+            echo
+            echo '=== JADX DOCK RENDERER FILE ==='
+            echo "$LU_FILE"
+            echo
+            echo '=== JAVA DRAWABLE / BACKGROUND SIGNALS ==='
+            grep -nE 'GradientDrawable|MaterialShapeDrawable|setBackground|setBackgroundColor|setColor\(|setCornerRadius|setCornerRadii|setStroke|setPadding|HorizontalGridView' "$LU_FILE" || true
+            echo
+            echo '=== ROW PRESENTER REFERENCES ==='
+            grep -RIn --include='*.java' -E 'extends[[:space:]]+lu|class[[:space:]]+(jo4|f23)' jadx-out/sources | head -n 120 || true
           } | tee -a dock-analysis.txt
 
       - name: Print compact context around candidate instructions
@@ -133,7 +154,7 @@ jobs:
           import os, re
 
           paths = [Path(os.environ['lu_java']), Path(os.environ['lu_smali'])]
-          needles = re.compile(r'GradientDrawable|MaterialShapeDrawable|setBackground|setColor|setCornerRadius|setCornerRadii|setStroke|Ldefpackage/i5;->B:')
+          needles = re.compile(r'GradientDrawable|MaterialShapeDrawable|setBackground|setColor|setCornerRadius|setCornerRadii|setStroke|->B:')
           out = Path('dock-analysis.txt')
           with out.open('a', encoding='utf-8') as f:
               for path in paths:
@@ -151,7 +172,7 @@ jobs:
                       for n in range(start, end):
                           f.write(f'{n+1:5}: {lines[n]}\n')
           PY
-          tail -n 320 dock-analysis.txt
+          tail -n 360 dock-analysis.txt
 
       - name: Upload compact analysis only
         uses: actions/upload-artifact@v4
