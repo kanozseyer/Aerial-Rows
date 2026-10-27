@@ -1,0 +1,160 @@
+name: Projectivy Clean 01F - Strip Billing Manifest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-01f-strip-billing-manifest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/official.apk' | sha256sum -c -
+
+      - name: Decode patch billing runtime plus manifest only
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, xml.etree.ElementTree as ET
+
+          # Keep the proven CLEAN 01E source-level disable.
+          p=Path('/tmp/pj/smali/it1.smali')
+          s=p.read_text()
+          m=re.search(r'(?ms)^\.method public final g\(\)V\n.*?^\.end method$', s)
+          if not m:
+              raise SystemExit('Lit1.g() method not found')
+          replacement='.method public final g()V\n    .locals 0\n\n    # CLEAN 01F: Google Play Billing permanently disabled.\n    return-void\n.end method'
+          s=s[:m.start()]+replacement+s[m.end():]
+          p.write_text(s)
+
+          # Remove only Android-visible Google Billing integration from manifest.
+          mp=Path('/tmp/pj/AndroidManifest.xml')
+          tree=ET.parse(mp); root=tree.getroot()
+          A='{http://schemas.android.com/apk/res/android}'
+          removed=[]
+          for child in list(root):
+              if child.tag=='uses-permission' and child.get(A+'name')=='com.android.vending.BILLING':
+                  root.remove(child); removed.append('permission')
+          app=root.find('application')
+          if app is None: raise SystemExit('application node missing')
+          for child in list(app):
+              name=child.get(A+'name','')
+              if child.tag=='activity' and name in (
+                  'com.android.billingclient.api.ProxyBillingActivity',
+                  'com.android.billingclient.api.ProxyBillingActivityV2'):
+                  app.remove(child); removed.append(name)
+              if child.tag=='meta-data' and child.get(A+'name','')=='com.google.android.play.billingclient.version':
+                  app.remove(child); removed.append('billingclient.version')
+          # Remove any package visibility query for the billing bind action only.
+          for queries in root.findall('queries'):
+              for intent in list(queries):
+                  actions=[x.get(A+'name','') for x in intent.findall('action')]
+                  if 'com.android.vending.billing.InAppBillingService.BIND' in actions:
+                      queries.remove(intent); removed.append('billing-query')
+          ET.register_namespace('android','http://schemas.android.com/apk/res/android')
+          tree.write(mp, encoding='utf-8', xml_declaration=True)
+          expected={'permission','com.android.billingclient.api.ProxyBillingActivity','com.android.billingclient.api.ProxyBillingActivityV2','billingclient.version'}
+          missing=expected-set(removed)
+          if missing:
+              raise SystemExit(f'expected billing manifest nodes missing: {missing}; removed={removed}')
+          print('removed:', removed)
+          PY
+
+          # Apktool compatibility attributes only for temporary compile.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/pj/res/values/attrs.xml')
+          s=p.read_text(); marker='</resources>'
+          extra='''    <attr name="state_liftable" format="boolean" />\n    <attr name="state_lifted" format="boolean" />\n    <attr name="state_swiped" format="boolean" />\n'''
+          if 'name="state_liftable"' not in s:
+              s=s.replace(marker,extra+marker); p.write_text(s)
+          PY
+
+          java -jar /tmp/apktool.jar b /tmp/pj -o /tmp/rebuilt.apk >/dev/null
+          unzip -p /tmp/rebuilt.apk classes.dex > /tmp/classes.dex
+          unzip -p /tmp/rebuilt.apk AndroidManifest.xml > /tmp/AndroidManifest.xml
+          test -s /tmp/classes.dex && test -s /tmp/AndroidManifest.xml
+
+      - name: Repack official APK changing only classes.dex and AndroidManifest.xml
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile
+          src='/tmp/official.apk'; out='/tmp/unsigned.apk'
+          repl={'classes.dex':open('/tmp/classes.dex','rb').read(),'AndroidManifest.xml':open('/tmp/AndroidManifest.xml','rb').read()}
+          with zipfile.ZipFile(src,'r') as zin, zipfile.ZipFile(out,'w') as zout:
+              for info in zin.infolist():
+                  if info.filename.startswith('META-INF/'):
+                      continue
+                  data=repl.get(info.filename, zin.read(info.filename))
+                  ni=zipfile.ZipInfo(info.filename, info.date_time)
+                  ni.compress_type=info.compress_type; ni.comment=info.comment; ni.extra=info.extra
+                  ni.internal_attr=info.internal_attr; ni.external_attr=info.external_attr
+                  ni.create_system=info.create_system; ni.create_version=info.create_version
+                  ni.extract_version=info.extract_version; ni.flag_bits=info.flag_bits
+                  zout.writestr(ni,data)
+          PY
+
+      - name: Align sign verify and prove exact payload scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.pk8?format=TEXT' | base64 -d > /tmp/key.pk8
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.x509.pem?format=TEXT' | base64 -d > /tmp/cert.pem
+          "$BT/zipalign" -P 16 -f 4 /tmp/unsigned.apk /tmp/aligned.apk
+          "$BT/apksigner" sign --key /tmp/key.pk8 --cert /tmp/cert.pem --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out /tmp/Projectivy-CLEAN-01F-Billing-Manifest-Stripped.apk /tmp/aligned.apk
+          "$BT/apksigner" verify --verbose /tmp/Projectivy-CLEAN-01F-Billing-Manifest-Stripped.apk | tee /tmp/apksigner.txt
+          "$BT/zipalign" -P 16 -c -v 4 /tmp/Projectivy-CLEAN-01F-Billing-Manifest-Stripped.apk >/tmp/zipalign.txt
+          "$BT/aapt" dump permissions /tmp/Projectivy-CLEAN-01F-Billing-Manifest-Stripped.apk | tee /tmp/permissions.txt
+          ! grep -q 'com.android.vending.BILLING' /tmp/permissions.txt
+          "$BT/aapt" dump xmltree /tmp/Projectivy-CLEAN-01F-Billing-Manifest-Stripped.apk AndroidManifest.xml > /tmp/manifest-tree.txt
+          ! grep -q 'ProxyBillingActivity' /tmp/manifest-tree.txt
+          ! grep -q 'com.google.android.play.billingclient.version' /tmp/manifest-tree.txt
+          python3 - <<'PY'
+          import zipfile,hashlib
+          a=zipfile.ZipFile('/tmp/official.apk'); b=zipfile.ZipFile('/tmp/Projectivy-CLEAN-01F-Billing-Manifest-Stripped.apk')
+          ign=lambda n:n.startswith('META-INF/')
+          aa={i.filename for i in a.infolist() if not ign(i.filename)}; bb={i.filename for i in b.infolist() if not ign(i.filename)}
+          assert aa==bb
+          changed=[n for n in sorted(aa) if hashlib.sha256(a.read(n)).digest()!=hashlib.sha256(b.read(n)).digest()]
+          assert changed==['AndroidManifest.xml','classes.dex'], changed
+          for n in ('resources.arsc','classes2.dex','classes3.dex'):
+              assert a.read(n)==b.read(n), n
+          print('PASS changed only AndroidManifest.xml + classes.dex')
+          PY
+          sha256sum /tmp/Projectivy-CLEAN-01F-Billing-Manifest-Stripped.apk | tee /tmp/SHA256.txt
+
+      - name: Publish artifact
+        run: |
+          mkdir -p /tmp/artifact
+          cp /tmp/Projectivy-CLEAN-01F-Billing-Manifest-Stripped.apk /tmp/artifact/
+          cp /tmp/SHA256.txt /tmp/apksigner.txt /tmp/zipalign.txt /tmp/permissions.txt /tmp/manifest-tree.txt /tmp/artifact/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-01F-Billing-Manifest-Stripped
+          path: /tmp/artifact/*
+          retention-days: 30
