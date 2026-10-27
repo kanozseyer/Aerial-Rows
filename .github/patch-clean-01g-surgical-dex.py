@@ -201,19 +201,21 @@ def patch_classes1(src, dst):
     put_u2(b, base + 8*2, 0x0000)
     put_u2(b, base + 9*2, 0x0000)
 
-    # Premium card object is now unused. Replace its sget-object v19 with a
-    # same-width const/16 v19, 0 so PremiumCardActivity is not resolved at init.
+    # IMPORTANT: keep PremiumCardActivity.e0 and the hidden Premium d90 object
+    # construction intact. Projectivy constructs that object before assembling
+    # the About array, and d90's constructor dereferences the supplied object.
+    # CLEAN 01G's earlier attempt to replace this sget-object with null caused
+    # an ExceptionInInitializerError / NPE crash loop on Shield. We therefore
+    # remove Premium only from Lw40.A while preserving initialization semantics.
     ppc = sget_premium[0]
     pbase = code + 16 + ppc * 2
     assert u2(b, pbase) == 0x1362 and u2(b, pbase+2) == premium_field
-    put_u2(b, pbase, 0x1313)  # const/16 v19, 0
-    put_u2(b, pbase+2, 0x0000)
 
     fix_header(b)
     verify_header(b)
     Path(dst).write_bytes(b)
     changed = sum(a != c for a, c in zip(original, b))
-    print(f'classes.dex: patched Lit1.g and Lw40.A; changed bytes incl header={changed}; size={len(b)}')
+    print(f'classes.dex: patched Lit1.g and Lw40.A only; preserved Premium object init; changed bytes incl header={changed}; size={len(b)}')
     assert changed <= 64, changed
 
 
