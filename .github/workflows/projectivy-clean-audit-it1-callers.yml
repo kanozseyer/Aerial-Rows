@@ -1,0 +1,43 @@
+name: Projectivy Clean Audit - Billing Facade Callers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-it1-callers.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode and trace all Lit1 callers
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          mkdir -p /tmp/out
+          cp /tmp/pj/smali/it1.smali /tmp/out/it1.smali
+          {
+            echo '=== ALL external Lit1 references ==='
+            grep -R -n -B16 -A30 'Lit1;->' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null | grep -v '^/tmp/pj/smali/it1.smali' || true
+            echo
+            echo '=== Lit1 construction/static field refs ==='
+            grep -R -n -B16 -A30 -E 'new-instance .*Lit1;|sget-object .*Lit1;|sput-object .*Lit1;' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null | grep -v '^/tmp/pj/smali/it1.smali' || true
+          } > /tmp/out/references.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Billing-Facade-Callers
+          path: /tmp/out/*
+          retention-days: 7
