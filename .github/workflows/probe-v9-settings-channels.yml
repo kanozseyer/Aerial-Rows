@@ -2,6 +2,10 @@ name: Probe v9 Settings and Channels
 
 on:
   workflow_dispatch:
+  push:
+    branches: [projectivy-v9-profile-multiselect-fix]
+    paths:
+      - '.github/workflows/probe-v9-settings-channels.yml'
 
 permissions:
   contents: read
