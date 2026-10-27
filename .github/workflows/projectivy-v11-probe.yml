@@ -61,7 +61,11 @@ jobs:
             mkdir -p "/tmp/probe/src/$(dirname "$rel")"
             cp "$f" "/tmp/probe/src/$rel"
           done < /tmp/probe/card-bg-files.txt
-          grep -RniE 'appearance_cards_bg_tint|cards_bg|put(Int|Long|Float|String)|\.h\(' /tmp/probe/src > /tmp/probe/card-bg-expanded.txt || true
+          for cls in yh3 hj3 dj3; do
+            f="/tmp/jadx-out/sources/defpackage/${cls}.java"
+            [ -f "$f" ] && cp "$f" "/tmp/probe/${cls}.java"
+          done
+          grep -RniE 'appearance_cards_bg_tint|cards_bg|put(Int|Long|Float|String)|\.h\(' /tmp/probe/src /tmp/probe/yh3.java /tmp/probe/hj3.java > /tmp/probe/card-bg-expanded.txt || true
       - uses: actions/upload-artifact@v4
         with:
           name: Projectivy-v11-Probe
