@@ -36,45 +36,33 @@ jobs:
             /tmp/pj/smali/kx3.smali; do
               [ -f "$f" ] && cp "$f" /tmp/out/"$(basename "$f")"
           done
-          {
-            echo '=== PTUtils.e METHOD AND CALLERS ==='
-            grep -n -B8 -A90 '^\.method.* e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V' /tmp/pj/smali/com/spocky/projengmenu/utils/PTUtils.smali || true
-            grep -R -n -B8 -A12 'PTUtils;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null || true
-            echo
-            echo '=== PTApplication METHODS CONTAINING FirebaseAnalytics ==='
-            python3 - <<'PY'
-            from pathlib import Path
-            import re
-            s=Path('/tmp/pj/smali/com/spocky/projengmenu/PTApplication.smali').read_text()
-            for m in re.finditer(r'(\.method[^\n]*\n)(.*?)(\.end method)',s,re.S):
-                if 'FirebaseAnalytics' in m.group(2): print(m.group(1)+m.group(2)+m.group(3))
-            PY
-            echo
-            echo '=== DisplayProfileManager METHODS CONTAINING FirebaseAnalytics ==='
-            python3 - <<'PY'
-            from pathlib import Path
-            import re
-            s=Path('/tmp/pj/smali/com/spocky/projengmenu/displayProfiles/DisplayProfileManager.smali').read_text()
-            for m in re.finditer(r'(\.method[^\n]*\n)(.*?)(\.end method)',s,re.S):
-                if 'FirebaseAnalytics' in m.group(2): print(m.group(1)+m.group(2)+m.group(3))
-            PY
-            echo
-            echo '=== KX3 METHODS CONTAINING FirebaseAnalytics ==='
-            python3 - <<'PY'
-            from pathlib import Path
-            import re
-            s=Path('/tmp/pj/smali/kx3.smali').read_text()
-            for m in re.finditer(r'(\.method[^\n]*\n)(.*?)(\.end method)',s,re.S):
-                if 'FirebaseAnalytics' in m.group(2): print(m.group(1)+m.group(2)+m.group(3))
-            PY
-            echo
-            echo '=== YA3 ANALYTICS BRANCH + CONSTRUCTORS ==='
-            grep -n -B40 -A260 'FirebaseAnalytics;->getInstance' /tmp/pj/smali/ya3.smali || true
-            grep -R -n -B20 -A30 'new-instance .*Lya3;' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null || true
-            echo
-            echo '=== REMOTE CONFIG DIRECT REFERENCES OUTSIDE FIREBASE LIBRARY ==='
-            grep -R -n -B16 -A30 -E 'FirebaseRemoteConfig|Lcom/google/firebase/remoteconfig' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null | grep -v '/com/google/firebase/' || true
-          } > /tmp/out/trace.txt
+
+          OUT=/tmp/out/trace.txt
+          : > "$OUT"
+          echo '=== PTUtils.e METHOD AND CALLERS ===' >> "$OUT"
+          grep -n -B8 -A90 '^\.method.* e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V' /tmp/pj/smali/com/spocky/projengmenu/utils/PTUtils.smali >> "$OUT" || true
+          grep -R -n -B8 -A12 'PTUtils;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null >> "$OUT" || true
+
+          echo >> "$OUT"
+          echo '=== PTApplication METHODS CONTAINING FirebaseAnalytics ===' >> "$OUT"
+          python3 -c "from pathlib import Path; import re; s=Path('/tmp/pj/smali/com/spocky/projengmenu/PTApplication.smali').read_text(); print('\\n'.join(m.group(1)+m.group(2)+m.group(3) for m in re.finditer(r'(\\.method[^\\n]*\\n)(.*?)(\\.end method)',s,re.S) if 'FirebaseAnalytics' in m.group(2)))" >> "$OUT"
+
+          echo >> "$OUT"
+          echo '=== DisplayProfileManager METHODS CONTAINING FirebaseAnalytics ===' >> "$OUT"
+          python3 -c "from pathlib import Path; import re; s=Path('/tmp/pj/smali/com/spocky/projengmenu/displayProfiles/DisplayProfileManager.smali').read_text(); print('\\n'.join(m.group(1)+m.group(2)+m.group(3) for m in re.finditer(r'(\\.method[^\\n]*\\n)(.*?)(\\.end method)',s,re.S) if 'FirebaseAnalytics' in m.group(2)))" >> "$OUT"
+
+          echo >> "$OUT"
+          echo '=== KX3 METHODS CONTAINING FirebaseAnalytics ===' >> "$OUT"
+          python3 -c "from pathlib import Path; import re; s=Path('/tmp/pj/smali/kx3.smali').read_text(); print('\\n'.join(m.group(1)+m.group(2)+m.group(3) for m in re.finditer(r'(\\.method[^\\n]*\\n)(.*?)(\\.end method)',s,re.S) if 'FirebaseAnalytics' in m.group(2)))" >> "$OUT"
+
+          echo >> "$OUT"
+          echo '=== YA3 ANALYTICS BRANCH + CONSTRUCTORS ===' >> "$OUT"
+          grep -n -B40 -A260 'FirebaseAnalytics;->getInstance' /tmp/pj/smali/ya3.smali >> "$OUT" || true
+          grep -R -n -B20 -A30 'new-instance .*Lya3;' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null >> "$OUT" || true
+
+          echo >> "$OUT"
+          echo '=== REMOTE CONFIG DIRECT REFERENCES OUTSIDE FIREBASE LIBRARY ===' >> "$OUT"
+          grep -R -n -B16 -A30 -E 'FirebaseRemoteConfig|Lcom/google/firebase/remoteconfig' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null | grep -v '/com/google/firebase/' >> "$OUT" || true
       - uses: actions/upload-artifact@v4
         with:
           name: Projectivy-4.72-App-Analytics-Entry-Trace
