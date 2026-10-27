@@ -1,0 +1,82 @@
+name: Projectivy Clean Audit - Firebase Crashlytics DataTransport
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-firebase-transport.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/official.apk' | sha256sum -c -
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          mkdir -p /tmp/out
+      - name: Trace Firebase, Crashlytics, Analytics and DataTransport
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '=== MANIFEST FIREBASE / TRANSPORT COMPONENTS ==='
+            grep -n -B4 -A8 -iE 'firebase|crashlytics|datatransport|jobscheduling|measurement|analytics' /tmp/pj/AndroidManifest.xml || true
+            echo
+            echo '=== PROJECTIVY-SIDE FIREBASE ANALYTICS REFERENCES ==='
+            grep -R -n -B18 -A40 -E 'Lcom/google/firebase/analytics/FirebaseAnalytics;|FirebaseAnalytics|logEvent|setUserProperty' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null | grep -v '/com/google/' || true
+            echo
+            echo '=== PROJECTIVY-SIDE CRASHLYTICS REFERENCES ==='
+            grep -R -n -B18 -A35 -E 'Lcom/google/firebase/crashlytics|FirebaseCrashlytics|CRASHLYTICS' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null | grep -v '/com/google/' || true
+            echo
+            echo '=== PROJECTIVY-SIDE FIREBASE SESSIONS REFERENCES ==='
+            grep -R -n -B18 -A35 -E 'Lcom/google/firebase/sessions|FirebaseSessions|sessions' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null | grep -v '/com/google/' || true
+            echo
+            echo '=== PROJECTIVY-SIDE DATATRANSPORT REFERENCES ==='
+            grep -R -n -B18 -A35 -E 'Lcom/google/android/datatransport|datatransport|JobInfoSchedulerService|TransportRuntime' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null | grep -v '/com/google/' || true
+            echo
+            echo '=== YA3 STARTUP WORKER ==='
+            cat /tmp/pj/smali_classes3/ya3.smali 2>/dev/null || cat /tmp/pj/smali_classes2/ya3.smali 2>/dev/null || cat /tmp/pj/smali/ya3.smali 2>/dev/null || true
+            echo
+            echo '=== FIREBASE RESOURCE FLAGS ==='
+            grep -R -n -iE 'firebase|crashlytics|measurement|analytics|data_collection' /tmp/pj/res/values /tmp/pj/res/xml 2>/dev/null || true
+          } > /tmp/out/trace.txt
+
+          python3 - <<'PY' > /tmp/out/size-summary.txt
+          from pathlib import Path
+          roots=[Path('/tmp/pj/smali'),Path('/tmp/pj/smali_classes2'),Path('/tmp/pj/smali_classes3')]
+          groups={
+            'firebase':('/com/google/firebase/','firebase'),
+            'datatransport':('/com/google/android/datatransport/','datatransport'),
+            'measurement':('/com/google/android/gms/measurement/','measurement'),
+          }
+          for name,(needle,_) in groups.items():
+              files=[]; total=0
+              for root in roots:
+                  if not root.exists(): continue
+                  for p in root.rglob('*.smali'):
+                      s=str(p).replace('\\','/')
+                      if needle in s:
+                          files.append(p); total += p.stat().st_size
+              print(name,'smali_files',len(files),'smali_bytes',total)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Firebase-Transport-Audit
+          path: /tmp/out/*
+          retention-days: 7
