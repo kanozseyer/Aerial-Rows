@@ -1,0 +1,108 @@
+name: Projectivy Clean Audit - External License
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-external-license.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Decode exact official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/official.apk' | sha256sum -c -
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+
+      - name: Trace external license / Lemon Squeezy graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/out
+          ROOTS='/tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3'
+
+          {
+            echo '=== LEMON / LICENSE STRINGS WITH CONTEXT ==='
+            grep -R -n -i -B18 -A36 -E 'lemonsqueezy|lemon.?squeezy|license[_ /-]?key|licen[cs]e[_ /-]?key|activate.?license|validate.?license|license.?activate|license.?validate|api\.lemonsqueezy|license-api|instance_id|activation_limit' $ROOTS 2>/dev/null || true
+
+            echo
+            echo '=== KNOWN PREMIUM/EXTERNAL-LICENSE CLASSES ==='
+            for c in af2 df2 gf2 jf2 xe2; do
+              echo "--- $c ---"
+              for d in /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3; do
+                f="$d/$c.smali"
+                if [ -f "$f" ]; then
+                  cp "$f" "/tmp/out/$c.smali"
+                  grep -n '^\.method' "$f" || true
+                  grep -n -i -B8 -A24 -E 'lemonsqueezy|license|licence|retrofit|okhttp|http|premium|PTApplication' "$f" || true
+                fi
+              done
+            done
+
+            echo
+            echo '=== ALL CALLERS OF KNOWN CLASSES ==='
+            grep -R -n -B20 -A45 -E 'L(af2|df2|gf2|jf2|xe2);->|new-instance .*L(af2|df2|gf2|jf2|xe2);|sget-object .*L(af2|df2|gf2|jf2|xe2);' $ROOTS 2>/dev/null || true
+
+            echo
+            echo '=== PTApplication REFERENCES TO KNOWN CLASSES / LICENSE ==='
+            for f in /tmp/pj/smali/com/spocky/projengmenu/PTApplication.smali /tmp/pj/smali_classes2/com/spocky/projengmenu/PTApplication.smali /tmp/pj/smali_classes3/com/spocky/projengmenu/PTApplication.smali; do
+              [ -f "$f" ] || continue
+              grep -n -B30 -A60 -i -E 'L(af2|df2|gf2|jf2|xe2);|license|licence|lemon|premium' "$f" || true
+            done
+
+            echo
+            echo '=== CALLERS OF METHODS DEFINED IN KNOWN CLASSES ==='
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          roots=[Path('/tmp/pj/smali'),Path('/tmp/pj/smali_classes2'),Path('/tmp/pj/smali_classes3')]
+          names=['af2','df2','gf2','jf2','xe2']
+          defs=[]
+          for root in roots:
+              for n in names:
+                  p=root/f'{n}.smali'
+                  if not p.exists(): continue
+                  for line in p.read_text(errors='ignore').splitlines():
+                      m=re.match(r'\.method\s+.*?\s+([^\s(]+)(\([^)]*\).+)$',line)
+                      if m: defs.append((n,m.group(1),m.group(2)))
+          for n,method,proto in defs:
+              needle=f'L{n};->{method}{proto}'
+              hits=[]
+              for root in roots:
+                  for p in root.rglob('*.smali'):
+                      if p.name==f'{n}.smali': continue
+                      txt=p.read_text(errors='ignore')
+                      if needle in txt:
+                          for i,line in enumerate(txt.splitlines(),1):
+                              if needle in line: hits.append(f'{p}:{i}:{line.strip()}')
+              if hits:
+                  print(f'--- {needle}')
+                  print('\n'.join(hits))
+          PY
+
+            echo
+            echo '=== URL / HOST STRINGS IN PROJECTIVY DEX ==='
+            grep -R -n -i -E 'https?://|lemonsqueezy|license' $ROOTS 2>/dev/null | grep -E 'lemonsqueezy|license|proj|spocky' || true
+          } > /tmp/out/external-license-trace.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-External-License-Trace
+          path: /tmp/out/*
+          retention-days: 7
