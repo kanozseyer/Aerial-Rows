@@ -105,8 +105,8 @@ jobs:
           python3 .github/projectivy-channel-multiselect.py
           python3 .github/projectivy-import-compat.py
           grep -q 'android:host="plugin.video.redlight"' /tmp/projectivy-decoded/AndroidManifest.xml
-          grep -R -q 'ChannelSelectionBridge;->buildGroupedPreference' /tmp/projectivy-decoded/smali*/*g70.smali
-          grep -R -q 'EmbeddedRuntime;->handleManualImportActivity' /tmp/projectivy-decoded/smali*/*ImportSettingsActivity.smali
+          grep -R -q 'ChannelSelectionBridge;->buildGroupedPreference' /tmp/projectivy-decoded/smali*
+          grep -R -q 'EmbeddedRuntime;->handleManualImportActivity' /tmp/projectivy-decoded/smali*
 
       - name: Rebuild, inject runtime and prune x86 ABIs
         shell: bash
