@@ -1,0 +1,46 @@
+name: Projectivy Clean Audit - Premium State Trace
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-premium-state.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Trace premium state and initializers
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/p.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/p.apk' | sha256sum -c -
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/p.apk -o /tmp/pj >/dev/null
+          O=/tmp/state-trace; mkdir -p "$O"
+          for f in /tmp/pj/smali*/gq3.smali /tmp/pj/smali*/com/spocky/projengmenu/PTApplication.smali /tmp/pj/smali*/hj3.smali /tmp/pj/smali*/z63.smali /tmp/pj/smali*/u.smali /tmp/pj/smali*/jf2.smali; do
+            [ -f "$f" ] && cp "$f" "$O/$(echo "$f" | sed 's#^/tmp/pj/##; s#/#__#g')"
+          done
+          {
+            echo '=== gq3.u references ==='; grep -Rni -B4 -A8 'Lgq3;->u:' /tmp/pj/smali* || true
+            echo '=== new jf2 references ==='; grep -Rni -B5 -A12 'Ljf2;' /tmp/pj/smali* || true
+            echo '=== external license pref references ==='; grep -Rni -B5 -A12 -E 'general_ext_license|external_license_key|ProjectivyLicense-v1' /tmp/pj/smali* || true
+            echo '=== billing service bind references outside billing library ==='; grep -Rni -B8 -A15 'InAppBillingService.BIND' /tmp/pj/smali* || true
+            echo '=== billing package references from Projectivy-side classes ==='; grep -Rni -B8 -A15 'Lcom/android/billingclient/api/' /tmp/pj/smali* | grep -v '/com/android/billingclient/api/' || true
+          } > "$O/references.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Premium-State-Trace
+          path: /tmp/state-trace/*
+          retention-days: 7
