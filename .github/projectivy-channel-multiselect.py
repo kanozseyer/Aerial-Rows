@@ -10,40 +10,30 @@ start = text.index('.method public final p0()V')
 end = text.index('.end method', start)
 method = text[start:end]
 
-# k00.e builds a ListPreference whenever one provider exposes multiple channels.
-# Replace that returned preference with our MultiSelectListPreference bridge.  The
-# bridge copies Projectivy's original entries/IDs and checks every category whose
-# live i5.n visibility flag is true.
-call = 'Lk00;->e(Lvu;Landroidx/preference/PreferenceGroup;Ljava/lang/String;Ljava/util/List;Z)Landroidx/preference/Preference;'
-pos = method.find(call)
-if pos < 0:
-    raise SystemExit('grouped-channel k00.e call not found in g70.p0')
-move_pos = method.find('    move-result-object v2\n', pos)
-if move_pos < 0:
-    raise SystemExit('grouped-channel result register not found')
-move_end = move_pos + len('    move-result-object v2\n')
-insert = '''\n    # Embedded: grouped channel providers are a true multi-select.\n    invoke-static {v0, v2, v4}, Lcom/spocky/projengmenu/embedded/ChannelSelectionBridge;->upgradeGroupedPreference(Landroidx/preference/PreferenceGroup;Landroidx/preference/Preference;Ljava/util/List;)Landroidx/preference/Preference;\n\n    move-result-object v2\n'''
-if 'ChannelSelectionBridge;->upgradeGroupedPreference' not in method:
-    method = method[:move_end] + insert + method[move_end:]
+stock = '''    invoke-static {p0, v0, v2, v4, v5}, Lk00;->e(Lvu;Landroidx/preference/PreferenceGroup;Ljava/lang/String;Ljava/util/List;Z)Landroidx/preference/Preference;\n\n    .line 196\n    .line 197\n    .line 198\n    move-result-object v2\n'''
+replacement = '''    # Embedded: providers exposing >1 channel use a real multi-select from the\n    # beginning. Do not construct Projectivy's radio ListPreference first.\n    invoke-interface {v4}, Ljava/util/Collection;->size()I\n    move-result v6\n    const/4 v7, 0x1\n    if-le v6, v7, :embedded_stock_group_picker\n\n    invoke-static {v0, v2, v4}, Lcom/spocky/projengmenu/embedded/ChannelSelectionBridge;->buildGroupedPreference(Landroidx/preference/PreferenceGroup;Ljava/lang/String;Ljava/util/List;)Landroidx/preference/Preference;\n    move-result-object v2\n    goto :embedded_group_picker_ready\n\n    :embedded_stock_group_picker\n    invoke-static {p0, v0, v2, v4, v5}, Lk00;->e(Lvu;Landroidx/preference/PreferenceGroup;Ljava/lang/String;Ljava/util/List;Z)Landroidx/preference/Preference;\n\n    .line 196\n    .line 197\n    .line 198\n    move-result-object v2\n\n    :embedded_group_picker_ready\n'''
+if method.count(stock) != 1:
+    raise SystemExit(f'grouped picker creation anchor mismatch: {method.count(stock)}')
+method = method.replace(stock, replacement, 1)
 
-# Stock Projectivy then binds the provider preference to list.get(0), which is why
-# one representative/last radio item appears selected. Preserve that binding for a
-# singleton normal Preference, but skip it for our MultiSelect replacement.
 n0 = '    invoke-virtual {p0, v2, v4}, Lb40;->n0(Landroidx/preference/Preference;Li5;)V\n'
 if n0 not in method:
     raise SystemExit('representative channel n0 binding not found')
-if ':embedded_multiselect_group_done' not in method:
-    replacement = '''    instance-of v6, v2, Landroidx/preference/MultiSelectListPreference;\n\n    if-nez v6, :embedded_multiselect_group_done\n\n''' + n0 + '''\n    :embedded_multiselect_group_done\n'''
-    method = method.replace(n0, replacement, 1)
+replacement_n0 = '''    instance-of v6, v2, Landroidx/preference/MultiSelectListPreference;\n    if-nez v6, :embedded_multiselect_group_done\n\n''' + n0 + '''\n    :embedded_multiselect_group_done\n'''
+method = method.replace(n0, replacement_n0, 1)
 
 text = text[:start] + method + text[end:]
 path.write_text(text)
 check = path.read_text()
 for needle in (
-    'ChannelSelectionBridge;->upgradeGroupedPreference',
+    'ChannelSelectionBridge;->buildGroupedPreference',
+    ':embedded_stock_group_picker',
+    ':embedded_group_picker_ready',
     'Landroidx/preference/MultiSelectListPreference;',
     ':embedded_multiselect_group_done',
 ):
     if needle not in check:
         raise SystemExit(f'channel multi-select patch verification failed: {needle}')
-print('patched Projectivy Edit Channels grouped providers to multi-select')
+if 'upgradeGroupedPreference' in check:
+    raise SystemExit('obsolete replacement-based multi-select bridge still present')
+print('patched grouped channel providers to direct multi-select creation')
