@@ -1,0 +1,109 @@
+name: Projectivy Clean 01B - Byte-Preserved Baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-01b-preserved-baseline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preserve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/official.apk' | sha256sum -c -
+          unzip -t /tmp/official.apk >/dev/null
+
+      - name: Remove only old signature metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/official.apk /tmp/unsigned.apk
+          zip -q -d /tmp/unsigned.apk 'META-INF/CERT.RSA' 'META-INF/CERT.SF' 'META-INF/MANIFEST.MF' || true
+          unzip -t /tmp/unsigned.apk >/dev/null
+
+      - name: Align and sign with fixed public development test key
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+
+          # AOSP testkey is intentionally public and used ONLY for iterative development.
+          # Final distribution must use a private signing key.
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.pk8?format=TEXT' | base64 -d > /tmp/testkey.pk8
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.x509.pem?format=TEXT' | base64 -d > /tmp/testkey.x509.pem
+
+          "$ZIPALIGN" -P 16 -f 4 /tmp/unsigned.apk /tmp/aligned.apk
+          "$ZIPALIGN" -P 16 -c -v 4 /tmp/aligned.apk >/tmp/zipalign-before.txt
+
+          "$APKSIGNER" sign \
+            --key /tmp/testkey.pk8 \
+            --cert /tmp/testkey.x509.pem \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out /tmp/Projectivy-CLEAN-01B-Byte-Preserved.apk \
+            /tmp/aligned.apk
+
+          "$APKSIGNER" verify --verbose --print-certs /tmp/Projectivy-CLEAN-01B-Byte-Preserved.apk | tee /tmp/apksigner.txt
+          "$ZIPALIGN" -P 16 -c -v 4 /tmp/Projectivy-CLEAN-01B-Byte-Preserved.apk | tee /tmp/zipalign-final.txt
+          "$AAPT" dump badging /tmp/Projectivy-CLEAN-01B-Byte-Preserved.apk | head -1 | tee /tmp/package.txt
+          grep -q "package: name='com.spocky.projengmenu'" /tmp/package.txt
+          grep -q "versionName='4.72'" /tmp/package.txt
+
+      - name: Prove application payload stayed byte-for-byte identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile, hashlib
+          A='/tmp/official.apk'; B='/tmp/Projectivy-CLEAN-01B-Byte-Preserved.apk'
+          za=zipfile.ZipFile(A); zb=zipfile.ZipFile(B)
+          ignore=lambda n: n.startswith('META-INF/')
+          aa={i.filename:i for i in za.infolist() if not ignore(i.filename)}
+          bb={i.filename:i for i in zb.infolist() if not ignore(i.filename)}
+          assert set(aa)==set(bb), (sorted(set(aa)-set(bb))[:20], sorted(set(bb)-set(aa))[:20])
+          changed=[]
+          for n in sorted(aa):
+              ha=hashlib.sha256(za.read(n)).digest()
+              hb=hashlib.sha256(zb.read(n)).digest()
+              if ha != hb: changed.append(n)
+          assert not changed, 'payload changed: '+repr(changed[:30])
+          for n in ('AndroidManifest.xml','resources.arsc','classes.dex','classes2.dex','classes3.dex'):
+              print(n, hashlib.sha256(za.read(n)).hexdigest())
+          libs=[i for i in zb.infolist() if i.filename.startswith('lib/') and i.filename.endswith('.so')]
+          assert len(libs)==12
+          assert all(i.compress_type==zipfile.ZIP_STORED for i in libs)
+          print('PASS: all non-signature APK entries are byte-for-byte identical to official 4.72')
+          PY
+          sha256sum /tmp/Projectivy-CLEAN-01B-Byte-Preserved.apk | tee /tmp/SHA256.txt
+
+      - name: Publish artifact
+        shell: bash
+        run: |
+          mkdir -p /tmp/artifact
+          cp /tmp/Projectivy-CLEAN-01B-Byte-Preserved.apk /tmp/artifact/
+          cp /tmp/SHA256.txt /tmp/artifact/
+          cp /tmp/apksigner.txt /tmp/artifact/
+          cp /tmp/zipalign-final.txt /tmp/artifact/
+          cp /tmp/package.txt /tmp/artifact/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-01B-Byte-Preserved
+          path: /tmp/artifact/*
+          retention-days: 30
