@@ -22,8 +22,6 @@ def no_op_void_method(b, d, cls, name, proto):
     code = methods[0][3]
     words = d.code_words(code)
     assert len(words) >= 2
-    # Both targeted methods begin with a two-code-unit sget-object. Replace it
-    # with return-void + nop so instruction boundaries remain unchanged.
     assert (words[0] & 0xff) == 0x62, (cls, name, hex(words[0]))
     mod.put_u2(b, code + 16, 0x000e)
     mod.put_u2(b, code + 18, 0x0000)
@@ -50,8 +48,6 @@ def patch_projectivy_telemetry(src, dst):
     b = bytearray(original)
     d = mod.Dex(original)
 
-    # Pure telemetry helper: all callers become harmless without changing their
-    # surrounding launcher/control logic.
     no_op_void_method(
         b, d,
         'Lcom/spocky/projengmenu/utils/PTUtils;',
@@ -59,8 +55,6 @@ def patch_projectivy_telemetry(src, dst):
         '(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V'
     )
 
-    # PTApplication.e only synchronizes Firebase Analytics / Crashlytics /
-    # Performance collection state. It has no launcher model/UI state work.
     no_op_void_method(
         b, d,
         'Lcom/spocky/projengmenu/PTApplication;',
@@ -82,8 +76,6 @@ def patch_projectivy_telemetry(src, dst):
 
     report = []
 
-    # DisplayProfileManager.<clinit>: retain all required static-field setup,
-    # remove only FirebaseAnalytics getInstance + pminfo property emission.
     methods = [m for m in d.class_methods('Lcom/spocky/projengmenu/displayProfiles/DisplayProfileManager;') if m[1] == ('Lcom/spocky/projengmenu/displayProfiles/DisplayProfileManager;', '<clinit>', '()V')]
     assert len(methods) == 1
     code = methods[0][3]; words = d.code_words(code)
@@ -92,8 +84,6 @@ def patch_projectivy_telemetry(src, dst):
     assert len(prop_hits) == 1, prop_hits
     report.append(('DisplayProfileManager.<clinit>', get_pc, prop_hits))
 
-    # kx3.b performs root detection; keep all detection/return logic and remove
-    # only the Firebase root user-property emission at the tail.
     methods = [m for m in d.class_methods('Lkx3;') if m[1] == ('Lkx3;', 'b', '(Lzi0;)Ljava/lang/Object;')]
     assert len(methods) == 1
     code = methods[0][3]; words = d.code_words(code)
@@ -102,20 +92,18 @@ def patch_projectivy_telemetry(src, dst):
     assert len(prop_hits) == 1, prop_hits
     report.append(('kx3.b', get_pc, prop_hits))
 
-    # ya3 selector 1 is the normal startup path. Preserve device/startup state,
-    # Android ID logic and PTApplication flow; remove only FirebaseAnalytics
-    # object acquisition, its immediate getClass guard, and user properties.
-    methods = [m for m in d.class_methods('Lya3;') if m[1][1] == 'h']
+    # ya3's coroutine body is o(Object), not h(). Preserve all non-telemetry
+    # startup state while removing only its direct FirebaseAnalytics calls.
+    methods = [m for m in d.class_methods('Lya3;') if m[1] == ('Lya3;', 'o', '(Ljava/lang/Object;)Ljava/lang/Object;')]
     assert len(methods) == 1, methods
     code = methods[0][3]; words = d.code_words(code)
     get_pc = nop_invoke_and_move_result(words, b, code, fa_get, 0x71)
-    # The getClass immediately following getInstance is telemetry-only here.
     getclass_hits = [i for i in range(get_pc+4, min(len(words)-2, get_pc+20)) if (words[i] & 0xff) == 0x6e and words[i+1] == obj_getclass]
     assert len(getclass_hits) == 1, getclass_hits
     nop_words(b, code, getclass_hits[0], 3)
     prop_hits = nop_all_invokes(words, b, code, fa_prop, 0x6e)
     assert len(prop_hits) == 5, prop_hits
-    report.append(('ya3.h', get_pc, prop_hits))
+    report.append(('ya3.o', get_pc, prop_hits))
 
     mod.fix_header(b)
     mod.verify_header(b)
@@ -135,12 +123,10 @@ def main():
     tmp2a = str(Path(out2).with_suffix('.01g.tmp.dex'))
     tmp2b = str(Path(out2).with_suffix('.01h.tmp.dex'))
 
-    # Reproduce frozen CLEAN 01H behavior exactly first.
     mod.patch_classes1(in1, tmp1)
     mod.patch_classes2(in2, tmp2a)
     h.patch_rc1_h(tmp2a, tmp2b)
 
-    # Add only Projectivy-owned telemetry suppression to classes.dex.
     patch_projectivy_telemetry(tmp1, out1)
     Path(tmp2b).replace(out2)
     Path(tmp1).unlink(missing_ok=True)
