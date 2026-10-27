@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/decoded >/dev/null
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/projectivy-decoded >/dev/null
           python3 .github/projectivy-aerial-integration.py
           python3 .github/projectivy-aerial-enhancements.py
           python3 .github/projectivy-single-apk.py
