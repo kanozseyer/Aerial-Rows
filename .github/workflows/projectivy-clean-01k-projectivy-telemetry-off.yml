@@ -127,7 +127,7 @@ jobs:
 
           dpm=method_body('/tmp/verify/smali/com/spocky/projengmenu/displayProfiles/DisplayProfileManager.smali',r'\.method static constructor <clinit>\(\)V')
           kx=method_body('/tmp/verify/smali/kx3.smali',r'\.method public final b\(Lzi0;\)Ljava/lang/Object;')
-          ya=method_body('/tmp/verify/smali/ya3.smali',r'\.method public final h\(Ljava/lang/Object;\)Ljava/lang/Object;')
+          ya=method_body('/tmp/verify/smali/ya3.smali',r'\.method public final o\(Ljava/lang/Object;\)Ljava/lang/Object;')
           assert 'FirebaseAnalytics' not in dpm, dpm
           assert 'FirebaseAnalytics' not in kx, kx
           assert 'FirebaseAnalytics' not in ya, ya
