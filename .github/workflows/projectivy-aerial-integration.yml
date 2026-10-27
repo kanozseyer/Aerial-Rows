@@ -11,8 +11,12 @@ on:
       - '.github/patch-redlight-runtime.py'
       - '.github/patch-v6-runtime.py'
       - '.github/patch-v7-runtime.py'
+      - '.github/patch-v8-runtime.py'
+      - '.github/patch-v9-runtime.py'
+      - '.github/patch-v10-runtime.py'
       - '.github/projectivy-redlight-routing.py'
       - '.github/projectivy-redlight-label.py'
+      - '.github/projectivy-channel-multiselect.py'
       - 'embedded-runtime/**'
       - 'settings.gradle.kts'
       - 'build.gradle.kts'
@@ -32,19 +36,25 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Patch embedded Red Light runtime for installed menu structure and v7 fixes
+      - name: Patch embedded runtime through v10
         shell: bash
         run: |
           set -euo pipefail
           python3 .github/patch-redlight-runtime.py
           python3 .github/patch-v6-runtime.py
           python3 .github/patch-v7-runtime.py
+          python3 .github/patch-v10-runtime.py
           grep -q 'classifyDirectMenuShelf' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'notifyProjectivyChannelsChanged' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'restoreBundledChannelLayoutOnce' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'pruneObsoletePersonalListChannels' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'programHash' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q '10L\*60L\*1000L' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'syncRedLightAsyncThrottled' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'CATALOG_CACHE_MS' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/AerialService.java
           grep -q 'GUI.ActivateWindow' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightLaunchActivity.java
-          grep -q '6500L' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'MultiSelectListPreference' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/ChannelSelectionBridge.java
+          ! grep -q 'launcher_embedded_' embedded-runtime/src/main/assets/launcher_default_profile.json
           ! grep -q 'Red Light · couchy-' embedded-runtime/src/main/assets/launcher_default_profile.json
           ! grep -q 'Red Light · ishows-' embedded-runtime/src/main/assets/launcher_default_profile.json
 
@@ -116,6 +126,9 @@ jobs:
           grep -q 'Red Light · Trending TV Shows' /tmp/projectivy-decoded/assets/launcher_default_profile.json
           grep -q 'Red Light · In Progress Episodes' /tmp/projectivy-decoded/assets/launcher_default_profile.json
           grep -q 'Red Light · Continue Watching' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · Movies Watchlist' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · TV Shows Watchlist' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          ! grep -q 'launcher_embedded_' /tmp/projectivy-decoded/assets/launcher_default_profile.json
           ! grep -q 'Red Light · couchy-' /tmp/projectivy-decoded/assets/launcher_default_profile.json
           ! grep -q 'Red Light · ishows-' /tmp/projectivy-decoded/assets/launcher_default_profile.json
 
@@ -128,11 +141,14 @@ jobs:
           python3 .github/projectivy-single-apk.py
           python3 .github/projectivy-redlight-routing.py
           python3 .github/projectivy-redlight-label.py
+          python3 .github/projectivy-channel-multiselect.py
           grep -q 'android:host="plugin.video.redlight"' /tmp/projectivy-decoded/AndroidManifest.xml
           grep -q 'android.permission.INTERNET' /tmp/projectivy-decoded/AndroidManifest.xml
           grep -R -q 'const-string v4, "Red Light"' /tmp/projectivy-decoded/smali*/*g70.smali
+          grep -R -q 'ChannelSelectionBridge;->upgradeGroupedPreference' /tmp/projectivy-decoded/smali*/*g70.smali
+          grep -R -q 'Landroidx/preference/MultiSelectListPreference;' /tmp/projectivy-decoded/smali*/*g70.smali
 
-      - name: Rebuild Projectivy and inject embedded DEX
+      - name: Rebuild Projectivy, inject runtime and prune unused x86 ABIs
         shell: bash
         run: |
           set -euo pipefail
@@ -141,9 +157,14 @@ jobs:
             [ -f "$dex" ] || continue
             zip -q -j /tmp/projectivy-single-unsigned.apk "$dex"
           done
+          # Shield reports arm64-v8a, armeabi-v7a, armeabi. x86/x86_64 can never be
+          # selected on this device, so remove only those two unused ABI directories.
+          zip -q -d /tmp/projectivy-single-unsigned.apk 'lib/x86/*' 'lib/x86_64/*' >/dev/null 2>&1 || true
           echo 'Final embedded entries:'
           unzip -l /tmp/projectivy-single-unsigned.apk | grep -E 'classes[4-9][0-9]*\.dex|aerials.json|launcher_default_profile.json'
           unzip -l /tmp/projectivy-single-unsigned.apk | grep -q 'assets/launcher_default_profile.json'
+          unzip -l /tmp/projectivy-single-unsigned.apk | grep -q 'lib/arm64-v8a/'
+          ! unzip -l /tmp/projectivy-single-unsigned.apk | grep -E 'lib/(x86|x86_64)/'
 
       - name: Align, generic-sign and verify
         shell: bash
