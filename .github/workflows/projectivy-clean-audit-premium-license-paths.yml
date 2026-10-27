@@ -1,0 +1,52 @@
+name: Projectivy Clean Audit - Premium and License Paths
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-premium-license-paths.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode official 4.72 and trace premium/license paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          mkdir -p /tmp/out
+          {
+            echo '=== Premium activity class refs ==='
+            grep -R -n -B12 -A24 -E 'PremiumActivity|PremiumCardActivity' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null || true
+            echo
+            echo '=== ImportTheme / SetBackground / ToggleParentalControl premium redirects ==='
+            grep -R -n -B20 -A40 -E 'ImportThemeActivity|SetBackgroundActivity|ToggleParentalControlActivity' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null | grep -E -B20 -A40 'PremiumActivity|PremiumCardActivity|premium|Lit1;|external' || true
+            echo
+            echo '=== Lemon Squeezy / external license strings and callers ==='
+            grep -R -n -B15 -A35 -i -E 'lemonsqueezy|lemon.?squeezy|external.?licen[cs]e|license_key|licence_key|activate.?license|deactivate.?license|api.lemonsqueezy' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 /tmp/pj/res 2>/dev/null || true
+            echo
+            echo '=== Premium-labelled resources ==='
+            grep -R -n -i -E 'premium|upgrade|purchase|license|licence' /tmp/pj/res/values* 2>/dev/null | head -1000 || true
+            echo
+            echo '=== Manifest premium activities ==='
+            grep -n -B3 -A8 -E 'PremiumActivity|PremiumCardActivity' /tmp/pj/AndroidManifest.xml || true
+          } > /tmp/out/references.txt
+          cp /tmp/pj/AndroidManifest.xml /tmp/out/AndroidManifest.xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Premium-License-Audit
+          path: /tmp/out/*
+          retention-days: 7
