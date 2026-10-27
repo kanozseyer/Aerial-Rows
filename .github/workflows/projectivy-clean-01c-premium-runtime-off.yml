@@ -42,17 +42,31 @@ jobs:
           s=p.read_text()
           old='''    new-instance v2, Ls40;\n\n    .line 148\n    .line 149\n    iget-object v0, v0, Lop0;->A:Ljava/lang/Object;\n\n    .line 150\n    .line 151\n    check-cast v0, Lcom/spocky/projengmenu/PTApplication;\n\n    .line 152\n    .line 153\n    const/4 v3, 0x6\n\n    .line 154\n    invoke-direct {v2, v0, v7, v3}, Ls40;-><init>(Ljava/lang/Object;Lxi0;B)V\n\n    .line 155\n    .line 156\n    .line 157\n    invoke-static {v1, v7, v2, v4}, Lko0;->e(Luj0;Llj0;Lnp1;I)Law0;'''
           new='''    # CLEAN 01C: keep Projectivy in its original free/locked state, but do not\n    # launch s40 variant 6. That worker calls PTApplication.d(true), the\n    # premium/licence refresh path. Normal startup workers below remain intact.\n    iget-object v0, v0, Lop0;->A:Ljava/lang/Object;\n\n    check-cast v0, Lcom/spocky/projengmenu/PTApplication;'''
-          if s.count(old) != 1:
-              raise SystemExit(f'premium worker anchor mismatch: {s.count(old)}')
+          assert s.count(old)==1, f'premium worker anchor mismatch: {s.count(old)}'
           s=s.replace(old,new,1)
           p.write_text(s)
-          print('patched: removed only s40 variant-6 premium refresh launch')
-          PY
+          assert 'invoke-direct {v2, v0, v7, v6}, Lya3;-><init>' in s
+          assert 'invoke-direct {v2, v0, v7, v5}, Lya3;-><init>' in s
+          marker=s.index('# CLEAN 01C')
+          region=s[marker:marker+1800]
+          assert 'Ls40;-><init>' not in region
+          print('patched: only s40 variant-6 premium refresh launch removed')
 
-          # Prove the two normal ya3 startup workers are still present.
-          grep -q 'invoke-direct {v2, v0, v7, v6}, Lya3;-><init>' /tmp/pj/smali/op0.smali
-          grep -q 'invoke-direct {v2, v0, v7, v5}, Lya3;-><init>' /tmp/pj/smali/op0.smali
-          ! grep -A45 -B10 ':pswitch_1' /tmp/pj/smali/op0.smali | grep -q 'const/4 v3, 0x6'
+          # Apktool needs three framework-state declarations to rebuild 4.72.
+          # This temporary rebuilt APK is used ONLY as a DEX compiler; none of its
+          # rebuilt resources are copied into the final APK.
+          values=Path('/tmp/pj/res/values')
+          attrs=values/'attrs.xml'
+          t=attrs.read_text() if attrs.exists() else '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+          additions=[]
+          for name in ('state_liftable','state_lifted','state_swiped'):
+              if f'name="{name}"' not in t:
+                  additions.append(f'    <attr name="{name}" format="boolean" />')
+          if additions:
+              t=t.replace('</resources>', '\n'.join(additions)+'\n</resources>')
+              attrs.write_text(t)
+          print('temporary compile attrs:', additions)
+          PY
 
           java -jar /tmp/apktool.jar b /tmp/pj -o /tmp/rebuilt.apk >/dev/null
           unzip -p /tmp/rebuilt.apk classes.dex > /tmp/classes.dex
@@ -62,24 +76,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/repack
-          cd /tmp/repack
-          unzip -q /tmp/official.apk
-          rm -rf META-INF
-          cp /tmp/classes.dex classes.dex
-          zip -qr -0 /tmp/unsigned-pre.apk .
-
-          # Rebuild compression using zipalign from a normal archive. Native libs
-          # remain stored/uncompressed and final alignment is verified below.
-          cd /tmp
           python3 - <<'PY'
-          import zipfile, os
+          import zipfile
           src='/tmp/official.apk'; out='/tmp/unsigned.apk'; patched='/tmp/classes.dex'
+          patched_data=open(patched,'rb').read()
           with zipfile.ZipFile(src,'r') as zin, zipfile.ZipFile(out,'w') as zout:
               for info in zin.infolist():
                   if info.filename.startswith('META-INF/'):
                       continue
-                  data=open(patched,'rb').read() if info.filename=='classes.dex' else zin.read(info.filename)
+                  data=patched_data if info.filename=='classes.dex' else zin.read(info.filename)
                   ni=zipfile.ZipInfo(info.filename, info.date_time)
                   ni.compress_type=info.compress_type
                   ni.comment=info.comment; ni.extra=info.extra
@@ -98,10 +103,8 @@ jobs:
           ZIPALIGN="$BUILD_TOOLS/zipalign"
           APKSIGNER="$BUILD_TOOLS/apksigner"
           AAPT="$BUILD_TOOLS/aapt"
-
           curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.pk8?format=TEXT' | base64 -d > /tmp/testkey.pk8
           curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.x509.pem?format=TEXT' | base64 -d > /tmp/testkey.x509.pem
-
           "$ZIPALIGN" -P 16 -f 4 /tmp/unsigned.apk /tmp/aligned.apk
           "$APKSIGNER" sign --key /tmp/testkey.pk8 --cert /tmp/testkey.x509.pem \
             --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
@@ -120,14 +123,15 @@ jobs:
           import zipfile, hashlib
           A='/tmp/official.apk'; B='/tmp/Projectivy-CLEAN-01C-Premium-Runtime-Off.apk'
           za=zipfile.ZipFile(A); zb=zipfile.ZipFile(B)
-          ign=lambda n:n.startswith('META-INF/')
-          aa={i.filename for i in za.infolist() if not ign(i.filename)}
-          bb={i.filename for i in zb.infolist() if not ign(i.filename)}
-          assert aa==bb, 'entry set changed'
+          ignore=lambda n:n.startswith('META-INF/')
+          aa={i.filename for i in za.infolist() if not ignore(i.filename)}
+          bb={i.filename for i in zb.infolist() if not ignore(i.filename)}
+          assert aa==bb, 'APK entry set changed'
           changed=[]
           for n in sorted(aa):
-              if hashlib.sha256(za.read(n)).digest()!=hashlib.sha256(zb.read(n)).digest(): changed.append(n)
-          assert changed==['classes.dex'], f'unexpected payload changes: {changed}'
+              if hashlib.sha256(za.read(n)).digest()!=hashlib.sha256(zb.read(n)).digest():
+                  changed.append(n)
+          assert changed==['classes.dex'], f'unexpected application payload changes: {changed}'
           for n in ('AndroidManifest.xml','resources.arsc','classes2.dex','classes3.dex'):
               assert za.read(n)==zb.read(n), n+' changed unexpectedly'
           libs=[i for i in zb.infolist() if i.filename.startswith('lib/') and i.filename.endswith('.so')]
