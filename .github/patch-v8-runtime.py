@@ -167,3 +167,6 @@ v8 = r'''    private static final String CHANNEL_LAYOUT_MARKER = "launcher_embed
 text = text[:start] + v8 + text[end:]
 engine.write_text(text)
 print('replaced v7 restore with incremental live Projectivy Home-model restore')
+
+# v9: add the installed Red Light artwork as the native Android-TV channel logo.
+exec(Path('.github/patch-v9-runtime.py').read_text(), globals())
