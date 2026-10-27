@@ -1,0 +1,197 @@
+name: Projectivy Clean 01K - Projectivy Telemetry Off
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-01k-projectivy-telemetry-off.yml'
+      - '.github/patch-clean-01k-projectivy-telemetry.py'
+      - '.github/patch-clean-01h-external-license.py'
+      - '.github/patch-clean-01g-surgical-dex.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/official.apk' | sha256sum -c -
+          unzip -p /tmp/official.apk classes.dex > /tmp/classes.dex
+          unzip -p /tmp/official.apk classes2.dex > /tmp/classes2.dex
+
+      - name: Apply frozen cleanup plus Projectivy-owned telemetry suppression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/patch-clean-01k-projectivy-telemetry.py \
+            /tmp/classes.dex /tmp/classes2.dex \
+            /tmp/classes-patched.dex /tmp/classes2-patched.dex | tee /tmp/dex-patch.txt
+          [ "$(stat -c%s /tmp/classes.dex)" = "$(stat -c%s /tmp/classes-patched.dex)" ]
+          [ "$(stat -c%s /tmp/classes2.dex)" = "$(stat -c%s /tmp/classes2-patched.dex)" ]
+
+      - name: Build frozen billing/premium stripped manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('/tmp/pj/AndroidManifest.xml'); s=p.read_text()
+          pats=[
+            r'\s*<uses-permission android:name="com\.android\.vending\.BILLING"\s*/>',
+            r'\s*<activity[^>]*android:name="com\.android\.billingclient\.api\.ProxyBillingActivity(?:V2)?"[^>]*/>',
+            r'\s*<meta-data[^>]*android:name="com\.google\.android\.play\.billingclient\.version"[^>]*/>',
+            r'\s*<intent>\s*<action android:name="com\.android\.vending\.billing\.InAppBillingService\.BIND"\s*/>\s*</intent>',
+            r'\s*<intent>\s*<action android:name="com\.google\.android\.apps\.play\.billingtestcompanion\.BillingOverrideService\.BIND"\s*/>\s*</intent>',
+            r'\s*<activity[^>]*android:name="com\.spocky\.projengmenu\.ui\.guidedActions\.activities\.about\.PremiumActivity"[^>]*/>',
+            r'\s*<activity[^>]*android:name="com\.spocky\.projengmenu\.ui\.guidedActions\.activities\.about\.PremiumCardActivity"[^>]*/>',
+          ]
+          before=s
+          for pat in pats: s=re.sub(pat,'',s)
+          if s==before: raise SystemExit('manifest patch changed nothing')
+          p.write_text(s)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/pj/res/values/attrs.xml'); s=p.read_text(); marker='</resources>'
+          extra='''    <attr name="state_liftable" format="boolean" />\n    <attr name="state_lifted" format="boolean" />\n    <attr name="state_swiped" format="boolean" />\n'''
+          if 'name="state_liftable"' not in s: p.write_text(s.replace(marker,extra+marker))
+          PY
+          java -jar /tmp/apktool.jar b /tmp/pj -o /tmp/manifest-build.apk >/dev/null
+          unzip -p /tmp/manifest-build.apk AndroidManifest.xml > /tmp/AndroidManifest.xml
+
+      - name: Repack arm64-only CLEAN 01K
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile
+          repl={
+            'classes.dex':open('/tmp/classes-patched.dex','rb').read(),
+            'classes2.dex':open('/tmp/classes2-patched.dex','rb').read(),
+            'AndroidManifest.xml':open('/tmp/AndroidManifest.xml','rb').read(),
+          }
+          removed=[]
+          with zipfile.ZipFile('/tmp/official.apk') as zin, zipfile.ZipFile('/tmp/unsigned.apk','w') as zout:
+              for i in zin.infolist():
+                  if i.filename.startswith('META-INF/'):
+                      continue
+                  if i.filename.startswith('lib/') and not i.filename.startswith('lib/arm64-v8a/'):
+                      removed.append(i.filename); continue
+                  data=repl.get(i.filename,zin.read(i.filename))
+                  n=zipfile.ZipInfo(i.filename,i.date_time)
+                  n.compress_type=i.compress_type; n.comment=i.comment; n.extra=i.extra
+                  n.internal_attr=i.internal_attr; n.external_attr=i.external_attr
+                  n.create_system=i.create_system; n.create_version=i.create_version
+                  n.extract_version=i.extract_version; n.flag_bits=i.flag_bits
+                  zout.writestr(n,data)
+          assert len(removed)==9, removed
+          PY
+          unzip -t /tmp/unsigned.apk >/dev/null
+
+      - name: Verify decoded telemetry gates and frozen cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar /tmp/apktool.jar d -f /tmp/unsigned.apk -o /tmp/verify >/tmp/final-decode.log 2>&1
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,zipfile
+          def method_body(path, sig):
+              s=Path(path).read_text(); m=re.search(sig+r'\n(.*?)\.end method',s,re.S); assert m, sig; return m.group(1)
+          def begins_return(path, sig):
+              body=method_body(path,sig)
+              lines=[x.strip() for x in body.splitlines() if x.strip() and not x.strip().startswith('.line')]
+              assert 'return-void' in lines[:4], body[:300]
+
+          begins_return('/tmp/verify/smali/it1.smali',r'\.method public final g\(\)V')
+          begins_return('/tmp/verify/smali_classes2/rc1.smali',r'\.method public final h\(\)V')
+          begins_return('/tmp/verify/smali/com/spocky/projengmenu/utils/PTUtils.smali',r'\.method public static e\(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;\)V')
+          begins_return('/tmp/verify/smali/com/spocky/projengmenu/PTApplication.smali',r'\.method public final e\(\)V')
+
+          dpm=method_body('/tmp/verify/smali/com/spocky/projengmenu/displayProfiles/DisplayProfileManager.smali',r'\.method static constructor <clinit>\(\)V')
+          kx=method_body('/tmp/verify/smali/kx3.smali',r'\.method public final b\(Lzi0;\)Ljava/lang/Object;')
+          ya=method_body('/tmp/verify/smali/ya3.smali',r'\.method public final h\(Ljava/lang/Object;\)Ljava/lang/Object;')
+          assert 'FirebaseAnalytics' not in dpm, dpm
+          assert 'FirebaseAnalytics' not in kx, kx
+          assert 'FirebaseAnalytics' not in ya, ya
+
+          w=Path('/tmp/verify/smali/w40.smali').read_text(); a=w.find('sput-object v0, Lw40;->A:Ljava/util/List;'); assert a>0
+          win=w[max(0,a-1200):a]
+          assert 'new-array v0, v3, [Ld90;' in win and 'aput-object v13' not in win
+          assert 'Lcom/spocky/projengmenu/ui/guidedActions/activities/about/PremiumCardActivity;->e0:Lp;' in w
+
+          with zipfile.ZipFile('/tmp/unsigned.apk') as z:
+              libs=[n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
+              assert len(libs)==3 and all(n.startswith('lib/arm64-v8a/') for n in libs), libs
+          print('PASS: CLEAN 01K telemetry suppression decoded; frozen billing/license/premium cleanup preserved; arm64-only payload preserved')
+          PY
+
+      - name: Align sign and validate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          ZIPALIGN="$BT/zipalign"; APKSIGNER="$BT/apksigner"; AAPT="$BT/aapt"
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.pk8?format=TEXT' | base64 -d > /tmp/testkey.pk8
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.x509.pem?format=TEXT' | base64 -d > /tmp/testkey.x509.pem
+          "$ZIPALIGN" -P 16 -f 4 /tmp/unsigned.apk /tmp/aligned.apk
+          "$APKSIGNER" sign --key /tmp/testkey.pk8 --cert /tmp/testkey.x509.pem --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out /tmp/Projectivy-CLEAN-01K-Projectivy-Telemetry-Off.apk /tmp/aligned.apk
+          "$APKSIGNER" verify --verbose --print-certs /tmp/Projectivy-CLEAN-01K-Projectivy-Telemetry-Off.apk | tee /tmp/apksigner.txt
+          "$ZIPALIGN" -P 16 -c -v 4 /tmp/Projectivy-CLEAN-01K-Projectivy-Telemetry-Off.apk > /tmp/zipalign.txt
+          "$AAPT" dump badging /tmp/Projectivy-CLEAN-01K-Projectivy-Telemetry-Off.apk | head -1 | tee /tmp/package.txt
+          grep -q "package: name='com.spocky.projengmenu'" /tmp/package.txt
+          grep -q "versionName='4.72'" /tmp/package.txt
+
+      - name: Prove payload scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee /tmp/scope.txt
+          import zipfile,hashlib,os
+          a=zipfile.ZipFile('/tmp/official.apk'); b=zipfile.ZipFile('/tmp/Projectivy-CLEAN-01K-Projectivy-Telemetry-Off.apk')
+          ign=lambda n:n.startswith('META-INF/')
+          aa={i.filename for i in a.infolist() if not ign(i.filename)}; bb={i.filename for i in b.infolist() if not ign(i.filename)}
+          missing=sorted(aa-bb); extra=sorted(bb-aa)
+          assert len(missing)==9 and all(n.startswith(('lib/armeabi-v7a/','lib/x86/','lib/x86_64/')) for n in missing), missing
+          assert not extra, extra
+          changed=[n for n in sorted(aa & bb) if hashlib.sha256(a.read(n)).digest()!=hashlib.sha256(b.read(n)).digest()]
+          assert changed==['AndroidManifest.xml','classes.dex','classes2.dex'],changed
+          assert len(a.read('classes.dex'))==len(b.read('classes.dex'))
+          assert len(a.read('classes2.dex'))==len(b.read('classes2.dex'))
+          assert a.read('classes3.dex')==b.read('classes3.dex')
+          assert a.read('resources.arsc')==b.read('resources.arsc')
+          print('removed native entries:',missing)
+          print('changed payload:',changed)
+          print('official APK bytes:',os.path.getsize('/tmp/official.apk'))
+          print('01K APK bytes:',os.path.getsize('/tmp/Projectivy-CLEAN-01K-Projectivy-Telemetry-Off.apk'))
+          PY
+          sha256sum /tmp/Projectivy-CLEAN-01K-Projectivy-Telemetry-Off.apk | tee /tmp/SHA256.txt
+
+      - name: Publish APK and proofs
+        shell: bash
+        run: |
+          mkdir -p /tmp/artifact
+          cp /tmp/Projectivy-CLEAN-01K-Projectivy-Telemetry-Off.apk /tmp/artifact/
+          cp /tmp/SHA256.txt /tmp/scope.txt /tmp/dex-patch.txt /tmp/apksigner.txt /tmp/zipalign.txt /tmp/package.txt /tmp/final-decode.log /tmp/artifact/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-01K-Projectivy-Telemetry-Off
+          path: /tmp/artifact/*
+          retention-days: 30
