@@ -53,28 +53,34 @@ for p in callers:
     if e < 0:
         raise SystemExit(f"premium startActivity not found in {p}")
     e = s.find("\n", e) + 1
+    # Remove only the PremiumActivity launch. Existing finish/return/goto remains,
+    # so locked premium-only actions stay unavailable rather than becoming unlocked.
     s = s[:start] + "    # CLEAN 01G: premium upgrade redirect removed.\n    nop\n" + s[e:]
-    # ft preloads the class before entering the redirect branch.
+    # ft preloads PremiumActivity before the branch; neutralize that now-dead class load.
     s = s.replace(premium, "Ljava/lang/Object;")
     if "PremiumActivity;" in s:
         raise SystemExit(f"remaining PremiumActivity ref in {p}")
     p.write_text(s)
 
-# About list: [About App, Premium, About Device, About Background]
-# -> [About App, About Device, About Background].
+# About list A is exactly [About App, Premium, About Device, About Background].
+# Anchor the mutation to Lw40;->A itself so an earlier four-item list can never be changed.
 p = ROOT / "smali/w40.smali"
 s = p.read_text()
 prem_ref = "Lcom/spocky/projengmenu/ui/guidedActions/activities/about/PremiumCardActivity;->e0:Lp;"
 pp = s.find(prem_ref)
 if pp < 0:
     raise SystemExit("PremiumCardActivity menu ref not found")
-arr_start = s.rfind("    new-array v0, v4, [Ld90;", 0, pp)
+z_store = s.find("    sput-object v0, Lw40;->z:Ljava/util/List;")
+a_store = s.find("    sput-object v0, Lw40;->A:Ljava/util/List;", pp)
+if z_store < 0 or a_store < 0 or not (z_store < pp < a_store):
+    raise SystemExit("unexpected w40 About-list ordering")
+arr_start = s.rfind("    new-array v0, v4, [Ld90;", pp, a_store)
 if arr_start < 0:
-    raise SystemExit("four-item About array start not found")
+    raise SystemExit("Lw40.A four-item About array start not found")
 last = "    aput-object v15, v0, v3"
-arr_end = s.find(last, arr_start)
-if arr_end < 0 or arr_end > pp:
-    raise SystemExit("four-item About array end not found before premium ref")
+arr_end = s.find(last, arr_start, a_store)
+if arr_end < 0:
+    raise SystemExit("Lw40.A four-item About array end not found")
 arr_end = s.find("\n", arr_end) + 1
 old = s[arr_start:arr_end]
 for required in (
@@ -84,7 +90,7 @@ for required in (
     "aput-object v15, v0, v3",
 ):
     if required not in old:
-        raise SystemExit("unexpected About array shape: " + required)
+        raise SystemExit("unexpected Lw40.A array shape: " + required)
 new = (
     "    const/4 v0, 0x3\n"
     "    new-array v0, v0, [Ld90;\n"
@@ -93,14 +99,27 @@ new = (
     "    aput-object v15, v0, v2\n"
 )
 s = s[:arr_start] + new + s[arr_end:]
+
+# The Premium card object is now unused; avoid resolving PremiumCardActivity during static init.
 needle = "    sget-object v19, " + prem_ref
 if s.count(needle) != 1:
     raise SystemExit("PremiumCardActivity sget count unexpected")
-# v19 cannot be encoded by const/4 (4-bit register); const/16 supports v19.
 s = s.replace(needle, "    const/16 v19, 0x0", 1)
+
+# Verify A is the list we changed and the preceding z list still exists before it.
+new_a_store = s.find("    sput-object v0, Lw40;->A:Ljava/util/List;")
+new_z_store = s.find("    sput-object v0, Lw40;->z:Ljava/util/List;")
+if not (new_z_store >= 0 and new_z_store < new_a_store):
+    raise SystemExit("w40 list ordering damaged")
+a_window = s[max(0, new_a_store - 700):new_a_store]
+if "aput-object v13" in a_window:
+    raise SystemExit("Premium v13 is still present in Lw40.A")
+for required in ("aput-object v12", "aput-object v14", "aput-object v15"):
+    if required not in a_window:
+        raise SystemExit("Lw40.A missing expected item: " + required)
 p.write_text(s)
 
-# No live code may reference premium activities outside their own dead definitions.
+# No live code may reference premium activities outside their own unreachable definitions.
 bad = []
 for root in [ROOT / "smali", ROOT / "smali_classes2", ROOT / "smali_classes3"]:
     for f in root.rglob("*.smali"):
@@ -112,4 +131,4 @@ for root in [ROOT / "smali", ROOT / "smali_classes2", ROOT / "smali_classes3"]:
 if bad:
     raise SystemExit("remaining premium refs: " + repr(bad))
 
-print("PASS: CLEAN 01G source patch assertions passed")
+print("PASS: CLEAN 01G source patch assertions passed; Lw40.A premium item removed")
