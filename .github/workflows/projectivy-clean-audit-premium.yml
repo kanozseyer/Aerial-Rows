@@ -1,0 +1,80 @@
+name: Projectivy Clean Audit - Premium and Efficiency
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-premium.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Decode exact official Projectivy 4.72 for audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/projectivy.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/pj
+
+      - name: Generate premium/reference audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=/tmp/premium-audit.txt
+          : > "$R"
+          {
+            echo '=== APK ==='
+            stat -c 'bytes=%s' /tmp/projectivy.apk
+            echo
+            echo '=== MANIFEST PREMIUM/BILLING/LICENSE LINES ==='
+            grep -nEi 'premium|billing|license|purchase|lemonsqueezy' /tmp/pj/AndroidManifest.xml || true
+            echo
+            echo '=== PROJECTIVY PREMIUM CLASS DEFINITIONS ==='
+            find /tmp/pj -type f -name '*.smali' | grep -Ei '/com/spocky/projengmenu/.*(premium|Premium|billing|Billing|license|License|lemon|Lemon)' | sort || true
+            echo
+            echo '=== ALL PROJECTIVY CALLERS OF PremiumActivity / PremiumCardActivity ==='
+            grep -RIl --include='*.smali' -E 'PremiumActivity;|PremiumCardActivity;' /tmp/pj/smali* | sort || true
+            echo
+            echo '=== PROJECTIVY CALLERS OF utils/premium OR LemonSqueezy ==='
+            grep -RIl --include='*.smali' -E 'com/spocky/projengmenu/utils/premium|LemonSqueezy|lemonsqueezy' /tmp/pj/smali* | sort || true
+            echo
+            echo '=== PROJECTIVY CALLERS OF BillingClient / billing package ==='
+            grep -RIl --include='*.smali' -E 'Lcom/android/billingclient/api/BillingClient|Lcom/android/billingclient/api/' /tmp/pj/smali* | grep '/com/spocky/projengmenu/' | sort || true
+            echo
+            echo '=== PROJECTIVY FILES REFERENCING PREMIUM PREF/STATE STRINGS ==='
+            grep -RIl --include='*.smali' -Ei 'premiumAvailable|premiumUnavailable|general_ext_license|external_license_key|ProjectivyLicense-v1|PREMIUM' /tmp/pj/smali* | grep '/com/spocky/projengmenu/' | sort || true
+            echo
+            echo '=== PREMIUM / BILLING LIBRARY FILE COUNTS ==='
+            echo -n 'billing smali files: '
+            find /tmp/pj/smali* -type f -path '*/com/android/billingclient/*' -name '*.smali' | wc -l
+            echo -n 'projectivy premium-path smali files: '
+            find /tmp/pj/smali* -type f -path '*/com/spocky/projengmenu/utils/premium/*' -name '*.smali' | wc -l
+            echo
+            echo '=== PREMIUM/BILLING SMALI BYTE TOTALS ==='
+            find /tmp/pj/smali* -type f -path '*/com/android/billingclient/*' -name '*.smali' -print0 | xargs -0r stat -c '%s' | awk '{s+=$1} END{print "billing_smali_bytes="s+0}'
+            find /tmp/pj/smali* -type f -path '*/com/spocky/projengmenu/utils/premium/*' -name '*.smali' -print0 | xargs -0r stat -c '%s' | awk '{s+=$1} END{print "projectivy_premium_smali_bytes="s+0}'
+            echo
+            echo '=== SELECTED CALL SITES (WITH LINE CONTEXT) ==='
+            grep -RIn --include='*.smali' -E 'PremiumActivity;|PremiumCardActivity;|com/spocky/projengmenu/utils/premium|BillingClient;|general_ext_license|external_license_key|ProjectivyLicense-v1' /tmp/pj/smali* | grep '/com/spocky/projengmenu/' | head -400 || true
+          } | tee "$R"
+
+      - name: Publish audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Premium-Efficiency-Audit
+          path: /tmp/premium-audit.txt
+          retention-days: 30
