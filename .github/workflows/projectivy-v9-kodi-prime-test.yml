@@ -1,4 +1,4 @@
-name: Projectivy v9 Passive Kodi Readiness Diagnostic
+name: Projectivy v9.5 Hidden Kodi Virtual Display Diagnostic
 
 on:
   workflow_dispatch:
@@ -9,6 +9,7 @@ on:
       - '.github/patch-v9-kodi-prime-runtime.py'
       - '.github/patch-v9-kodi-ready-gate.py'
       - '.github/patch-v9-passive-ready.py'
+      - '.github/patch-v9-virtual-kodi-display.py'
 
 permissions:
   contents: read
@@ -24,7 +25,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Apply v9.2 diagnosed runtime plus passive Kodi readiness and diagnostics
+      - name: Apply v9 diagnosed runtime plus hidden Kodi virtual-display bootstrap
         shell: bash
         run: |
           set -euo pipefail
@@ -35,13 +36,18 @@ jobs:
           python3 .github/patch-v9-cold-kodi-runtime.py
           python3 .github/patch-v9-kodi-prime-runtime.py
           python3 .github/patch-v9-passive-ready.py
+          python3 .github/patch-v9-virtual-kodi-display.py
           python3 .github/patch-redlight-diagnostics.py
           grep -q 'ProfileRestoreBridge.onLauncherResume(context)' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
-          grep -q 'Passive Kodi readiness watch started; foreground launch disabled' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
           grep -q 'Launcher not focused yet; retrying settle probe' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'VIRTUAL_DISPLAY_FLAG_PUBLIC' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'setLaunchDisplayId(displayId)' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'Requested Kodi Main on hidden virtual display' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'Kodi JSON-RPC ready from hidden display' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
           grep -q 'Scheduled Red Light refresh skipped: Kodi JSON-RPC not ready' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
           ! grep -q 'getLeanbackLaunchIntentForPackage("org.xbmc.kodi")' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
-          ! grep -q 'app.startActivity(kodi)' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          ! grep -q 'getLaunchIntentForPackage("org.xbmc.kodi")' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
           grep -q 'ProjectivyRedLight' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'restoreBundledChannelLayoutOnce' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'GUI.ActivateWindow' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightLaunchActivity.java
@@ -118,16 +124,16 @@ jobs:
           java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-single-unsigned.apk
           for dex in /tmp/classes[4-9].dex /tmp/classes[1-9][0-9].dex; do [ -f "$dex" ] || continue; zip -q -j /tmp/projectivy-single-unsigned.apk "$dex"; done
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
-          "$BUILD_TOOLS/zipalign" -p -f 4 /tmp/projectivy-single-unsigned.apk /tmp/Projectivy-v9.4-PassiveReady-aligned-unsigned.apk
+          "$BUILD_TOOLS/zipalign" -p -f 4 /tmp/projectivy-single-unsigned.apk /tmp/Projectivy-v9.5-HiddenKodi-aligned-unsigned.apk
           keytool -genkeypair -v -keystore /tmp/key.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Projectivy Embedded Test,O=Launcher,C=GB'
-          "$BUILD_TOOLS/apksigner" sign --ks /tmp/key.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-v9.4-Passive-Kodi-Readiness-Diagnostic.apk /tmp/Projectivy-v9.4-PassiveReady-aligned-unsigned.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-v9.4-Passive-Kodi-Readiness-Diagnostic.apk
+          "$BUILD_TOOLS/apksigner" sign --ks /tmp/key.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-v9.5-Hidden-Kodi-Virtual-Display-Diagnostic.apk /tmp/Projectivy-v9.5-HiddenKodi-aligned-unsigned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-v9.5-Hidden-Kodi-Virtual-Display-Diagnostic.apk
           mkdir -p /tmp/artifact
-          cp /tmp/Projectivy-v9.4-Passive-Kodi-Readiness-Diagnostic.apk /tmp/artifact/
-          sha256sum /tmp/Projectivy-v9.4-Passive-Kodi-Readiness-Diagnostic.apk | tee /tmp/artifact/SHA256.txt
+          cp /tmp/Projectivy-v9.5-Hidden-Kodi-Virtual-Display-Diagnostic.apk /tmp/artifact/
+          sha256sum /tmp/Projectivy-v9.5-Hidden-Kodi-Virtual-Display-Diagnostic.apk | tee /tmp/artifact/SHA256.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Projectivy-v9.4-Passive-Kodi-Readiness-Diagnostic
+          name: Projectivy-v9.5-Hidden-Kodi-Virtual-Display-Diagnostic
           path: /tmp/artifact/*
           retention-days: 7
