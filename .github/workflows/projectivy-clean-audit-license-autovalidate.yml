@@ -1,0 +1,76 @@
+name: Projectivy Clean Audit - License Auto Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-license-autovalidate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode and trace auto-validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          mkdir -p /tmp/out
+          for n in kf2 rc1 vj3; do cp "/tmp/pj/smali_classes2/$n.smali" "/tmp/out/$n.smali"; done
+          ROOTS='/tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3'
+          {
+            echo '=== kf2 complete ==='; cat /tmp/pj/smali_classes2/kf2.smali
+            echo; echo '=== rc1 methods ==='; grep -n '^\.method' /tmp/pj/smali_classes2/rc1.smali
+            echo; echo '=== rc1 network-call methods with method boundaries ==='
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('/tmp/pj/smali_classes2/rc1.smali').read_text()
+          for m in re.finditer(r'\.method .*?\n.*?\.end method',s,re.S):
+              block=m.group(0)
+              if any(x in block for x in ['Lta1;->D(', 'Lta1;->d(', 'Lta1;->l(']):
+                  print(block); print('\n---\n')
+          PY
+            echo; echo '=== external callers of those rc1 methods ==='
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          rc=Path('/tmp/pj/smali_classes2/rc1.smali').read_text()
+          sigs=[]
+          for m in re.finditer(r'\.method\s+.*?\s+([^\s(]+)(\([^)]*\).+)\n(.*?)\.end method',rc,re.S):
+              name,proto,body=m.group(1),m.group(2),m.group(3)
+              if any(x in body for x in ['Lta1;->D(', 'Lta1;->d(', 'Lta1;->l(']): sigs.append((name,proto))
+          roots=[Path('/tmp/pj/smali'),Path('/tmp/pj/smali_classes2'),Path('/tmp/pj/smali_classes3')]
+          print('network wrapper methods:',sigs)
+          for name,proto in sigs:
+              needle=f'Lrc1;->{name}{proto}'
+              print('\n---',needle)
+              for root in roots:
+                  for p in root.rglob('*.smali'):
+                      if p.name=='rc1.smali': continue
+                      lines=p.read_text(errors='ignore').splitlines()
+                      for i,l in enumerate(lines):
+                          if needle in l:
+                              print(f'{p}:{i+1}')
+                              print('\n'.join(lines[max(0,i-15):min(len(lines),i+20)]))
+          PY
+            echo; echo '=== kf2 references outside fc1 / premium classes ==='
+            grep -R -n -B15 -A30 'Lkf2;->' $ROOTS 2>/dev/null | grep -v '/kf2.smali' || true
+          } > /tmp/out/auto-validation-trace.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-License-AutoValidation-Trace
+          path: /tmp/out/*
+          retention-days: 7
