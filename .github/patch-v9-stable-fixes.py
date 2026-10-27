@@ -61,10 +61,12 @@ if text.count(old) != 1:
     raise SystemExit(f'v9 stable resume anchor mismatch: {text.count(old)}')
 text = text.replace(old, new, 1)
 
-old = '            if (c != null) { applyDefaultProfile(c); repairEmbeddedAerialPackage(c); scheduleRedLight(c); }'
-new = '            if (c != null) { StableProfileBridge.bootstrap(c); repairEmbeddedAerialPackage(c); scheduleRedLight(c); }'
+# v6 has already appended syncRedLightAsync(c) to this line. Replace only the
+# profile call so the known-good v9 bootstrap discovery remains byte-for-byte in place.
+old = 'applyDefaultProfile(c); repairEmbeddedAerialPackage(c);'
+new = 'StableProfileBridge.bootstrap(c); repairEmbeddedAerialPackage(c);'
 if text.count(old) != 1:
-    raise SystemExit(f'v9 stable bootstrap anchor mismatch: {text.count(old)}')
+    raise SystemExit(f'v9 stable bootstrap profile-call mismatch: {text.count(old)}')
 text = text.replace(old, new, 1)
 embedded.write_text(text)
 print('replaced early raw default-profile writes with stable profile bridge')
