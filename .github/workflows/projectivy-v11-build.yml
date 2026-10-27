@@ -1,0 +1,154 @@
+name: Projectivy v11 First Boot + MultiSelect
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-native-mod]
+    paths:
+      - '.github/workflows/projectivy-v11-build.yml'
+      - '.github/patch-v11-runtime.py'
+      - '.github/patch-v11-final.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Patch embedded runtime through v11
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/patch-redlight-runtime.py
+          python3 .github/patch-v6-runtime.py
+          python3 .github/patch-v7-runtime.py
+          python3 .github/patch-v10-runtime.py
+          python3 .github/patch-v11-runtime.py
+          python3 .github/patch-v11-final.py
+          grep -q 'preseedBundledChannels' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'findRedLightChannelByTitle' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'applyBundledAppearanceLive' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'LIVE_APPEARANCE_MARKER' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'programHash' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'CATALOG_CACHE_MS' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/AerialService.java
+          grep -q 'buildGroupedPreference' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/ChannelSelectionBridge.java
+          ! grep -q 'upgradeGroupedPreference' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/ChannelSelectionBridge.java
+          ! grep -q 'launcher_embedded_' embedded-runtime/src/main/assets/launcher_default_profile.json
+          ! grep -q 'Red Light · couchy-' embedded-runtime/src/main/assets/launcher_default_profile.json
+          ! grep -q 'Red Light · ishows-' embedded-runtime/src/main/assets/launcher_default_profile.json
+
+      - name: Build embedded runtime DEX
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :embedded-runtime:assembleDebug --stacktrace
+          APK='embedded-runtime/build/outputs/apk/debug/embedded-runtime-debug.apk'
+          rm -rf /tmp/runtime-dex && mkdir -p /tmp/runtime-dex
+          unzip -q "$APK" 'classes*.dex' -d /tmp/runtime-dex
+          i=4
+          for src in $(find /tmp/runtime-dex -maxdepth 1 -name 'classes*.dex' | sort -V); do
+            cp "$src" "/tmp/classes${i}.dex"
+            echo "runtime $(basename "$src") -> classes${i}.dex ($(stat -c%s "$src") bytes)"
+            i=$((i+1))
+          done
+          test -s /tmp/classes4.dex
+
+      - name: Download and decode Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/projectivy.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/projectivy-decoded
+
+      - name: Repair Material attrs and add bundled assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          values = Path('/tmp/projectivy-decoded/res/values')
+          values.mkdir(parents=True, exist_ok=True)
+          p = values / 'attrs.xml'
+          text = p.read_text() if p.exists() else '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+          additions = []
+          for name in ('state_liftable', 'state_lifted', 'state_swiped'):
+              if f'name="{name}"' not in text:
+                  additions.append(f'    <attr name="{name}" format="boolean" />')
+          if additions:
+              text = text.replace('</resources>', '\n'.join(additions) + '\n</resources>')
+              p.write_text(text)
+          PY
+          mkdir -p /tmp/projectivy-decoded/assets
+          curl -fL --retry 3 'https://raw.githubusercontent.com/kanozseyer/Aerial-Rows/projectivy-aerial-rows-provider/projectivy-aerial-rows-provider/src/main/assets/aerials.json' -o /tmp/projectivy-decoded/assets/aerials.json
+          cp embedded-runtime/src/main/assets/launcher_default_profile.json /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          python3 -m json.tool /tmp/projectivy-decoded/assets/launcher_default_profile.json >/dev/null
+          grep -q 'appearance_cards_bg_tint' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · Trending Movies' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · Trending TV Shows' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · In Progress Episodes' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · Continue Watching' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · Movies Watchlist' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          grep -q 'Red Light · TV Shows Watchlist' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          ! grep -q 'launcher_embedded_' /tmp/projectivy-decoded/assets/launcher_default_profile.json
+
+      - name: Patch Projectivy UI and routing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/projectivy-aerial-integration.py
+          python3 .github/projectivy-aerial-enhancements.py
+          python3 .github/projectivy-single-apk.py
+          python3 .github/projectivy-redlight-routing.py
+          python3 .github/projectivy-redlight-label.py
+          python3 .github/projectivy-channel-multiselect.py
+          grep -q 'android:host="plugin.video.redlight"' /tmp/projectivy-decoded/AndroidManifest.xml
+          grep -R -q 'const-string v4, "Red Light"' /tmp/projectivy-decoded/smali*/*g70.smali
+          grep -R -q 'ChannelSelectionBridge;->buildGroupedPreference' /tmp/projectivy-decoded/smali*/*g70.smali
+          grep -R -q ':embedded_stock_group_picker' /tmp/projectivy-decoded/smali*/*g70.smali
+          grep -R -q 'Landroidx/preference/MultiSelectListPreference;' /tmp/projectivy-decoded/smali*/*g70.smali
+          ! grep -R -q 'ChannelSelectionBridge;->upgradeGroupedPreference' /tmp/projectivy-decoded/smali*/*g70.smali
+
+      - name: Rebuild, inject runtime and prune unused x86 ABIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-single-unsigned.apk
+          for dex in /tmp/classes[4-9].dex /tmp/classes[1-9][0-9].dex; do
+            [ -f "$dex" ] || continue
+            zip -q -j /tmp/projectivy-single-unsigned.apk "$dex"
+          done
+          zip -q -d /tmp/projectivy-single-unsigned.apk 'lib/x86/*' 'lib/x86_64/*' >/dev/null 2>&1 || true
+          unzip -l /tmp/projectivy-single-unsigned.apk | grep -q 'assets/launcher_default_profile.json'
+          unzip -l /tmp/projectivy-single-unsigned.apk | grep -q 'lib/arm64-v8a/'
+          ! unzip -l /tmp/projectivy-single-unsigned.apk | grep -E 'lib/(x86|x86_64)/'
+
+      - name: Align, sign and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BUILD_TOOLS/zipalign" -p -f 4 /tmp/projectivy-single-unsigned.apk /tmp/Projectivy-Single-Embedded-aligned-unsigned.apk
+          keytool -genkeypair -v -keystore /tmp/projectivy-single-debug.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Projectivy Embedded Test,O=Launcher,C=GB'
+          "$BUILD_TOOLS/apksigner" sign --ks /tmp/projectivy-single-debug.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-Single-Embedded-generic.apk /tmp/Projectivy-Single-Embedded-aligned-unsigned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-Single-Embedded-generic.apk
+          mkdir -p /tmp/single-apk-artifact
+          cp /tmp/Projectivy-Single-Embedded-generic.apk /tmp/single-apk-artifact/
+          cp /tmp/Projectivy-Single-Embedded-aligned-unsigned.apk /tmp/single-apk-artifact/
+          sha256sum /tmp/Projectivy-Single-Embedded-generic.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-v11-Embedded
+          path: /tmp/single-apk-artifact/*
+          retention-days: 7
