@@ -1,6 +1,7 @@
 package com.spocky.projengmenu.embedded;
 
-import androidx.preference.ListPreference;
+import android.util.Log;
+
 import androidx.preference.MultiSelectListPreference;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceGroup;
@@ -8,52 +9,64 @@ import androidx.preference.PreferenceGroup;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Converts Projectivy 4.72's grouped single-choice channel picker into a true
- * multi-select picker.  The checked values are derived from each category's live
- * visibility flag, so every row currently enabled on Home is represented.
- *
- * Reflection is intentionally limited to Projectivy's obfuscated category model;
- * AndroidX preference APIs remain normal/public APIs.
- */
+/** Builds Projectivy grouped channel providers as a real multi-select from the start. */
 public final class ChannelSelectionBridge {
+    private static final String TAG = "ProjectivyChannels";
+
     private ChannelSelectionBridge() {}
 
-    public static Preference upgradeGroupedPreference(
-            PreferenceGroup group, Preference original, List<?> categories) {
-        if (group == null || original == null || categories == null || categories.size() <= 1) {
-            return original;
+    public static Preference buildGroupedPreference(
+            PreferenceGroup group, String sourceTitle, List<?> categories) {
+        if (group == null || sourceTitle == null || categories == null || categories.size() <= 1) {
+            return null;
         }
-        if (!(original instanceof ListPreference)) return original;
 
         try {
-            ListPreference source = (ListPreference) original;
-            MultiSelectListPreference multi = new MultiSelectListPreference(original.getContext());
-            multi.setPersistent(false);
-            multi.setKey(source.getKey());
-            multi.setTitle(source.getTitle());
-            multi.setSummary(source.getSummary());
-            multi.setOrder(source.getOrder());
-            multi.setEnabled(source.isEnabled());
-            multi.setSelectable(source.isSelectable());
-            multi.setIcon(source.getIcon());
-            multi.setEntries(source.getEntries());
-            multi.setEntryValues(source.getEntryValues());
+            final String key = "key-" + sourceTitle;
+            Preference existing = group.findPreference(key);
+            MultiSelectListPreference multi;
+            if (existing instanceof MultiSelectListPreference) {
+                multi = (MultiSelectListPreference) existing;
+            } else {
+                if (existing != null) group.removePreference(existing);
+                multi = new MultiSelectListPreference(group.getContext());
+                multi.setPersistent(false);
+                multi.setKey(key);
+                group.addPreference(multi);
+            }
 
-            ArrayList<Object> refs = new ArrayList<>(categories);
+            ArrayList<Object> refs = new ArrayList<>();
+            for (Object category : categories) if (category != null) refs.add(category);
+            refs.sort(Comparator.comparing(ChannelSelectionBridge::categoryTitle,
+                    String.CASE_INSENSITIVE_ORDER));
+
+            CharSequence[] entries = new CharSequence[refs.size()];
+            CharSequence[] values = new CharSequence[refs.size()];
             HashSet<String> selected = new HashSet<>();
-            for (Object category : refs) {
+            for (int i = 0; i < refs.size(); i++) {
+                Object category = refs.get(i);
                 int id = categoryId(category);
+                entries[i] = categoryTitle(category);
+                values[i] = String.valueOf(id);
                 if (id != Integer.MIN_VALUE && categoryVisible(category)) {
                     selected.add(String.valueOf(id));
                 }
             }
-            multi.setValues(selected);
 
+            multi.setTitle(sourceTitle);
+            multi.setSummary(refs.size() + " channels");
+            multi.setEntries(entries);
+            multi.setEntryValues(values);
+            multi.setValues(selected);
+            multi.setEnabled(true);
+            multi.setSelectable(true);
+
+            final ArrayList<Object> callbackRefs = refs;
             multi.setOnPreferenceChangeListener((preference, newValue) -> {
                 if (!(newValue instanceof Set)) return false;
                 HashSet<String> next = new HashSet<>();
@@ -62,7 +75,7 @@ public final class ChannelSelectionBridge {
                 }
 
                 boolean changed = false;
-                for (Object category : refs) {
+                for (Object category : callbackRefs) {
                     int id = categoryId(category);
                     if (id == Integer.MIN_VALUE) continue;
                     boolean wanted = next.contains(String.valueOf(id));
@@ -74,14 +87,10 @@ public final class ChannelSelectionBridge {
                 if (changed) persistAndNotifyProjectivy();
                 return true;
             });
-
-            // Remove the old ListPreference before adding the replacement because
-            // both intentionally use the same Projectivy key.
-            group.removePreference(original);
-            group.addPreference(multi);
             return multi;
-        } catch (Throwable ignored) {
-            return original;
+        } catch (Throwable t) {
+            Log.e(TAG, "Unable to build grouped channel multi-select for " + sourceTitle, t);
+            return null;
         }
     }
 
@@ -93,6 +102,21 @@ public final class ChannelSelectionBridge {
         } catch (Throwable ignored) {
             return Integer.MIN_VALUE;
         }
+    }
+
+    private static String categoryTitle(Object category) {
+        if (category == null) return "";
+        try {
+            Method method = category.getClass().getMethod("h");
+            Object value = method.invoke(category);
+            if (value != null) return String.valueOf(value);
+        } catch (Throwable ignored) {}
+        try {
+            Field field = category.getClass().getField("t");
+            Object value = field.get(category);
+            if (value != null) return String.valueOf(value);
+        } catch (Throwable ignored) {}
+        return "Channel " + categoryId(category);
     }
 
     private static boolean categoryVisible(Object category) {
@@ -109,7 +133,9 @@ public final class ChannelSelectionBridge {
         try {
             Field field = category.getClass().getField("n");
             field.setBoolean(category, visible);
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            Log.e(TAG, "Unable to update channel visibility", t);
+        }
     }
 
     private static void persistAndNotifyProjectivy() {
@@ -121,6 +147,8 @@ public final class ChannelSelectionBridge {
             Method notify = categories.getDeclaredMethod("m");
             notify.setAccessible(true);
             notify.invoke(null);
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            Log.e(TAG, "Unable to persist Projectivy channel visibility", t);
+        }
     }
 }
