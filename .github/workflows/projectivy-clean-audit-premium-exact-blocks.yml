@@ -1,0 +1,45 @@
+name: Projectivy Clean Audit - Premium Exact Blocks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-premium-exact-blocks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode and extract exact blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          mkdir -p /tmp/out
+          {
+            echo '=== w40 premium card menu block ==='; sed -n '1160,1305p' /tmp/pj/smali/w40.smali
+            echo; echo '=== gh PremiumActivity refs ==='; grep -n -B60 -A90 'PremiumActivity' /tmp/pj/smali_classes2/gh.smali || true
+            echo; echo '=== ft PremiumActivity refs ==='; grep -n -B80 -A120 'PremiumActivity' /tmp/pj/smali_classes2/ft.smali || true
+            for f in ImportThemeActivity SetBackgroundActivity ToggleParentalControlActivity; do
+              echo; echo "=== $f premium redirect ==="; grep -n -B90 -A130 'PremiumActivity' "/tmp/pj/smali_classes2/com/spocky/projengmenu/ui/launcherActivities/$f.smali" || true
+            done
+            echo; echo '=== PremiumActivity methods ==='; grep -n '^\.method' /tmp/pj/smali_classes2/com/spocky/projengmenu/ui/guidedActions/activities/about/PremiumActivity.smali
+            echo; echo '=== PremiumCardActivity full ==='; cat /tmp/pj/smali/com/spocky/projengmenu/ui/guidedActions/activities/about/PremiumCardActivity.smali
+          } > /tmp/out/exact-blocks.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Premium-Exact-Blocks
+          path: /tmp/out/*
+          retention-days: 7
