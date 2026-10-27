@@ -41,10 +41,14 @@ jobs:
             cp "$f" "/tmp/probe/src/$rel"
           done < /tmp/probe/hit-files.txt
           grep -RniE 'plbackup|ImportSettings|ExportSettings|action_categories_list|appearance_cards_bg|appearance.*icon|MultiSelectListPreference|ListPreference|setValue|setValues' /tmp/probe/src > /tmp/probe/hits.txt || true
-          for cls in g70 k00 b40 w40 yh3 dj3 s71 e70 i5; do
+          for cls in g70 k00 b40 w40 yh3 dj3 s71 e70 i5 ft f6 ie2 he2 xi3 v hj3 bs4 au4; do
             f="/tmp/jadx-out/sources/defpackage/${cls}.java"
             [ -f "$f" ] && cp "$f" "/tmp/probe/${cls}.java"
             find /tmp/apk-out -name "${cls}.smali" -print -exec cp '{}' "/tmp/probe/${cls}.smali" \; | head -1 || true
+          done
+          for f in ImportSettingsActivity ImportThemeActivity; do
+            src="/tmp/jadx-out/sources/com/spocky/projengmenu/ui/launcherActivities/${f}.java"
+            [ -f "$src" ] && cp "$src" "/tmp/probe/${f}.java"
           done
       - uses: actions/upload-artifact@v4
         with:
