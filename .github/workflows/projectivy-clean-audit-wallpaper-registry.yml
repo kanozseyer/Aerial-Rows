@@ -1,0 +1,52 @@
+name: Projectivy Clean Audit - Wallpaper Registry
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-wallpaper-registry.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode official Projectivy and extract bs4 registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          mkdir -p /tmp/out
+          cp /tmp/pj/smali/bs4.smali /tmp/out/bs4.smali
+          python3 - <<'PY' > /tmp/out/registry.txt
+          from pathlib import Path
+          import re
+          s=Path('/tmp/pj/smali/bs4.smali').read_text()
+          ids=['e77610c3-d495-4090-b387-fae3faafa718','eea7a685-d68f-4fb5-b46e-b4897af5413f','773b5948-b4d1-49c5-b994-999210bc8877','326618d8-3242-4322-a1b1-9e60e5d3dfc3']
+          pos=[s.find(x) for x in ids]
+          print('positions',pos)
+          a=max(0,min(x for x in pos if x>=0)-2500)
+          b=min(len(s),max(pos)+5000)
+          print(s[a:b])
+          print('\n=== METHODS CONTAINING TRUSTED IDS ===')
+          for m in re.finditer(r'(\.method[^\n]*\n)(.*?)(\.end method)',s,re.S):
+              body=m.group(2)
+              if any(x in body for x in ids):
+                  print(m.group(1)+body+m.group(3))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Wallpaper-Registry-Audit
+          path: /tmp/out/*
+          retention-days: 7
