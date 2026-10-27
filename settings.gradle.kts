@@ -16,3 +16,4 @@ rootProject.name = "CouchyLauncher"
 include(":app")
 include(":macrobenchmark")
 include(":embedded-runtime")
+// Build marker: v9 Red Light native channel artwork.
