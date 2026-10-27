@@ -8,6 +8,7 @@ on:
       - '.github/workflows/projectivy-v9-diagnosed-fixes.yml'
       - '.github/patch-v9-diagnosed-runtime.py'
       - '.github/patch-v9-cold-kodi-runtime.py'
+      - '.github/patch-redlight-diagnostics.py'
       - '.github/projectivy-v9-diagnosed-smali.py'
       - 'embedded-runtime/**'
 
@@ -25,7 +26,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Apply exact v9 runtime chain plus diagnosed fixes and cold Kodi recovery
+      - name: Apply exact v9 runtime chain plus diagnosed fixes, cold Kodi recovery and diagnostics
         shell: bash
         run: |
           set -euo pipefail
@@ -34,10 +35,13 @@ jobs:
           python3 .github/patch-v7-runtime.py
           python3 .github/patch-v9-diagnosed-runtime.py
           python3 .github/patch-v9-cold-kodi-runtime.py
+          python3 .github/patch-redlight-diagnostics.py
           grep -q 'ProfileRestoreBridge.onLauncherResume(context)' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
           grep -q 'restoreBundledChannelLayoutOnce' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'retryRedLightIfMissing(app), 60000L' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
           grep -q 'hasPublishedChannels' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'ProjectivyRedLight' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'LIST start uri=' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'GUI.ActivateWindow' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightLaunchActivity.java
           python3 - <<'PY'
           import json
@@ -147,16 +151,16 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
-          "$BUILD_TOOLS/zipalign" -p -f 4 /tmp/projectivy-single-unsigned.apk /tmp/Projectivy-v9-ColdKodi-aligned-unsigned.apk
+          "$BUILD_TOOLS/zipalign" -p -f 4 /tmp/projectivy-single-unsigned.apk /tmp/Projectivy-v9-ColdBootDiag-aligned-unsigned.apk
           keytool -genkeypair -v -keystore /tmp/projectivy-single-debug.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Projectivy Embedded Test,O=Launcher,C=GB'
-          "$BUILD_TOOLS/apksigner" sign --ks /tmp/projectivy-single-debug.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-v9-Cold-Kodi-Recovery.apk /tmp/Projectivy-v9-ColdKodi-aligned-unsigned.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-v9-Cold-Kodi-Recovery.apk
+          "$BUILD_TOOLS/apksigner" sign --ks /tmp/projectivy-single-debug.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-v9-Cold-Boot-Diagnostic.apk /tmp/Projectivy-v9-ColdBootDiag-aligned-unsigned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-v9-Cold-Boot-Diagnostic.apk
           mkdir -p /tmp/artifact
-          cp /tmp/Projectivy-v9-Cold-Kodi-Recovery.apk /tmp/artifact/
-          sha256sum /tmp/Projectivy-v9-Cold-Kodi-Recovery.apk | tee /tmp/artifact/SHA256.txt
+          cp /tmp/Projectivy-v9-Cold-Boot-Diagnostic.apk /tmp/artifact/
+          sha256sum /tmp/Projectivy-v9-Cold-Boot-Diagnostic.apk | tee /tmp/artifact/SHA256.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Projectivy-v9-Cold-Kodi-Recovery
+          name: Projectivy-v9-Cold-Boot-Diagnostic
           path: /tmp/artifact/*
           retention-days: 7
