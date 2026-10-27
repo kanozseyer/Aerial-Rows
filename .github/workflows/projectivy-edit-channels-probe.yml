@@ -36,18 +36,18 @@ jobs:
           mkdir -p /tmp/jadx-out /tmp/probe
           /tmp/jadx/bin/jadx -d /tmp/jadx-out /tmp/projectivy.apk >/tmp/jadx.log 2>&1 || true
           cp /tmp/jadx.log /tmp/probe/
-          for cls in k00 b40 g70 w40 i5 m60; do
+          for cls in k00 b40 g70 w40 i5 m60 ft f6 r10 h5 ie2 he2 ge2; do
             f="/tmp/jadx-out/sources/defpackage/${cls}.java"
             [ -f "$f" ] && cp "$f" "/tmp/probe/${cls}.java"
           done
-          find /tmp/jadx-out/sources -type f -name '*.java' -print0 | xargs -0 grep -ilE 'ManageChannelsActivity|prefs_channels|settings_channels|action_visibility|MultiSelectListPreference|ListPreference|setChecked|isChecked' | head -n 80 > /tmp/probe/hit-files.txt || true
+          find /tmp/jadx-out/sources -type f -name '*.java' -print0 | xargs -0 grep -ilE 'ManageChannelsActivity|prefs_channels|settings_channels|action_visibility|MultiSelectListPreference|ListPreference|setChecked|isChecked|new ft\(|class ft|class f6' | head -n 120 > /tmp/probe/hit-files.txt || true
           while IFS= read -r f; do
             [ -f "$f" ] || continue
             rel="${f#/tmp/jadx-out/sources/}"
             mkdir -p "/tmp/probe/src/$(dirname "$rel")"
             cp "$f" "/tmp/probe/src/$rel"
           done < /tmp/probe/hit-files.txt
-          grep -RniE 'ManageChannelsActivity|prefs_channels|settings_channels|action_visibility|MultiSelectListPreference|ListPreference|setChecked|isChecked|list.get\(0\)|get\(0\)' /tmp/probe/src /tmp/probe/*.java > /tmp/probe/hits.txt || true
+          grep -RniE 'ManageChannelsActivity|prefs_channels|settings_channels|action_visibility|MultiSelectListPreference|ListPreference|setChecked|isChecked|new ft\(|class ft|class f6|\.n =|\.n\)' /tmp/probe/src /tmp/probe/*.java > /tmp/probe/hits.txt || true
       - uses: actions/upload-artifact@v4
         with:
           name: Projectivy-Edit-Channels-Probe
