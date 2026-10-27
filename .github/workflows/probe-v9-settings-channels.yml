@@ -46,7 +46,7 @@ jobs:
             [ -f "$f" ] || continue
             cp "$f" "/tmp/probe/smali-refs/$(basename $(dirname "$f"))-$(basename "$f")"
           done < /tmp/probe/hj3-s-smali-files.txt
-          for cls in g70 k00 b40 w40 yh3 dj3 s71 e70 i5 ft f6 ie2 he2 xi3 v hj3 bs4 au4 t40 u40; do
+          for cls in g70 k00 b40 w40 yh3 dj3 s71 e70 i5 ft f70 f6 ie2 he2 xi3 v hj3 bs4 au4 t40 u40; do
             f="/tmp/jadx-out/sources/defpackage/${cls}.java"
             [ -f "$f" ] && cp "$f" "/tmp/probe/${cls}.java"
             find /tmp/apk-out -name "${cls}.smali" -print -exec cp '{}' "/tmp/probe/${cls}.smali" \; | head -1 || true
