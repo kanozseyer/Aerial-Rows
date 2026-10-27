@@ -1,0 +1,46 @@
+name: Projectivy Clean 00 - Official Baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-00-official-baseline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact official Projectivy 4.72 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/ProjectivyLauncher-4.72-c97-xda-release.apk
+
+      - name: Verify official SHA-256 and ZIP integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/ProjectivyLauncher-4.72-c97-xda-release.apk' | sha256sum -c -
+          unzip -t /tmp/ProjectivyLauncher-4.72-c97-xda-release.apk >/dev/null
+          stat -c '%n %s bytes' /tmp/ProjectivyLauncher-4.72-c97-xda-release.apk
+
+      - name: Publish untouched baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/artifact
+          cp /tmp/ProjectivyLauncher-4.72-c97-xda-release.apk /tmp/artifact/Projectivy-CLEAN-00-OFFICIAL-4.72.apk
+          sha256sum /tmp/artifact/Projectivy-CLEAN-00-OFFICIAL-4.72.apk > /tmp/artifact/SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-00-OFFICIAL-4.72
+          path: /tmp/artifact/*
+          retention-days: 30
