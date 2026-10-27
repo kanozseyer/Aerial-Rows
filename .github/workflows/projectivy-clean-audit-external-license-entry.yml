@@ -1,0 +1,65 @@
+name: Projectivy Clean Audit - External License Entry
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-external-license-entry.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode and trace controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          mkdir -p /tmp/out
+          for n in ta1 fc1 z63 lf2 hf2 if2; do
+            for d in /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3; do
+              [ -f "$d/$n.smali" ] && cp "$d/$n.smali" "/tmp/out/$n.smali"
+            done
+          done
+          ROOTS='/tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3'
+          {
+            echo '=== ta1 method headers and Lemon call neighborhoods ==='
+            grep -n '^\.method' /tmp/pj/smali_classes2/ta1.smali || true
+            for N in 1209 2397 3265; do
+              echo "--- ta1 around $N ---"
+              sed -n "$((N-100)),$((N+120))p" /tmp/pj/smali_classes2/ta1.smali
+            done
+
+            echo
+            echo '=== ta1 constructor callers ==='
+            grep -R -n -B35 -A60 -E 'new-instance .*Lta1;|Lta1;-><init>' $ROOTS 2>/dev/null || true
+
+            echo
+            echo '=== external-license preference/UI classes ==='
+            grep -R -n -B35 -A70 -E 'external_license_key|general_ext_license_(key|instance|last_check)_nexp' $ROOTS 2>/dev/null || true
+
+            echo
+            echo '=== callers of fc1/z63 methods ==='
+            grep -R -n -B20 -A50 -E 'L(fc1|z63);->|new-instance .*L(fc1|z63);' $ROOTS 2>/dev/null || true
+
+            echo
+            echo '=== ta1 external references ==='
+            grep -R -n -B20 -A50 'Lta1;->' $ROOTS 2>/dev/null | grep -v '/ta1.smali' || true
+          } > /tmp/out/entry-trace.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-External-License-Entry-Trace
+          path: /tmp/out/*
+          retention-days: 7
