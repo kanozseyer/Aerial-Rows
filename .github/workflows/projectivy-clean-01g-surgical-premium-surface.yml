@@ -1,0 +1,190 @@
+name: Projectivy Clean 01G - Surgical Premium Surface
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-01g-surgical-premium-surface.yml'
+      - '.github/patch-clean-01g-surgical-dex.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/official.apk' | sha256sum -c -
+          unzip -p /tmp/official.apk classes.dex > /tmp/classes.dex
+          unzip -p /tmp/official.apk classes2.dex > /tmp/classes2.dex
+
+      - name: Surgically patch original DEX files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/patch-clean-01g-surgical-dex.py \
+            /tmp/classes.dex /tmp/classes2.dex \
+            /tmp/classes-patched.dex /tmp/classes2-patched.dex | tee /tmp/dex-patch.txt
+          [ "$(stat -c%s /tmp/classes.dex)" = "$(stat -c%s /tmp/classes-patched.dex)" ]
+          [ "$(stat -c%s /tmp/classes2.dex)" = "$(stat -c%s /tmp/classes2-patched.dex)" ]
+          python3 - <<'PY' | tee /tmp/dex-diff.txt
+          from pathlib import Path
+          for a,b in [('/tmp/classes.dex','/tmp/classes-patched.dex'),('/tmp/classes2.dex','/tmp/classes2-patched.dex')]:
+              x=Path(a).read_bytes(); y=Path(b).read_bytes()
+              diffs=[i for i,(p,q) in enumerate(zip(x,y)) if p!=q]
+              print(Path(a).name, 'size',len(x),'changed_bytes',len(diffs),'first_offsets',diffs[:16])
+          PY
+
+      - name: Build only the stripped binary AndroidManifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('/tmp/pj/AndroidManifest.xml'); s=p.read_text()
+          pats=[
+            r'\s*<uses-permission android:name="com\.android\.vending\.BILLING"\s*/>',
+            r'\s*<activity[^>]*android:name="com\.android\.billingclient\.api\.ProxyBillingActivity(?:V2)?"[^>]*/>',
+            r'\s*<meta-data[^>]*android:name="com\.google\.android\.play\.billingclient\.version"[^>]*/>',
+            r'\s*<intent>\s*<action android:name="com\.android\.vending\.billing\.InAppBillingService\.BIND"\s*/>\s*</intent>',
+            r'\s*<intent>\s*<action android:name="com\.google\.android\.apps\.play\.billingtestcompanion\.BillingOverrideService\.BIND"\s*/>\s*</intent>',
+            r'\s*<activity[^>]*android:name="com\.spocky\.projengmenu\.ui\.guidedActions\.activities\.about\.PremiumActivity"[^>]*/>',
+            r'\s*<activity[^>]*android:name="com\.spocky\.projengmenu\.ui\.guidedActions\.activities\.about\.PremiumCardActivity"[^>]*/>',
+          ]
+          before=s
+          for pat in pats: s=re.sub(pat,'',s)
+          if s==before: raise SystemExit('manifest patch changed nothing')
+          p.write_text(s)
+          PY
+          # Projectivy 4.72 resource-table compatibility fix for temporary Apktool build only.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/pj/res/values/attrs.xml'); s=p.read_text(); marker='</resources>'
+          extra='''    <attr name="state_liftable" format="boolean" />\n    <attr name="state_lifted" format="boolean" />\n    <attr name="state_swiped" format="boolean" />\n'''
+          if 'name="state_liftable"' not in s: p.write_text(s.replace(marker,extra+marker))
+          PY
+          java -jar /tmp/apktool.jar b /tmp/pj -o /tmp/manifest-build.apk >/dev/null
+          unzip -p /tmp/manifest-build.apk AndroidManifest.xml > /tmp/AndroidManifest.xml
+
+      - name: Repack official APK with surgical DEX and stripped manifest only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile
+          repl={
+            'classes.dex':open('/tmp/classes-patched.dex','rb').read(),
+            'classes2.dex':open('/tmp/classes2-patched.dex','rb').read(),
+            'AndroidManifest.xml':open('/tmp/AndroidManifest.xml','rb').read(),
+          }
+          with zipfile.ZipFile('/tmp/official.apk') as zin, zipfile.ZipFile('/tmp/unsigned.apk','w') as zout:
+              for i in zin.infolist():
+                  if i.filename.startswith('META-INF/'):
+                      continue
+                  data=repl.get(i.filename,zin.read(i.filename))
+                  n=zipfile.ZipInfo(i.filename,i.date_time)
+                  n.compress_type=i.compress_type; n.comment=i.comment; n.extra=i.extra
+                  n.internal_attr=i.internal_attr; n.external_attr=i.external_attr
+                  n.create_system=i.create_system; n.create_version=i.create_version
+                  n.extract_version=i.extract_version; n.flag_bits=i.flag_bits
+                  zout.writestr(n,data)
+          PY
+          unzip -t /tmp/unsigned.apk >/dev/null
+
+      - name: Verify final DEX can be decoded and intended control flow changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar /tmp/apktool.jar d -f /tmp/unsigned.apk -o /tmp/verify >/tmp/final-decode.log 2>&1
+          # Lit1.g must now begin with return-void.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('/tmp/verify/smali/it1.smali').read_text()
+          m=re.search(r'\.method public final g\(\)V\n(.*?)\.end method',s,re.S)
+          assert m and 'return-void' in m.group(1).splitlines()[2:8], m.group(1)[:300]
+          # About list A must be 3 items and exclude v13 (Premium).
+          w=Path('/tmp/verify/smali/w40.smali').read_text()
+          a=w.find('sput-object v0, Lw40;->A:Ljava/util/List;')
+          assert a>0
+          win=w[max(0,a-1000):a]
+          assert 'new-array v0, v3, [Ld90;' in win
+          assert 'aput-object v12, v0, v11' in win
+          assert 'aput-object v14, v0, v1' in win
+          assert 'aput-object v15, v0, v2' in win
+          assert 'aput-object v13' not in win
+          print('PASS: decoded Lit1.g and Lw40.A surgical changes verified')
+          PY
+
+      - name: Align, sign and validate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          ZIPALIGN="$BT/zipalign"; APKSIGNER="$BT/apksigner"; AAPT="$BT/aapt"
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.pk8?format=TEXT' | base64 -d > /tmp/testkey.pk8
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.x509.pem?format=TEXT' | base64 -d > /tmp/testkey.x509.pem
+          "$ZIPALIGN" -P 16 -f 4 /tmp/unsigned.apk /tmp/aligned.apk
+          "$APKSIGNER" sign --key /tmp/testkey.pk8 --cert /tmp/testkey.x509.pem --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out /tmp/Projectivy-CLEAN-01G-SURGICAL-Premium-Removed.apk /tmp/aligned.apk
+          "$APKSIGNER" verify --verbose --print-certs /tmp/Projectivy-CLEAN-01G-SURGICAL-Premium-Removed.apk | tee /tmp/apksigner.txt
+          "$ZIPALIGN" -P 16 -c -v 4 /tmp/Projectivy-CLEAN-01G-SURGICAL-Premium-Removed.apk > /tmp/zipalign.txt
+          "$AAPT" dump permissions /tmp/Projectivy-CLEAN-01G-SURGICAL-Premium-Removed.apk > /tmp/permissions.txt
+          "$AAPT" dump xmltree /tmp/Projectivy-CLEAN-01G-SURGICAL-Premium-Removed.apk AndroidManifest.xml > /tmp/manifest.txt
+          ! grep -q 'com.android.vending.BILLING' /tmp/permissions.txt
+          ! grep -q 'ProxyBillingActivity' /tmp/manifest.txt
+          ! grep -q 'BillingOverrideService' /tmp/manifest.txt
+          ! grep -q 'PremiumActivity' /tmp/manifest.txt
+          ! grep -q 'PremiumCardActivity' /tmp/manifest.txt
+
+      - name: Prove exact payload scope and size benefit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee /tmp/scope.txt
+          import zipfile,hashlib,os
+          a=zipfile.ZipFile('/tmp/official.apk'); b=zipfile.ZipFile('/tmp/Projectivy-CLEAN-01G-SURGICAL-Premium-Removed.apk')
+          ign=lambda n:n.startswith('META-INF/')
+          aa={i.filename for i in a.infolist() if not ign(i.filename)}
+          bb={i.filename for i in b.infolist() if not ign(i.filename)}
+          assert aa==bb, 'entry set changed'
+          changed=[n for n in sorted(aa) if hashlib.sha256(a.read(n)).digest()!=hashlib.sha256(b.read(n)).digest()]
+          assert changed==['AndroidManifest.xml','classes.dex','classes2.dex'],changed
+          assert len(a.read('classes.dex'))==len(b.read('classes.dex'))
+          assert len(a.read('classes2.dex'))==len(b.read('classes2.dex'))
+          assert a.read('classes3.dex')==b.read('classes3.dex')
+          assert a.read('resources.arsc')==b.read('resources.arsc')
+          print('changed payload:',changed)
+          print('classes.dex bytes:',len(b.read('classes.dex')))
+          print('classes2.dex bytes:',len(b.read('classes2.dex')))
+          print('official APK bytes:',os.path.getsize('/tmp/official.apk'))
+          print('surgical APK bytes:',os.path.getsize('/tmp/Projectivy-CLEAN-01G-SURGICAL-Premium-Removed.apk'))
+          PY
+          sha256sum /tmp/Projectivy-CLEAN-01G-SURGICAL-Premium-Removed.apk | tee /tmp/SHA256.txt
+
+      - name: Publish surgical APK and proofs
+        shell: bash
+        run: |
+          mkdir -p /tmp/artifact
+          cp /tmp/Projectivy-CLEAN-01G-SURGICAL-Premium-Removed.apk /tmp/artifact/
+          cp /tmp/SHA256.txt /tmp/scope.txt /tmp/dex-patch.txt /tmp/dex-diff.txt /tmp/apksigner.txt /tmp/zipalign.txt /tmp/permissions.txt /tmp/manifest.txt /tmp/final-decode.log /tmp/artifact/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-01G-SURGICAL-Premium-Removed
+          path: /tmp/artifact/*
+          retention-days: 30
