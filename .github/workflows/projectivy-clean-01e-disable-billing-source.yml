@@ -1,0 +1,111 @@
+name: Projectivy Clean 01E - Disable Billing Source
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-01e-disable-billing-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/official.apk' | sha256sum -c -
+
+      - name: Patch Lit1.g to no-op
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/pj/smali/it1.smali')
+          s=p.read_text()
+          start=s.find('.method public final g()V')
+          if start < 0: raise SystemExit('Lit1.g not found')
+          end=s.find('.end method', start)
+          if end < 0: raise SystemExit('Lit1.g end not found')
+          end += len('.end method')
+          old=s[start:end]
+          if 'invoke-static {}, Lit1;->b()Lpw;' not in old or 'invoke-virtual {v0, p0}, Lpw;->e(Lit1;)V' not in old:
+              raise SystemExit('Lit1.g signature/body anchor mismatch')
+          new='''.method public final g()V\n    .locals 0\n\n    # CLEAN 01E: BillingClient connection disabled at source.\n    # All callers remain intact; free/locked launcher semantics are unchanged.\n    return-void\n.end method'''
+          p.write_text(s[:start]+new+s[end:])
+          print('patched Lit1.g() to immediate return')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/pj/res/values/attrs.xml'); s=p.read_text(); m='</resources>'
+          extra='    <attr name="state_liftable" format="boolean" />\n    <attr name="state_lifted" format="boolean" />\n    <attr name="state_swiped" format="boolean" />\n'
+          if 'name="state_liftable"' not in s: p.write_text(s.replace(m,extra+m))
+          PY
+          java -jar /tmp/apktool.jar b /tmp/pj -o /tmp/rebuilt.apk >/dev/null
+          unzip -p /tmp/rebuilt.apk classes.dex > /tmp/classes.dex
+          test -s /tmp/classes.dex
+
+      - name: Repack official APK with patched classes.dex only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile
+          src='/tmp/official.apk'; out='/tmp/unsigned.apk'; pdata=open('/tmp/classes.dex','rb').read()
+          with zipfile.ZipFile(src) as zin, zipfile.ZipFile(out,'w') as zout:
+              for i in zin.infolist():
+                  if i.filename.startswith('META-INF/'): continue
+                  data=pdata if i.filename=='classes.dex' else zin.read(i.filename)
+                  n=zipfile.ZipInfo(i.filename,i.date_time); n.compress_type=i.compress_type; n.comment=i.comment; n.extra=i.extra; n.internal_attr=i.internal_attr; n.external_attr=i.external_attr; n.create_system=i.create_system; n.create_version=i.create_version; n.extract_version=i.extract_version; n.flag_bits=i.flag_bits
+                  zout.writestr(n,data)
+          PY
+
+      - name: Align sign verify and prove payload diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"; ZA="$BT/zipalign"; AS="$BT/apksigner"; AAPT="$BT/aapt"
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.pk8?format=TEXT' | base64 -d > /tmp/testkey.pk8
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.x509.pem?format=TEXT' | base64 -d > /tmp/testkey.x509.pem
+          "$ZA" -P 16 -f 4 /tmp/unsigned.apk /tmp/aligned.apk
+          "$AS" sign --key /tmp/testkey.pk8 --cert /tmp/testkey.x509.pem --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out /tmp/Projectivy-CLEAN-01E-Billing-Disabled.apk /tmp/aligned.apk
+          "$AS" verify --verbose --print-certs /tmp/Projectivy-CLEAN-01E-Billing-Disabled.apk | tee /tmp/apksigner.txt
+          "$ZA" -P 16 -c -v 4 /tmp/Projectivy-CLEAN-01E-Billing-Disabled.apk | tee /tmp/zipalign.txt
+          "$AAPT" dump badging /tmp/Projectivy-CLEAN-01E-Billing-Disabled.apk | head -1 | tee /tmp/package.txt
+          python3 - <<'PY'
+          import zipfile,hashlib
+          a=zipfile.ZipFile('/tmp/official.apk'); b=zipfile.ZipFile('/tmp/Projectivy-CLEAN-01E-Billing-Disabled.apk')
+          ign=lambda n:n.startswith('META-INF/')
+          aa={i.filename for i in a.infolist() if not ign(i.filename)}; bb={i.filename for i in b.infolist() if not ign(i.filename)}
+          assert aa==bb
+          ch=[n for n in sorted(aa) if hashlib.sha256(a.read(n)).digest()!=hashlib.sha256(b.read(n)).digest()]
+          assert ch==['classes.dex'], ch
+          print('PASS: only classes.dex changed')
+          PY
+          sha256sum /tmp/Projectivy-CLEAN-01E-Billing-Disabled.apk | tee /tmp/SHA256.txt
+
+      - name: Publish artifact
+        shell: bash
+        run: |
+          mkdir -p /tmp/artifact
+          cp /tmp/Projectivy-CLEAN-01E-Billing-Disabled.apk /tmp/SHA256.txt /tmp/apksigner.txt /tmp/zipalign.txt /tmp/package.txt /tmp/artifact/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-01E-Billing-Disabled
+          path: /tmp/artifact/*
+          retention-days: 30
