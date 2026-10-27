@@ -1,0 +1,47 @@
+name: Projectivy Clean Audit - Real Billing Entry
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-real-billing-entry.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode and trace Lit1 billing accessor
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          mkdir -p /tmp/out
+          cp /tmp/pj/smali_classes2/vj3.smali /tmp/out/vj3.smali
+          cp /tmp/pj/smali/it1.smali /tmp/out/it1.smali
+          {
+            echo '=== all Lit1.b BillingClient accessor callers ==='
+            grep -R -n -B20 -A45 'Lit1;->b()Lpw;' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null || true
+            echo
+            echo '=== vj3 construction/calls ==='
+            grep -R -n -B20 -A50 -E 'new-instance .*Lvj3;|invoke-(direct|virtual|static|interface).*Lvj3;' /tmp/pj/smali /tmp/pj/smali_classes2 /tmp/pj/smali_classes3 2>/dev/null || true
+            echo
+            echo '=== it1 public/static methods ==='
+            grep -n '^\.method' /tmp/pj/smali/it1.smali || true
+          } > /tmp/out/references.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Real-Billing-Entry
+          path: /tmp/out/*
+          retention-days: 7
