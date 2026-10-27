@@ -1,0 +1,39 @@
+name: Projectivy Clean Audit - settingsActivity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-settingsactivity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode official Projectivy and trace settingsActivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/official.apk -o /tmp/pj >/dev/null
+          mkdir -p /tmp/audit
+          grep -R -n -B20 -A60 --include='*.smali' 'settingsActivity' /tmp/pj/smali* > /tmp/audit/settingsActivity-smali.txt || true
+          grep -R -n -B20 -A80 --include='*.smali' 'WALLPAPER_PROVIDER' /tmp/pj/smali* > /tmp/audit/wallpaper-provider-smali.txt || true
+          grep -R -n -B30 -A80 --include='*.smali' 'ComponentName' /tmp/pj/smali* | grep -B30 -A80 -E 'settings|wallpaper|provider|PackageManager' > /tmp/audit/componentname-context.txt || true
+          grep -R -l --include='*.smali' 'settingsActivity' /tmp/pj/smali* | sort > /tmp/audit/files.txt
+          cat /tmp/audit/files.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-settingsActivity-Audit
+          path: /tmp/audit/*
+          retention-days: 7
