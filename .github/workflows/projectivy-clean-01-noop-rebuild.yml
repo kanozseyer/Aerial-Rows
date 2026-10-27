@@ -1,0 +1,131 @@
+name: Projectivy Clean 01 - No-op Rebuild
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-01-noop-rebuild.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download and verify untouched official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/projectivy-official.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy-official.apk' | sha256sum -c -
+          unzip -t /tmp/projectivy-official.apk >/dev/null
+
+      - name: Decode and rebuild with zero feature patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy-official.apk -o /tmp/projectivy-clean
+
+          # Apktool 2.11.1 needs these framework-state attrs declared explicitly
+          # when rebuilding this binary. They are decode/rebuild compatibility
+          # declarations only; no Projectivy logic, resources or behavior is patched.
+          python3 - <<'PY'
+          from pathlib import Path
+          values = Path('/tmp/projectivy-clean/res/values')
+          values.mkdir(parents=True, exist_ok=True)
+          p = values / 'attrs.xml'
+          text = p.read_text() if p.exists() else '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+          additions = []
+          for name in ('state_liftable', 'state_lifted', 'state_swiped'):
+              if f'name="{name}"' not in text:
+                  additions.append(f'    <attr name="{name}" format="boolean" />')
+          if additions:
+              text = text.replace('</resources>', '\n'.join(additions) + '\n</resources>')
+              p.write_text(text)
+          print('compat attrs added:', additions)
+          PY
+
+          # Safety gate: there must be no clean-project feature assets/classes.
+          ! find /tmp/projectivy-clean -type f | grep -qE 'redlight_seed|aerials\.json|launcher_default_profile\.json'
+          java -jar /tmp/apktool.jar b /tmp/projectivy-clean -o /tmp/projectivy-clean01-unsigned.apk
+          unzip -t /tmp/projectivy-clean01-unsigned.apk >/dev/null
+
+      - name: Align, sign and verify with Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+
+          "$ZIPALIGN" -P 16 -f -v 4 /tmp/projectivy-clean01-unsigned.apk /tmp/Projectivy-CLEAN-01-NoOp-Rebuild-aligned.apk >/tmp/zipalign-build.txt
+          "$ZIPALIGN" -P 16 -c -v 4 /tmp/Projectivy-CLEAN-01-NoOp-Rebuild-aligned.apk >/tmp/zipalign-check-before-sign.txt
+
+          keytool -genkeypair -noprompt \
+            -keystore /tmp/clean01-key.jks \
+            -storepass android -keypass android \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname 'CN=Projectivy Clean Rebuild,O=Launcher,C=GB'
+
+          "$APKSIGNER" sign \
+            --ks /tmp/clean01-key.jks \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out /tmp/Projectivy-CLEAN-01-NoOp-Rebuild.apk \
+            /tmp/Projectivy-CLEAN-01-NoOp-Rebuild-aligned.apk
+
+          "$APKSIGNER" verify --verbose --print-certs /tmp/Projectivy-CLEAN-01-NoOp-Rebuild.apk | tee /tmp/apksigner-verify.txt
+          "$ZIPALIGN" -P 16 -c -v 4 /tmp/Projectivy-CLEAN-01-NoOp-Rebuild.apk | tee /tmp/zipalign-check-final.txt
+
+          "$AAPT" dump badging /tmp/projectivy-official.apk | head -1 > /tmp/original-package.txt
+          "$AAPT" dump badging /tmp/Projectivy-CLEAN-01-NoOp-Rebuild.apk | head -1 > /tmp/rebuilt-package.txt
+          diff -u /tmp/original-package.txt /tmp/rebuilt-package.txt
+          grep -q "package: name='com.spocky.projengmenu'" /tmp/rebuilt-package.txt
+          grep -q "versionName='4.72'" /tmp/rebuilt-package.txt
+
+          python3 - <<'PY'
+          import zipfile
+          path='/tmp/Projectivy-CLEAN-01-NoOp-Rebuild.apk'
+          with zipfile.ZipFile(path) as z:
+              libs=[i for i in z.infolist() if i.filename.startswith('lib/') and i.filename.endswith('.so')]
+              assert libs, 'no native libraries found'
+              compressed=[i.filename for i in libs if i.compress_type != zipfile.ZIP_STORED]
+              assert not compressed, f'compressed native libs: {compressed}'
+              print('native libraries stored/uncompressed:', len(libs))
+          PY
+
+          sha256sum /tmp/Projectivy-CLEAN-01-NoOp-Rebuild.apk | tee /tmp/SHA256.txt
+
+      - name: Publish CLEAN 01 artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/artifact
+          cp /tmp/Projectivy-CLEAN-01-NoOp-Rebuild.apk /tmp/artifact/
+          cp /tmp/SHA256.txt /tmp/artifact/
+          cp /tmp/apksigner-verify.txt /tmp/artifact/
+          cp /tmp/zipalign-check-final.txt /tmp/artifact/
+          cp /tmp/original-package.txt /tmp/artifact/
+          cp /tmp/rebuilt-package.txt /tmp/artifact/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-01-NoOp-Rebuild
+          path: /tmp/artifact/*
+          retention-days: 30
