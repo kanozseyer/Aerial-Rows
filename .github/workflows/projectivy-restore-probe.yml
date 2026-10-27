@@ -31,7 +31,7 @@ jobs:
           rm -rf /tmp/jadx-out /tmp/probe
           mkdir -p /tmp/jadx-out /tmp/probe/src
           /tmp/jadx/bin/jadx -d /tmp/jadx-out /tmp/projectivy.apk >/tmp/probe/jadx.log 2>&1 || true
-          grep -RilE 'plbackup|backup|restore|import.*settings|export.*settings|action_categories_list' /tmp/jadx-out/sources | head -n 150 > /tmp/probe/hit-files.txt || true
+          grep -RilE 'plbackup|backup|restore|import.*settings|export.*settings|action_categories_list' /tmp/jadx-out/sources | head -n 180 > /tmp/probe/hit-files.txt || true
           while IFS= read -r f; do
             [ -f "$f" ] || continue
             rel="${f#/tmp/jadx-out/sources/}"
@@ -39,10 +39,11 @@ jobs:
             cp "$f" "/tmp/probe/src/$rel"
           done < /tmp/probe/hit-files.txt
           grep -RniE 'plbackup|backup|restore|import|export|action_categories_list|SharedPreferences|Cipher|SecretKey|Base64' /tmp/probe/src > /tmp/probe/hits.txt || true
-          for cls in w40 u40 t40 hj3 yh3 dj3 dh4; do
+          for cls in w40 u40 t40 hj3 yh3 dj3 dh4 fw2 pi3 xi3 gi3 hi3 ii3 li3 mi3 qi3 si3 ti3; do
             f="/tmp/jadx-out/sources/defpackage/${cls}.java"
             [ -f "$f" ] && cp "$f" "/tmp/probe/${cls}.java"
           done
+          cp /tmp/jadx-out/sources/com/spocky/projengmenu/ui/launcherActivities/ImportSettingsActivity.java /tmp/probe/ImportSettingsActivity.java
       - uses: actions/upload-artifact@v4
         with:
           name: Projectivy-Restore-Probe
