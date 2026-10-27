@@ -4,9 +4,9 @@ import re
 root = Path('/tmp/projectivy-decoded')
 
 # 1) VISUAL-ONLY grouped-channel selection fix. Projectivy keeps its stock
-# ListPreference and, more importantly, its stock ft/f70 visibility callback.
-# We only decorate every live i5.n==true row with a check and clear the misleading
-# single radio value.
+# ListPreference and its stock row-navigation/channel-settings callback. We decorate
+# every live i5.n==true channel with a check, while leaving the channel model and
+# normal visibility controls completely untouched.
 g70s = list(root.rglob('g70.smali'))
 if len(g70s) != 1:
     raise SystemExit(f'expected one g70.smali, found {len(g70s)}')
@@ -24,11 +24,27 @@ move_pos = method.find(move, pos)
 if move_pos < 0:
     raise SystemExit('grouped-channel result register not found')
 move_end = move_pos + len(move)
-insert = '''\n    # Embedded stable v9: keep Projectivy toggle logic, fix only checked-state rendering.\n    invoke-static {v2, v4}, Lcom/spocky/projengmenu/embedded/ChannelVisualBridge;->decorateGroupedPreference(Ljava/lang/Object;Ljava/util/List;)V\n'''
+insert = '''\n    # Embedded stable v9: keep Projectivy channel logic; fix only active-row rendering.\n    invoke-static {v2, v4}, Lcom/spocky/projengmenu/embedded/ChannelVisualBridge;->decorateGroupedPreference(Ljava/lang/Object;Ljava/util/List;)V\n'''
 if 'ChannelVisualBridge;->decorateGroupedPreference' not in method:
     method = method[:move_end] + insert + method[move_end:]
 text = text[:start] + method + text[end:]
 g70.write_text(text)
+
+# Projectivy's Leanback ListPreference dialog writes the last row opened into the
+# ListPreference after its callback succeeds. That value is only navigation history
+# for these grouped channel preferences, but Android renders it as one selected radio
+# item. Suppress ONLY that write for preferences marked by ChannelVisualBridge.
+he2s = list(root.rglob('he2.smali'))
+if len(he2s) != 1:
+    raise SystemExit(f'expected one he2.smali, found {len(he2s)}')
+he2 = he2s[0]
+text = he2.read_text()
+anchor = '    invoke-virtual {v3, p0}, Landroidx/preference/ListPreference;->K(Ljava/lang/String;)V\n'
+if text.count(anchor) != 1:
+    raise SystemExit(f'he2 ListPreference value-write anchor mismatch: {text.count(anchor)}')
+replacement = '''    invoke-static {v3}, Lcom/spocky/projengmenu/embedded/ChannelVisualBridge;->isGroupedChannelPreference(Ljava/lang/Object;)Z\n\n    move-result v2\n\n    if-nez v2, :embedded_skip_grouped_channel_value\n\n    invoke-virtual {v3, p0}, Landroidx/preference/ListPreference;->K(Ljava/lang/String;)V\n\n    :embedded_skip_grouped_channel_value\n'''
+text = text.replace(anchor, replacement, 1)
+he2.write_text(text)
 
 # 2) Projectivy's import activity unnecessarily requires ACTION_VIEW even when a
 # valid content URI/EXTRA_STREAM is present. Some Shield file pickers return the
@@ -48,7 +64,6 @@ if view_pos < 0:
 post = method[view_pos:]
 m = re.search(r'\n\s*move-result\s+(v\d+)\s*\n(?:\s*\.line[^\n]*\n)*\s*if-eqz\s+\1,\s*(:cond_[0-9a-f]+)', post)
 if not m:
-    # Apktool line directives can vary; search the first matching result/branch pair.
     m = re.search(r'move-result\s+(v\d+)[\s\S]{0,180}?if-eqz\s+\1,\s*(:cond_[0-9a-f]+)', post)
 if not m:
     raise SystemExit('ACTION_VIEW result branch not found')
@@ -80,9 +95,10 @@ dj3.write_text(text)
 # Verification
 for path, needle in [
     (g70, 'ChannelVisualBridge;->decorateGroupedPreference'),
+    (he2, 'ChannelVisualBridge;->isGroupedChannelPreference'),
     (imp, 'accept any action carrying a valid backup URI'),
     (dj3, 'StableProfileBridge;->onManualImportSucceeded'),
 ]:
     if needle not in path.read_text():
         raise SystemExit(f'v9 stable UI/import patch verification failed: {needle}')
-print('patched grouped-channel checked-state rendering and robust settings import')
+print('patched grouped-channel active-state rendering, stale radio state, and robust settings import')
