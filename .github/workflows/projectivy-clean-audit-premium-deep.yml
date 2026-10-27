@@ -1,0 +1,55 @@
+name: Projectivy Clean Audit - Premium Deep Trace
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-audit-premium-deep.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode official 4.72 and collect premium callers
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/projectivy.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/pj >/dev/null
+          OUT=/tmp/premium-deep
+          mkdir -p "$OUT"
+          cp /tmp/pj/AndroidManifest.xml "$OUT/AndroidManifest.xml"
+          for f in \
+            /tmp/pj/smali/com/spocky/projengmenu/ui/guidedActions/activities/about/PremiumCardActivity.smali \
+            /tmp/pj/smali_classes2/com/spocky/projengmenu/ui/guidedActions/activities/about/PremiumActivity.smali \
+            /tmp/pj/smali_classes2/com/spocky/projengmenu/ui/launcherActivities/ImportThemeActivity.smali \
+            /tmp/pj/smali_classes2/com/spocky/projengmenu/ui/launcherActivities/SetBackgroundActivity.smali \
+            /tmp/pj/smali_classes2/com/spocky/projengmenu/ui/launcherActivities/ToggleParentalControlActivity.smali \
+            /tmp/pj/smali/w40.smali \
+            /tmp/pj/smali_classes2/ft.smali \
+            /tmp/pj/smali_classes2/gh.smali \
+            /tmp/pj/smali_classes2/af2.smali \
+            /tmp/pj/smali_classes2/df2.smali \
+            /tmp/pj/smali_classes2/gf2.smali \
+            /tmp/pj/smali_classes2/jf2.smali \
+            /tmp/pj/smali_classes2/xe2.smali; do
+            if [ -f "$f" ]; then cp "$f" "$OUT/$(echo "$f" | sed 's#^/tmp/pj/##; s#/#__#g')"; fi
+          done
+          grep -RniE 'BillingClient|InAppBillingService|PremiumActivity|PremiumCardActivity|lemonsqueezy|license|licence|premium_' /tmp/pj/smali* > "$OUT/all-premium-references.txt" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-4.72-Premium-Deep-Trace
+          path: /tmp/premium-deep/*
+          retention-days: 7
