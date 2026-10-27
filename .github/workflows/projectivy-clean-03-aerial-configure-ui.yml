@@ -158,12 +158,13 @@ jobs:
           bs=Path('/tmp/verify/smali/bs4.smali').read_text(); assert A in bs; assert 'filled-new-array {v4, v2, v3, v0, v1}, [Ljava/lang/String;' in bs
           m=Path('/tmp/verify/AndroidManifest.xml').read_text()
           for x in ['com.spocky.projengmenu.embedded.AerialService','com.spocky.projengmenu.embedded.AerialSettingsActivity','tv.projectivy.plugin.WALLPAPER_PROVIDER','settingsActivity',A]: assert x in m,x
-          for x in ['BootReceiver','SyncJob','RedLight','launcher_default_profile','CrashlyticsRegistrar','FirebaseSessionsRegistrar','AnalyticsConnectorRegistrar','TransportRegistrar','AppMeasurementService','SessionLifecycleService','JobInfoSchedulerService']: assert x not in m,x
+          for x in ['com.spocky.projengmenu.embedded.EmbeddedRuntime$BootReceiver','com.spocky.projengmenu.embedded.EmbeddedRuntime$SyncJob','com.spocky.projengmenu.embedded.RedLight','launcher_default_profile.json','CrashlyticsRegistrar','FirebaseSessionsRegistrar','AnalyticsConnectorRegistrar','TransportRegistrar','AppMeasurementService','SessionLifecycleService','JobInfoSchedulerService']: assert x not in m,x
           for x in ['FirebaseInitProvider','RemoteConfigRegistrar','FirebaseInstallationsRegistrar']: assert x in m,x
           with zipfile.ZipFile('/tmp/unsigned.apk') as z:
               names=z.namelist(); libs=[n for n in names if n.startswith('lib/') and n.endswith('.so')]
               assert len(libs)==3 and all(n.startswith('lib/arm64-v8a/') for n in libs),libs
               assert 'classes4.dex' in names and 'assets/aerials.json' in names
+              assert 'assets/launcher_default_profile.json' not in names
               json.loads(z.read('assets/aerials.json'))
           print('PASS: CLEAN 03 = CLEAN 02 + Aerial Configure activity only')
           PY
