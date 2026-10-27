@@ -27,14 +27,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install build tools
+      - name: Download apktool
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
           curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
 
       - name: Generate exact v9 runtime plus isolated stable fixes
@@ -68,10 +64,8 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :embedded-runtime:assembleRelease --no-daemon
-          R8="$ANDROID_HOME/build-tools/34.0.0/d8"
-          mkdir -p /tmp/embedded-dex
-          "$R8" --release --min-api 26 --output /tmp/embedded-dex embedded-runtime/build/intermediates/dex/release/mergeDexRelease/classes.dex
-          test -s /tmp/embedded-dex/classes.dex
+          test -s embedded-runtime/build/intermediates/dex/release/mergeDexRelease/classes.dex
+          cp embedded-runtime/build/intermediates/dex/release/mergeDexRelease/classes.dex /tmp/embedded-runtime.dex
 
       - name: Download and decode Projectivy 4.72
         shell: bash
@@ -112,14 +106,16 @@ jobs:
           unzip -q /tmp/projectivy-rebuilt.apk
           n=2
           while [ -e "classes${n}.dex" ]; do n=$((n+1)); done
-          cp /tmp/embedded-dex/classes.dex "classes${n}.dex"
+          cp /tmp/embedded-runtime.dex "classes${n}.dex"
           zip -qr /tmp/projectivy-injected-unsigned.apk .
 
       - name: Align sign and verify
         shell: bash
         run: |
           set -euo pipefail
-          BT="$ANDROID_HOME/build-tools/34.0.0"
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          test -x "$BT/zipalign"
+          test -x "$BT/apksigner"
           "$BT/zipalign" -f 4 /tmp/projectivy-injected-unsigned.apk /tmp/projectivy-aligned.apk
           keytool -genkeypair -v -keystore /tmp/test.jks -storepass android -keypass android -alias test -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Projectivy v9 Stable Test' >/dev/null 2>&1
           "$BT/apksigner" sign --ks /tmp/test.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-v9-Stable-Profile-Selection.apk /tmp/projectivy-aligned.apk
