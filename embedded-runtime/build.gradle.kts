@@ -19,3 +19,9 @@ android {
         debug { isMinifyEnabled = false }
     }
 }
+
+dependencies {
+    // Projectivy already ships AndroidX Preference. Compile against its public API
+    // without packaging another copy into the injected runtime DEX.
+    compileOnly("androidx.preference:preference:1.2.1")
+}
