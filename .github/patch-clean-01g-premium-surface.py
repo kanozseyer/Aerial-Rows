@@ -96,7 +96,8 @@ s = s[:arr_start] + new + s[arr_end:]
 needle = "    sget-object v19, " + prem_ref
 if s.count(needle) != 1:
     raise SystemExit("PremiumCardActivity sget count unexpected")
-s = s.replace(needle, "    const/4 v19, 0x0", 1)
+# v19 cannot be encoded by const/4 (4-bit register); const/16 supports v19.
+s = s.replace(needle, "    const/16 v19, 0x0", 1)
 p.write_text(s)
 
 # No live code may reference premium activities outside their own dead definitions.
