@@ -16,22 +16,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
-      - name: Checkout v9-derived branch
-        uses: actions/checkout@v7
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Download apktool
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
 
       - name: Generate exact v9 runtime plus isolated stable fixes
         shell: bash
@@ -41,85 +32,130 @@ jobs:
           python3 .github/patch-v6-runtime.py
           python3 .github/patch-v7-runtime.py
           python3 .github/patch-v9-stable-fixes.py
-          grep -q 'StableProfileBridge.onLauncherResume(context)' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          grep -q 'classifyDirectMenuShelf' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'notifyProjectivyChannelsChanged' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
           grep -q 'StableProfileBridge.tryApplyBundledLayout(context)' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightEngine.java
+          grep -q 'GUI.ActivateWindow' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/RedLightLaunchActivity.java
+          grep -q 'StableProfileBridge.onLauncherResume(context)' embedded-runtime/src/main/java/com/spocky/projengmenu/embedded/EmbeddedRuntime.java
+          ! grep -q 'Red Light · couchy-' embedded-runtime/src/main/assets/launcher_default_profile.json
+          ! grep -q 'Red Light · ishows-' embedded-runtime/src/main/assets/launcher_default_profile.json
           python3 - <<'PY'
           import json
           p='embedded-runtime/src/main/assets/launcher_default_profile.json'
           d=json.load(open(p))
           assert d['appearance_cards_bg_tint'] == 3355443
           assert d['appearance_statusbar_maincontainer_icon_background_tint'] == 682273451
-          assert 'launcher_embedded_profile_v2' not in d
-          assert 'launcher_embedded_channel_layout_v2' not in d
+          assert not any(k.startswith('launcher_embedded_') for k in d)
           cats=json.loads(d['action_categories_list'])
           vis=[x.get('title') for x in cats if x.get('type')==6 and x.get('isVisible', True)]
           expected=['Recommended','Red Light · Trending Movies','Red Light · Trending TV Shows','Red Light · In Progress Episodes','Red Light · Continue Watching','Red Light · Movies Watchlist','Red Light · TV Shows Watchlist']
           for x in expected: assert x in vis, (x,vis)
-          print('verified latest bundled profile:', vis)
+          print('verified bundled export deltas:', vis)
           PY
 
-      - name: Build embedded runtime DEX
+      - name: Build framework-only embedded runtime DEX
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x ./gradlew
-          ./gradlew :embedded-runtime:assembleRelease --no-daemon
-          test -s embedded-runtime/build/intermediates/dex/release/mergeDexRelease/classes.dex
-          cp embedded-runtime/build/intermediates/dex/release/mergeDexRelease/classes.dex /tmp/embedded-runtime.dex
+          chmod +x gradlew
+          ./gradlew :embedded-runtime:assembleDebug --stacktrace
+          APK='embedded-runtime/build/outputs/apk/debug/embedded-runtime-debug.apk'
+          echo 'Embedded runtime DEX entries:'
+          unzip -l "$APK" | grep -E 'classes[0-9]*\.dex'
+          rm -rf /tmp/runtime-dex && mkdir -p /tmp/runtime-dex
+          unzip -q "$APK" 'classes*.dex' -d /tmp/runtime-dex
+          i=4
+          for src in $(find /tmp/runtime-dex -maxdepth 1 -name 'classes*.dex' | sort -V); do
+            cp "$src" "/tmp/classes${i}.dex"
+            echo "runtime $(basename "$src") -> classes${i}.dex ($(stat -c%s "$src") bytes)"
+            i=$((i+1))
+          done
+          test -s /tmp/classes4.dex
 
-      - name: Download and decode Projectivy 4.72
+      - name: Download exact Projectivy 4.72 and apktool
         shell: bash
         run: |
           set -euo pipefail
           curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/projectivy.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/projectivy.apk' | sha256sum -c -
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+
+      - name: Fully decode Projectivy resources and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
           java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/projectivy-decoded
+          grep -q '<manifest' /tmp/projectivy-decoded/AndroidManifest.xml
 
-      - name: Repair resources and add embedded assets
+      - name: Repair Material state attrs for Apktool rebuild
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/projectivy-resource-fix.py
+          python3 - <<'PY'
+          from pathlib import Path
+          values = Path('/tmp/projectivy-decoded/res/values')
+          values.mkdir(parents=True, exist_ok=True)
+          p = values / 'attrs.xml'
+          text = p.read_text() if p.exists() else '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+          additions = []
+          for name in ('state_liftable', 'state_lifted', 'state_swiped'):
+              if f'name="{name}"' not in text:
+                  additions.append(f'    <attr name="{name}" format="boolean" />')
+          if additions:
+              text = text.replace('</resources>', '\n'.join(additions) + '\n</resources>')
+              p.write_text(text)
+          print('Material attrs added:', additions)
+          PY
+
+      - name: Add embedded launcher assets
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p /tmp/projectivy-decoded/assets
-          cp embedded-runtime/src/main/assets/aerials.json /tmp/projectivy-decoded/assets/aerials.json
+          curl -fL --retry 3 'https://raw.githubusercontent.com/kanozseyer/Aerial-Rows/projectivy-aerial-rows-provider/projectivy-aerial-rows-provider/src/main/assets/aerials.json' -o /tmp/projectivy-decoded/assets/aerials.json
           cp embedded-runtime/src/main/assets/launcher_default_profile.json /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          test -s /tmp/projectivy-decoded/assets/aerials.json
+          test -s /tmp/projectivy-decoded/assets/launcher_default_profile.json
+          python3 -m json.tool /tmp/projectivy-decoded/assets/launcher_default_profile.json >/dev/null
 
-      - name: Apply exact v9 Projectivy patches plus isolated UI/import fixes
+      - name: Patch Projectivy with exact v9 chain plus isolated UI/import fixes
         shell: bash
         run: |
           set -euo pipefail
+          python3 .github/projectivy-aerial-integration.py
+          python3 .github/projectivy-aerial-enhancements.py
           python3 .github/projectivy-single-apk.py
           python3 .github/projectivy-redlight-routing.py
           python3 .github/projectivy-redlight-label.py
           python3 .github/projectivy-v9-stable-ui-import.py
+          grep -q 'android:host="plugin.video.redlight"' /tmp/projectivy-decoded/AndroidManifest.xml
+          grep -q 'android.permission.INTERNET' /tmp/projectivy-decoded/AndroidManifest.xml
+          grep -R -q 'const-string v4, "Red Light"' /tmp/projectivy-decoded/smali*/*g70.smali
           grep -Rqs 'ChannelVisualBridge;->decorateGroupedPreference' /tmp/projectivy-decoded/smali*
           grep -Rqs 'StableProfileBridge;->onManualImportSucceeded' /tmp/projectivy-decoded/smali*
           grep -Rqs 'accept any action carrying a valid backup URI' /tmp/projectivy-decoded/smali*
 
-      - name: Rebuild and inject embedded runtime
+      - name: Rebuild Projectivy and inject embedded DEX
         shell: bash
         run: |
           set -euo pipefail
-          java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-rebuilt.apk
-          rm -rf /tmp/apk-unzip
-          mkdir -p /tmp/apk-unzip
-          cd /tmp/apk-unzip
-          unzip -q /tmp/projectivy-rebuilt.apk
-          n=2
-          while [ -e "classes${n}.dex" ]; do n=$((n+1)); done
-          cp /tmp/embedded-runtime.dex "classes${n}.dex"
-          zip -qr /tmp/projectivy-injected-unsigned.apk .
+          java -jar /tmp/apktool.jar b /tmp/projectivy-decoded -o /tmp/projectivy-single-unsigned.apk
+          for dex in /tmp/classes[4-9].dex /tmp/classes[1-9][0-9].dex; do
+            [ -f "$dex" ] || continue
+            zip -q -j /tmp/projectivy-single-unsigned.apk "$dex"
+          done
+          unzip -l /tmp/projectivy-single-unsigned.apk | grep -E 'classes[4-9][0-9]*\.dex|aerials.json|launcher_default_profile.json'
+          unzip -l /tmp/projectivy-single-unsigned.apk | grep -q 'assets/launcher_default_profile.json'
 
-      - name: Align sign and verify
+      - name: Align, sign and verify
         shell: bash
         run: |
           set -euo pipefail
-          BT="$ANDROID_HOME/build-tools/35.0.0"
-          test -x "$BT/zipalign"
-          test -x "$BT/apksigner"
-          "$BT/zipalign" -f 4 /tmp/projectivy-injected-unsigned.apk /tmp/projectivy-aligned.apk
-          keytool -genkeypair -v -keystore /tmp/test.jks -storepass android -keypass android -alias test -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Projectivy v9 Stable Test' >/dev/null 2>&1
-          "$BT/apksigner" sign --ks /tmp/test.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-v9-Stable-Profile-Selection.apk /tmp/projectivy-aligned.apk
-          "$BT/apksigner" verify --verbose /tmp/Projectivy-v9-Stable-Profile-Selection.apk
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BUILD_TOOLS/zipalign" -p -f 4 /tmp/projectivy-single-unsigned.apk /tmp/Projectivy-v9-Stable-Profile-Selection-aligned.apk
+          keytool -genkeypair -v -keystore /tmp/projectivy-v9-stable.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Projectivy v9 Stable Test,O=Launcher,C=GB' >/dev/null 2>&1
+          "$BUILD_TOOLS/apksigner" sign --ks /tmp/projectivy-v9-stable.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Projectivy-v9-Stable-Profile-Selection.apk /tmp/Projectivy-v9-Stable-Profile-Selection-aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose /tmp/Projectivy-v9-Stable-Profile-Selection.apk
           unzip -p /tmp/Projectivy-v9-Stable-Profile-Selection.apk assets/launcher_default_profile.json > /tmp/final-profile.json
           python3 - <<'PY'
           import json
@@ -127,13 +163,16 @@ jobs:
           assert d['appearance_cards_bg_tint']==3355443
           assert d['appearance_statusbar_maincontainer_icon_background_tint']==682273451
           assert not any(k.startswith('launcher_embedded_') for k in d)
-          print('final APK profile verified')
+          cats=json.loads(d['action_categories_list'])
+          visible=[x.get('title') for x in cats if x.get('type')==6 and x.get('isVisible',True)]
+          print('final APK profile verified; visible:', visible)
           PY
           sha256sum /tmp/Projectivy-v9-Stable-Profile-Selection.apk
+          mkdir -p /tmp/v9-stable-artifact
+          cp /tmp/Projectivy-v9-Stable-Profile-Selection.apk /tmp/v9-stable-artifact/
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: Projectivy-v9-Stable-Profile-Selection
-          path: /tmp/Projectivy-v9-Stable-Profile-Selection.apk
+          path: /tmp/v9-stable-artifact/*
           retention-days: 7
