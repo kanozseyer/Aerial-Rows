@@ -15,7 +15,7 @@ s71=list(verify.rglob('s71.smali')); assert len(s71)==1
 b=body(s71[0],r'\.method public static b\(\[B\)\[B'); assert 'ProjectivyAccessibilityService;->s0:B' not in b; assert 'const/16 v0, 0x10' in b
 bs=(verify/'smali/bs4.smali').read_text(); assert '8c00feaf-c7be-43c2-80f9-d49853aaa99a' in bs
 
-# CLEAN 07C: stock grouped-channel editor must call the presentation-only bridge.
+# CLEAN 07D: stock grouped-channel editor must call the presentation bridge.
 g70=list(verify.rglob('g70.smali')); assert len(g70)==1,g70
 g70_body=body(g70[0],r'\.method public final p0\(\)V')
 assert 'ChannelVisualBridge;->decorateGroupedPreference(Ljava/lang/Object;Ljava/util/List;)V' in g70_body
@@ -30,8 +30,8 @@ with zipfile.ZipFile(apk) as z:
     profile=z.read('assets/launcher_default_profile.plbackup'); assert len(profile)==13760; assert hashlib.sha256(profile).hexdigest()=='cda71dbae3d2eca7bd298a198aca4068187bde34f25727df9e9ddd18e8aac2b7'
     json.loads(z.read('assets/aerials.json'))
     c4=z.read('classes4.dex')
-    for token in [b'CLEAN07 SUCCESS',b'projectivy-clean07',b'trakt_watchlist',b'build_continue_watching',b'build_in_progress_episode',b'redlight:shelf:',b'ChannelVisualBridge',b'CLEAN07C grouped channels decorated']:
+    for token in [b'CLEAN07 SUCCESS',b'projectivy-clean07',b'trakt_watchlist',b'build_continue_watching',b'build_in_progress_episode',b'redlight:shelf:',b'ChannelVisualBridge',b'CLEAN07D multi-choice bound',b'Red Light channels',b'CLEAN07D dialog shown']:
         assert token in c4, token
-    for token in [b'projectivy-clean06',b'RedLightLaunchActivity']:
+    for token in [b'projectivy-clean06',b'RedLightLaunchActivity',b'CLEAN07C grouped channels decorated']:
         assert token not in c4, token
-print('PASS: CLEAN 07C = CLEAN 07 dynamic channels + corrected multi-channel visual-state presentation only')
+print('PASS: CLEAN 07D = CLEAN 07 dynamic channels + real checkbox multi-choice channel picker only')
