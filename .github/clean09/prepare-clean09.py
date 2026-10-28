@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+# CLEAN09 changes only preview-program click routing in the already-prepared
+# frozen CLEAN08.5 Red Light source. Build/manifest integration is handled after
+# the frozen CLEAN08.5 APK has been produced, so no frozen generator is edited.
 engine = Path('.github/clean07/RedLightDiscoveryEngine.java')
 text = engine.read_text()
 
@@ -17,24 +20,6 @@ if text.count(old_helper) != 1:
 text = text.replace(old_helper, new_helper, 1)
 engine.write_text(text)
 
-# CLEAN07 is itself a generator around CLEAN06. Extend the generator statements,
-# rather than looking for commands that only exist later in /tmp generated scripts.
-build = Path('.github/clean07/build-clean07.sh')
-b = build.read_text()
-
-manifest_generator = "src=src.replace(anchor, anchor+'python3 .github/clean07/patch-grouped-channel-ui.py /tmp/pj\\n',1)"
-manifest_generator_new = "src=src.replace(anchor, anchor+'python3 .github/clean07/patch-grouped-channel-ui.py /tmp/pj\\n'+'python3 .github/clean09/patch-manifest.py /tmp/pj\\n',1)"
-if b.count(manifest_generator) != 1:
-    raise SystemExit(f'CLEAN09 manifest generator anchor mismatch: {b.count(manifest_generator)}')
-b = b.replace(manifest_generator, manifest_generator_new, 1)
-
-javac_generator = "src=src.replace(anchor,'.github/clean07/RedLightDiscoveryProvider.java .github/clean07/ChannelVisualBridge.java\\n',1)"
-javac_generator_new = "src=src.replace(anchor,'.github/clean07/RedLightDiscoveryProvider.java .github/clean07/ChannelVisualBridge.java .github/clean09/RedLightLaunchActivity.java\\n',1)"
-if b.count(javac_generator) != 1:
-    raise SystemExit(f'CLEAN09 javac generator anchor mismatch: {b.count(javac_generator)}')
-b = b.replace(javac_generator, javac_generator_new, 1)
-build.write_text(b)
-
 check = engine.read_text()
 for token in [
     'programIntent(c, e)',
@@ -43,17 +28,10 @@ for token in [
     'RedLightLaunchActivity.EXTRA_TARGET',
     'RedLightLaunchActivity.EXTRA_KIND',
     'type == 0 ? "movie" : "episode"',
+    'return programIdentityIntent(c, pluginUri)',
     'projectivy-clean07',
 ]:
     if token not in check:
         raise SystemExit('CLEAN09 engine verification failed: ' + token)
 
-bcheck = build.read_text()
-for token in [
-    '.github/clean09/patch-manifest.py /tmp/pj',
-    '.github/clean09/RedLightLaunchActivity.java',
-]:
-    if token not in bcheck:
-        raise SystemExit('CLEAN09 build-generator verification failed: ' + token)
-
-print('PASS: CLEAN09 prepared — movie/episode playback bridge only; TV-show navigation remains inert')
+print('PASS: CLEAN09 source prepared — movie/episode playback bridge only; TV-show navigation remains inert')
