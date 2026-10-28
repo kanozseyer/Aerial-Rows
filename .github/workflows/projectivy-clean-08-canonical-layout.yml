@@ -41,4 +41,5 @@ jobs:
         with:
           name: Projectivy-CLEAN-08-Canonical-Dynamic-Home-Layout
           path: /tmp/clean08-artifact/*
+          if-no-files-found: error
           retention-days: 30
