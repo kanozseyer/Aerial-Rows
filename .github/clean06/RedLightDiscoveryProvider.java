@@ -8,16 +8,19 @@ import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
+import java.lang.ref.WeakReference;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * CLEAN 06 foreground-only Red Light discovery trigger.
  *
- * A failed attempt is deliberately NOT terminal. Android can resume Projectivy's
- * HOME activity behind Kodi while Kodi is still warming. If that early attempt
- * cannot read Red Light yet, the next real MainActivity resume retries.
+ * Failed attempts remain retryable because Android can resume Projectivy behind
+ * Kodi while Kodi is still warming. After the first successful channel sync we
+ * recreate the visible MainActivity once so Projectivy reloads Android-TV channels.
  */
 public final class RedLightDiscoveryProvider extends ContentProvider {
     private static final String TAG = "ProjectivyRedLight";
@@ -40,6 +43,7 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
                 if (complete || a == null || !a.getClass().getName().equals("com.spocky.projengmenu.ui.home.MainActivity")) return;
                 if (!RUNNING.compareAndSet(false, true)) return;
                 final int n = ++attempt;
+                final WeakReference<Activity> activityRef = new WeakReference<>(a);
                 Log.i(TAG, "CLEAN06 discovery armed attempt=" + n + " on MainActivity resume");
                 new Thread(() -> {
                     boolean ok = false;
@@ -50,6 +54,16 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
                             complete = true;
                             Log.i(TAG, "CLEAN06 discovery COMPLETE attempt=" + n);
                             unregister();
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                Activity activity = activityRef.get();
+                                if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+                                try {
+                                    Log.i(TAG, "CLEAN06 requesting Projectivy channel-model reload");
+                                    activity.recreate();
+                                } catch (Throwable t) {
+                                    Log.i(TAG, "CLEAN06 Projectivy reload request failed");
+                                }
+                            }, 450L);
                         } else {
                             Log.i(TAG, "CLEAN06 discovery NO_ROW attempt=" + n + " — will retry on next MainActivity resume");
                         }
