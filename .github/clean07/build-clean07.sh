@@ -39,6 +39,20 @@ if anchor not in src:
     raise SystemExit('CLEAN07 javac source anchor missing')
 src=src.replace(anchor,'.github/clean07/RedLightDiscoveryProvider.java .github/clean07/ChannelVisualBridge.java\n',1)
 
+# g70 lives in classes2.dex. Preserve apktool's rebuilt classes2 containing the
+# one smali hook instead of discarding it for classes2-lean, then apply CLEAN04's
+# fixed 16-byte backup decrypt patch to this rebuilt classes2.
+old='unzip -p /tmp/rebuilt.apk classes.dex > /tmp/classes-clean06.dex; unzip -p /tmp/rebuilt.apk AndroidManifest.xml > /tmp/AndroidManifest.xml\n'
+new='unzip -p /tmp/rebuilt.apk classes.dex > /tmp/classes-clean06.dex; unzip -p /tmp/rebuilt.apk classes2.dex > /tmp/classes2-clean07-ui.dex; unzip -p /tmp/rebuilt.apk AndroidManifest.xml > /tmp/AndroidManifest.xml\n'
+if old not in src:
+    raise SystemExit('rebuilt dex extraction anchor missing')
+src=src.replace(old,new,1)
+old='.github/clean04/patch-backup-decrypt-dex.py /tmp/classes-clean06.dex /tmp/classes2-lean.dex /tmp/classes-clean06-fixed.dex /tmp/classes2-clean06-fixed.dex'
+new='.github/clean04/patch-backup-decrypt-dex.py /tmp/classes-clean06.dex /tmp/classes2-clean07-ui.dex /tmp/classes-clean06-fixed.dex /tmp/classes2-clean06-fixed.dex'
+if old not in src:
+    raise SystemExit('CLEAN04 classes2 input anchor missing')
+src=src.replace(old,new,1)
+
 Path('/tmp/build-clean07-generated.sh').write_text(src)
 PY
 
