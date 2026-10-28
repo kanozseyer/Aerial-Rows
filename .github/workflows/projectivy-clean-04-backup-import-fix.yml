@@ -6,7 +6,7 @@ on:
     branches: [projectivy-clean-rebuild-472]
     paths:
       - '.github/workflows/projectivy-clean-04-backup-import-fix.yml'
-      - '.github/clean04/patch-backup-decrypt.py'
+      - '.github/clean04/patch-backup-decrypt-dex.py'
       - '.github/clean03/patch-decoded.py'
       - '.github/clean03/AerialSettingsActivity.java'
       - '.github/clean02/AerialService.java'
@@ -62,14 +62,13 @@ jobs:
                   zout.writestr(n,data)
           PY
 
-      - name: Apply CLEAN 03 plus CLEAN 04 decrypt fix
+      - name: Apply CLEAN 03 provider and Configure registration
         shell: bash
         run: |
           set -euo pipefail
           curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
           java -jar /tmp/apktool.jar d -f /tmp/decode-input.apk -o /tmp/pj >/dev/null
           python3 .github/clean03/patch-decoded.py /tmp/pj
-          python3 .github/clean04/patch-backup-decrypt.py /tmp/pj | tee /tmp/backup-fix.txt
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/pj/res/values/attrs.xml'); s=p.read_text(); marker='</resources>'
@@ -77,8 +76,16 @@ jobs:
           if 'name="state_liftable"' not in s: p.write_text(s.replace(marker,extra+marker))
           PY
           java -jar /tmp/apktool.jar b /tmp/pj -o /tmp/rebuilt.apk >/dev/null
-          unzip -p /tmp/rebuilt.apk classes.dex > /tmp/classes-clean04.dex
+          unzip -p /tmp/rebuilt.apk classes.dex > /tmp/classes-clean03.dex
           unzip -p /tmp/rebuilt.apk AndroidManifest.xml > /tmp/AndroidManifest.xml
+
+      - name: Apply surgical CLEAN 04 backup decrypt fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/clean04/patch-backup-decrypt-dex.py \
+            /tmp/classes-clean03.dex /tmp/classes2-lean.dex \
+            /tmp/classes-clean04.dex /tmp/classes2-clean04.dex | tee /tmp/backup-fix.txt
 
       - name: Build isolated Aerial provider and Configure DEX
         shell: bash
@@ -107,7 +114,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import zipfile
-          repl={'classes.dex':open('/tmp/classes-clean04.dex','rb').read(),'classes2.dex':open('/tmp/classes2-lean.dex','rb').read(),'AndroidManifest.xml':open('/tmp/AndroidManifest.xml','rb').read()}
+          repl={'classes.dex':open('/tmp/classes-clean04.dex','rb').read(),'classes2.dex':open('/tmp/classes2-clean04.dex','rb').read(),'AndroidManifest.xml':open('/tmp/AndroidManifest.xml','rb').read()}
           removed=[]
           with zipfile.ZipFile('/tmp/official.apk') as zin, zipfile.ZipFile('/tmp/unsigned.apk','w') as zout:
               for i in zin.infolist():
