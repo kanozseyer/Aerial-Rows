@@ -14,6 +14,12 @@ begins_return(verify/'smali/com/spocky/projengmenu/PTApplication.smali',r'\.meth
 s71=list(verify.rglob('s71.smali')); assert len(s71)==1
 b=body(s71[0],r'\.method public static b\(\[B\)\[B'); assert 'ProjectivyAccessibilityService;->s0:B' not in b; assert 'const/16 v0, 0x10' in b
 bs=(verify/'smali/bs4.smali').read_text(); assert '8c00feaf-c7be-43c2-80f9-d49853aaa99a' in bs
+
+# CLEAN 07B: stock grouped-channel editor must call the presentation-only bridge.
+g70=list(verify.rglob('g70.smali')); assert len(g70)==1,g70
+g70_body=body(g70[0],r'\.method public final p0\(\)V')
+assert 'ChannelVisualBridge;->decorateGroupedPreference(Ljava/lang/Object;Ljava/util/List;)V' in g70_body
+
 m=(verify/'AndroidManifest.xml').read_text()
 for x in ['AerialService','AerialSettingsActivity','ProfileRestoreProvider','RedLightDiscoveryProvider','com.spocky.projengmenu.clean07.redlight','org.xbmc.kodi.file','FirebaseInitProvider','RemoteConfigRegistrar','FirebaseInstallationsRegistrar']: assert x in m,x
 for x in ['RedLightLaunchActivity','EmbeddedRuntime$BootReceiver','EmbeddedRuntime$SyncJob','com.spocky.projengmenu.clean06.redlight','CrashlyticsRegistrar','FirebaseSessionsRegistrar','AnalyticsConnectorRegistrar','TransportRegistrar','AppMeasurementService','SessionLifecycleService','JobInfoSchedulerService']: assert x not in m,x
@@ -24,8 +30,8 @@ with zipfile.ZipFile(apk) as z:
     profile=z.read('assets/launcher_default_profile.plbackup'); assert len(profile)==13760; assert hashlib.sha256(profile).hexdigest()=='cda71dbae3d2eca7bd298a198aca4068187bde34f25727df9e9ddd18e8aac2b7'
     json.loads(z.read('assets/aerials.json'))
     c4=z.read('classes4.dex')
-    for token in [b'CLEAN07 SUCCESS',b'projectivy-clean07',b'trakt_watchlist',b'build_continue_watching',b'build_in_progress_episode',b'redlight:shelf:']:
+    for token in [b'CLEAN07 SUCCESS',b'projectivy-clean07',b'trakt_watchlist',b'build_continue_watching',b'build_in_progress_episode',b'redlight:shelf:',b'ChannelVisualBridge',b'CLEAN07B grouped channels decorated']:
         assert token in c4, token
     for token in [b'projectivy-clean06',b'RedLightLaunchActivity']:
         assert token not in c4, token
-print('PASS: CLEAN 07 = CLEAN 06D mechanics + dynamic multi-row Red Light discovery only')
+print('PASS: CLEAN 07B = CLEAN 07 dynamic channels + stock grouped-channel UI presentation fix only')
