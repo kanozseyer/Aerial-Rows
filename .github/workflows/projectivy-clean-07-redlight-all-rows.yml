@@ -1,0 +1,39 @@
+name: Projectivy CLEAN 07 - Red Light All Rows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-07-redlight-all-rows.yml'
+      - '.github/clean07/**'
+      - '.github/clean06/build-clean06.sh'
+      - '.github/clean05/**'
+      - '.github/clean04/**'
+      - '.github/clean03/**'
+      - '.github/clean02/**'
+      - '.github/patch-clean-01k-projectivy-telemetry.py'
+      - '.github/patch-clean-01h-external-license.py'
+      - '.github/patch-clean-01g-surgical-dex.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 07
+        shell: bash
+        run: bash .github/clean07/build-clean07.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-07-RedLight-All-Rows
+          path: /tmp/clean07-artifact/*
+          retention-days: 30
