@@ -1,0 +1,44 @@
+name: Probe CLEAN 07I Fragment Resume Mapping
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean07h-single-navigation]
+    paths:
+      - '.github/workflows/probe-clean07i-fragment-resume.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Map Fragment lifecycle calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/projectivy.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          rm -rf /tmp/apk-out /tmp/probe07i
+          mkdir -p /tmp/probe07i
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/apk-out >/tmp/probe07i/apktool.log 2>&1
+          grep -RniE 'Lam1;->(C|D|E|G|H|J|K)\(\)V' /tmp/apk-out/smali* > /tmp/probe07i/CALLS.txt || true
+          grep -RniE 'const-string.*(onResume|onPause|onStart|onStop|onDestroyView|onDetach|onDestroy)' /tmp/apk-out/smali* > /tmp/probe07i/LIFECYCLE_STRINGS.txt || true
+          for f in $(cut -d: -f1 /tmp/probe07i/CALLS.txt | sort -u); do
+            base=$(basename "$f")
+            cp "$f" "/tmp/probe07i/${base%.smali}-$(echo "$f" | sha1sum | cut -c1-8).smali"
+          done
+          cp $(find /tmp/apk-out -name ie2.smali -print -quit) /tmp/probe07i/ie2.smali
+          cp $(find /tmp/apk-out -name am1.smali -print -quit) /tmp/probe07i/am1.smali
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clean07i-fragment-resume-probe
+          path: /tmp/probe07i
+          retention-days: 7
