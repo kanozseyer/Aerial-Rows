@@ -26,15 +26,15 @@ assert 'ChannelVisualBridge;->decorateGroupedPreference(Ljava/lang/Object;Ljava/
 ie2=list(verify.rglob('ie2.smali')); he2=list(verify.rglob('he2.smali'))
 assert len(ie2)==1 and len(he2)==1,(ie2,he2)
 its=ie2[0].read_text(); hts=he2[0].read_text()
+# apktool reassigns local label names on rebuild, so verify the semantic method
+# calls that define the patch instead of source label spellings.
 for token in [
     'ChannelVisualBridge;->isRedLightGroupedPreference(Ljava/lang/Object;)Z',
     'ChannelVisualBridge;->getSelectedValues(Ljava/lang/Object;)Ljava/util/Set;',
-    ':clean07f_stock_list',
 ]: assert token in its,token
 for token in [
     'ChannelVisualBridge;->isRedLightGroupedPreference(Ljava/lang/Object;)Z',
     'ChannelVisualBridge;->applySelectedValues(Ljava/lang/Object;Ljava/util/Set;)Z',
-    ':clean07f_native_multi',
 ]: assert token in hts,token
 
 m=(verify/'AndroidManifest.xml').read_text()
