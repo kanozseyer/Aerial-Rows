@@ -25,8 +25,14 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * CLEAN 07: discover the real Red Light 2.9.2 Movies/TV shelves and publish
- * them as independent Android-TV preview channels. Playback remains disabled.
+ * CLEAN 07: dynamic Red Light Movies/TV shelf discovery.
+ *
+ * The live Red Light menu is scanned on every sync. Current menu labels are used
+ * only for presentation; channel identity is derived from mode/action semantics.
+ * Known semantic routes keep stable keys and unknown future direct Movies/TV
+ * shelves fall back to a normalized action key, so simple Red Light menu renames
+ * do not break the integration and newly added direct shelves can appear without
+ * rebuilding Projectivy. Playback remains deliberately disabled in CLEAN 07.
  */
 public final class RedLightDiscoveryEngine {
     private static final String TAG = "ProjectivyRedLight";
@@ -37,7 +43,6 @@ public final class RedLightDiscoveryEngine {
     private static final int MAX_SCANS = 96;
     private static final int MAX_CHILDREN = 100;
     private static final int MAX_PROGRAMS = 60;
-    private static final int MIN_COMPLETE_SECTIONS = 30;
 
     private RedLightDiscoveryEngine() {}
 
@@ -62,11 +67,12 @@ public final class RedLightDiscoveryEngine {
     }
 
     static final class Section {
-        String key, title, uri;
-        Section(String key, String title, String uri) {
+        String key, title, uri, media;
+        Section(String key, String title, String uri, String media) {
             this.key = key;
             this.title = title;
             this.uri = uri;
+            this.media = media;
         }
     }
 
@@ -86,8 +92,17 @@ public final class RedLightDiscoveryEngine {
             }
 
             LinkedHashMap<String, Section> sections = discoverSections(c, root);
-            Log.i(TAG, "CLEAN07 DISCOVERED sections=" + sections.size());
-            if (sections.size() < MIN_COMPLETE_SECTIONS) {
+            int movieSections = 0, showSections = 0;
+            for (Section s : sections.values()) {
+                if ("movies".equals(s.media)) movieSections++;
+                if ("shows".equals(s.media) || "episodes".equals(s.media)) showSections++;
+            }
+            Log.i(TAG, "CLEAN07 DISCOVERED sections=" + sections.size()
+                    + " movies=" + movieSections + " showsEpisodes=" + showSections);
+
+            // A partially warmed Kodi provider can return a tiny fragment of the menu.
+            // Do not freeze that as a successful scan; retry on the next Home resume.
+            if (sections.size() < 12 || movieSections < 5 || showSections < 5) {
                 Log.i(TAG, "CLEAN07 partial discovery — will retry on next MainActivity resume");
                 return false;
             }
@@ -117,7 +132,7 @@ public final class RedLightDiscoveryEngine {
                     + " populated=" + populated
                     + " programs=" + totalPrograms
                     + " artwork=" + totalArtwork);
-            return channels >= MIN_COMPLETE_SECTIONS;
+            return channels >= 12;
         } catch (Throwable t) {
             Log.e(TAG, "CLEAN07 FAILED", t);
             return false;
@@ -179,94 +194,104 @@ public final class RedLightDiscoveryEngine {
 
         String mode = q(u, "mode");
         String action = q(u, "action");
-        String label = norm(e.name);
         String path = norm(join(trail));
         boolean anime = "true".equalsIgnoreCase(q(u, "is_anime_list")) || path.contains("anime");
         if (anime) return null;
 
-        if ("build_recently_watched_episode".equals(mode) || label.equals("recently watched episodes"))
-            return section("redlight:episodes:recently_watched", "Recently Watched Episodes", e);
-        if ("build_in_progress_episode".equals(mode) || label.equals("in progress episodes"))
-            return section("redlight:episodes:in_progress", "In Progress Episodes", e);
-        if ("build_next_episode".equals(mode) || label.equals("next episodes"))
-            return section("redlight:episodes:next", "Next Episodes", e);
-        if ("build_continue_watching".equals(mode) || label.equals("continue watching"))
-            return section("redlight:episodes:continue_watching", "Continue Watching", e);
+        // Episode/status shelves are identified by route mode, not by the current label.
+        if ("build_recently_watched_episode".equals(mode))
+            return section("redlight:recently_watched_episodes", liveTitle(e, u, "Recently Watched Episodes", ""), e, "episodes");
+        if ("build_in_progress_episode".equals(mode))
+            return section("redlight:in_progress_episodes", liveTitle(e, u, "In Progress Episodes", ""), e, "episodes");
+        if ("build_next_episode".equals(mode))
+            return section("redlight:next_episodes:default", liveTitle(e, u, "Next Episodes", ""), e, "episodes");
+        if ("build_continue_watching".equals(mode))
+            return section("redlight:continue_watching", liveTitle(e, u, "Continue Watching", ""), e, "episodes");
 
         String media = inferMedia(e, trail, u, mode);
-        if ("trakt_watchlist".equals(action)) {
-            if ("movies".equals(media)) return section("redlight:trakt:watchlist:movies", "Movies Watchlist", e);
-            if ("shows".equals(media)) return section("redlight:trakt:watchlist:shows", "TV Shows Watchlist", e);
-        }
-
         if (!"movies".equals(media) && !"shows".equals(media)) return null;
+
+        // Keep the proven stable watchlist identities even if Red Light renames them.
+        if ("trakt_watchlist".equals(action)) {
+            String key = "redlight:trakt:watchlist:" + media;
+            String fallback = "movies".equals(media) ? "Movies Watchlist" : "TV Shows Watchlist";
+            return section(key, liveTitle(e, u, fallback, ""), e, media);
+        }
+
+        // Helper/list-generator routes are intentionally not promoted as launcher rows.
+        if (action.isEmpty() || "trakt_watchlist_lists".equals(action)
+                || action.contains("genre") || action.contains("provider")
+                || action.contains("language") || action.contains("certification")
+                || action.contains("decade") || action.contains("year")) return null;
+
+        // Future-proof direct shelf rule: only promote content-list routes that live
+        // under Red Light's actual Movies/TV Shows menus. New direct shelf actions
+        // therefore appear automatically, while unrelated nested list helpers do not.
+        if (!("build_movie_list".equals(mode) || "build_tvshow_list".equals(mode))) return null;
+        if (!underMainMediaMenu(trail, media)) return null;
+
         String semantic = semanticFromAction(media, action);
-        if (semantic == null) semantic = semanticFromLabel(media, label);
-        if (semantic == null) return null;
-
-        return section(keyFor(media, semantic), titleFor(media, semantic), e);
+        if (semantic.isEmpty()) return null;
+        String key = stableKey(media, semantic, action);
+        String suffix = "movies".equals(media) ? "Movies" : "TV Shows";
+        String title = liveTitle(e, u, humanize(semantic), suffix);
+        return section(key, title, e, media);
     }
 
+    /**
+     * Derive meaning algorithmically from Red Light's route action. This avoids a
+     * table of current menu names and keeps Trending/Trending Recent, Popular/Popular
+     * Today, etc. distinct. Known local-state spellings are canonicalized.
+     */
     private static String semanticFromAction(String media, String action) {
+        String a = normalizeToken(action);
+        if (a.isEmpty()) return "";
+
         if ("movies".equals(media)) {
-            if ("trakt_movies_trending".equals(action)) return "trending";
-            if ("trakt_movies_trending_recent".equals(action)) return "trending_recent";
-            if ("tmdb_movies_popular".equals(action)) return "popular";
-            if ("tmdb_movies_popular_today".equals(action)) return "popular_today";
-            if ("tmdb_movies_premieres".equals(action)) return "premieres";
-            if ("tmdb_movies_latest_releases".equals(action)) return "latest_releases";
-            if ("movies_most_watched".equals(action)) return "most_watched";
-            if ("trakt_movies_most_favorited".equals(action)) return "most_favorited";
-            if ("trakt_movies_top10_boxoffice".equals(action)) return "top10_boxoffice";
-            if ("tmdb_movies_blockbusters".equals(action)) return "blockbusters";
-            if ("tmdb_movies_in_theaters".equals(action)) return "in_theaters";
-            if ("tmdb_movies_upcoming".equals(action)) return "upcoming";
-            if ("tmdb_movies_oscar_winners".equals(action)) return "oscar_winners";
-            if ("watched_movies".equals(action)) return "watched";
-            if ("recent_watched_movies".equals(action)) return "recently_watched";
-            if ("in_progress_movies".equals(action)) return "in_progress";
-        } else if ("shows".equals(media)) {
-            if ("trakt_tv_trending".equals(action)) return "trending";
-            if ("trakt_tv_trending_recent".equals(action)) return "trending_recent";
-            if ("tmdb_tv_popular".equals(action)) return "popular";
-            if ("tmdb_tv_popular_today".equals(action)) return "popular_today";
-            if ("tmdb_tv_premieres".equals(action)) return "premieres";
-            if ("tv_most_watched".equals(action)) return "most_watched";
-            if ("trakt_tv_most_favorited".equals(action)) return "most_favorited";
-            if ("tmdb_tv_airing_today".equals(action)) return "airing_today";
-            if ("tmdb_tv_on_the_air".equals(action)) return "on_the_air";
-            if ("tmdb_tv_upcoming".equals(action)) return "upcoming";
-            if ("watched_tvshows".equals(action)) return "watched";
-            if ("recent_watched_tvshows".equals(action)) return "recently_watched";
-            if ("in_progress_tvshows".equals(action)) return "in_progress";
+            if (a.startsWith("trakt_movies_")) a = a.substring("trakt_movies_".length());
+            else if (a.startsWith("tmdb_movies_")) a = a.substring("tmdb_movies_".length());
+            else if (a.startsWith("movies_")) a = a.substring("movies_".length());
+            if (a.endsWith("_movies")) a = a.substring(0, a.length() - "_movies".length());
+        } else {
+            if (a.startsWith("trakt_tv_")) a = a.substring("trakt_tv_".length());
+            else if (a.startsWith("tmdb_tv_")) a = a.substring("tmdb_tv_".length());
+            else if (a.startsWith("tv_")) a = a.substring("tv_".length());
+            if (a.endsWith("_tvshows")) a = a.substring(0, a.length() - "_tvshows".length());
+            if (a.endsWith("_shows")) a = a.substring(0, a.length() - "_shows".length());
         }
-        return null;
+
+        // Red Light's local-state actions put the media token at the end.
+        if ("recent_watched".equals(a)) a = "recently_watched";
+        if (a.startsWith("recent_watched_")) a = "recently_watched";
+        if (a.startsWith("in_progress_")) a = "in_progress";
+        if (a.startsWith("watched_")) a = "watched";
+
+        return normalizeToken(a);
     }
 
-    private static String semanticFromLabel(String media, String label) {
-        if ("trending".equals(label)) return "trending";
-        if ("trending recent".equals(label)) return "trending_recent";
-        if ("popular".equals(label)) return "popular";
-        if ("popular today".equals(label)) return "popular_today";
-        if ("premieres".equals(label) || "premiere".equals(label)) return "premieres";
-        if ("most watched".equals(label)) return "most_watched";
-        if ("most favorited".equals(label)) return "most_favorited";
-        if ("up coming".equals(label) || "upcoming".equals(label)) return "upcoming";
-        if ("watched".equals(label)) return "watched";
-        if ("recently watched".equals(label)) return "recently_watched";
-        if ("in progress".equals(label)) return "in_progress";
-
-        if ("movies".equals(media)) {
-            if ("latest releases".equals(label)) return "latest_releases";
-            if ("top 10 box office".equals(label) || "top10 box office".equals(label)) return "top10_boxoffice";
-            if ("blockbusters".equals(label)) return "blockbusters";
-            if ("in theaters".equals(label) || "in theatres".equals(label)) return "in_theaters";
-            if ("oscar winners".equals(label)) return "oscar_winners";
-        } else if ("shows".equals(media)) {
-            if ("airing today".equals(label)) return "airing_today";
-            if ("on the air".equals(label)) return "on_the_air";
+    private static String stableKey(String media, String semantic, String action) {
+        // Reuse CLEAN 06D's Trending Movies key and the stable v9 semantic keys for
+        // common shelves. Unknown future shelves still get a deterministic action key.
+        if ("trending".equals(semantic) || "trending_recent".equals(semantic)
+                || "popular".equals(semantic) || "popular_today".equals(semantic)
+                || "premieres".equals(semantic) || "latest_releases".equals(semantic)
+                || "most_watched".equals(semantic) || "most_favorited".equals(semantic)
+                || "top10_boxoffice".equals(semantic) || "blockbusters".equals(semantic)
+                || "in_theaters".equals(semantic) || "upcoming".equals(semantic)
+                || "oscar_winners".equals(semantic)) {
+            return "redlight:shelf:" + semantic + ":" + media;
         }
-        return null;
+        if ("watched".equals(semantic)) return "redlight:watched:" + media;
+        if ("recently_watched".equals(semantic)) return "redlight:recently_watched:" + media;
+        if ("in_progress".equals(semantic)) return "redlight:in_progress:" + media;
+        return "redlight:menu:" + media + ":" + normalizeToken(action);
+    }
+
+    private static boolean underMainMediaMenu(List<String> trail, String media) {
+        if (trail == null || trail.isEmpty()) return false;
+        String first = norm(trail.get(0));
+        if ("movies".equals(media)) return first.equals("movies") || first.equals("movie");
+        return first.equals("tv shows") || first.equals("tv show") || first.equals("shows") || first.equals("series");
     }
 
     private static String inferMedia(Entry e, List<String> trail, Uri u, String mode) {
@@ -284,44 +309,43 @@ public final class RedLightDiscoveryEngine {
         return "";
     }
 
-    private static String keyFor(String media, String semantic) {
-        return "redlight:shelf:" + semantic + ":" + media;
-    }
+    private static String liveTitle(Entry e, Uri u, String fallback, String mediaSuffix) {
+        String value = stripMarkup(e == null ? "" : e.name);
+        String category = stripMarkup(q(u, "category_name"));
+        if (!category.isEmpty()) value = category;
+        if (value.isEmpty()) value = fallback;
+        if (value.isEmpty()) value = "Red Light";
 
-    private static String titleFor(String media, String semantic) {
-        String base;
-        if ("trending".equals(semantic)) base = "Trending";
-        else if ("trending_recent".equals(semantic)) base = "Trending Recent";
-        else if ("popular".equals(semantic)) base = "Popular";
-        else if ("popular_today".equals(semantic)) base = "Popular Today";
-        else if ("premieres".equals(semantic)) base = "Premieres";
-        else if ("latest_releases".equals(semantic)) base = "Latest Releases";
-        else if ("most_watched".equals(semantic)) base = "Most Watched";
-        else if ("most_favorited".equals(semantic)) base = "Most Favorited";
-        else if ("top10_boxoffice".equals(semantic)) base = "Top 10 Box Office";
-        else if ("blockbusters".equals(semantic)) base = "Blockbusters";
-        else if ("in_theaters".equals(semantic)) base = "In Theaters";
-        else if ("upcoming".equals(semantic)) base = "Up Coming";
-        else if ("oscar_winners".equals(semantic)) base = "Oscar Winners";
-        else if ("watched".equals(semantic)) base = "Watched";
-        else if ("recently_watched".equals(semantic)) base = "Recently Watched";
-        else if ("in_progress".equals(semantic)) {
-            return "movies".equals(media) ? "Movies In Progress" : "TV Shows In Progress";
+        String n = norm(value);
+        if (!mediaSuffix.isEmpty()) {
+            if ("Movies".equals(mediaSuffix) && !n.contains("movie")) value += " Movies";
+            if ("TV Shows".equals(mediaSuffix) && !n.contains("tv show") && !n.contains("show") && !n.contains("series")) value += " TV Shows";
         }
-        else if ("airing_today".equals(semantic)) base = "Airing Today";
-        else if ("on_the_air".equals(semantic)) base = "On the Air";
-        else base = semantic;
-        return base + ("movies".equals(media) ? " Movies" : " TV Shows");
+        return value;
     }
 
-    private static Section section(String key, String title, Entry e) {
-        return new Section(key, "Red Light · " + title, raw(e.uri));
+    private static String humanize(String token) {
+        if (token == null || token.isEmpty()) return "";
+        String[] parts = token.replace('_', ' ').trim().split(" +");
+        StringBuilder out = new StringBuilder();
+        for (String p : parts) {
+            if (p.isEmpty()) continue;
+            if (out.length() > 0) out.append(' ');
+            if ("top10".equals(p)) out.append("Top 10");
+            else out.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1));
+        }
+        return out.toString();
+    }
+
+    private static Section section(String key, String title, Entry e, String media) {
+        return new Section(key, "Red Light · " + title.trim(), raw(e.uri), media);
     }
 
     private static boolean shouldTraverse(Entry e, List<String> trail) {
         Uri u;
         try { u = Uri.parse(raw(e.uri)); }
         catch (Throwable t) { return false; }
+
         String mode = q(u, "mode"), action = q(u, "action"), label = norm(e.name), path = norm(join(trail));
         if (path.contains("anime")) return false;
         if (label.equals("tools") || label.equals("search") || label.equals("people")
@@ -380,7 +404,7 @@ public final class RedLightDiscoveryEngine {
     private static ProgramStats syncPrograms(Context c, long channel, Section section, ArtworkCache art) {
         ProgramStats stats = new ProgramStats();
         List<Entry> entries = list(c, section.uri);
-        if (entries == null) return stats; // Preserve existing cards on a transient Kodi/provider failure.
+        if (entries == null) return stats; // Keep cached cards during a transient Kodi/provider failure.
         stats.available = true;
         deleteProgramsForChannel(c, channel);
 
@@ -567,9 +591,19 @@ public final class RedLightDiscoveryEngine {
         return v == null ? "" : v;
     }
 
+    private static String stripMarkup(String s) {
+        if (s == null) return "";
+        return s.replaceAll("\\[[^]]*]", "").trim();
+    }
+
+    private static String normalizeToken(String s) {
+        if (s == null) return "";
+        return s.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_")
+                .replaceAll("^_+|_+$", "");
+    }
+
     private static String norm(String s) {
-        return s == null ? "" : s.toLowerCase(Locale.ROOT)
-                .replaceAll("\\[[^]]*]", "")
+        return stripMarkup(s).toLowerCase(Locale.ROOT)
                 .replace('&', ' ')
                 .replaceAll("[^a-z0-9]+", " ")
                 .trim();
