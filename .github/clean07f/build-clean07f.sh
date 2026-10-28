@@ -21,10 +21,14 @@ for old,new in repls.items():
         raise SystemExit(f'expected CLEAN07D build anchor missing: {old}')
     src=src.replace(old,new)
 
-anchor='python3 .github/clean07/patch-grouped-channel-ui.py /tmp/pj\n'
-if anchor not in src:
-    raise SystemExit('CLEAN07 grouped UI patch anchor missing')
-src=src.replace(anchor, anchor+'python3 .github/clean07f/patch-native-multiselect.py /tmp/pj\n',1)
+# clean07/build-clean07.sh itself generates the final build script, so inject
+# CLEAN07F into that generator's existing grouped-UI hook rather than looking
+# for the generated command directly.
+old="src=src.replace(anchor, anchor+'python3 .github/clean07/patch-grouped-channel-ui.py /tmp/pj\\n',1)"
+new="src=src.replace(anchor, anchor+'python3 .github/clean07/patch-grouped-channel-ui.py /tmp/pj\\npython3 .github/clean07f/patch-native-multiselect.py /tmp/pj\\n',1)"
+if old not in src:
+    raise SystemExit('CLEAN07 grouped UI generator anchor missing')
+src=src.replace(old,new,1)
 
 Path('/tmp/build-clean07f-generated.sh').write_text(src)
 PY
