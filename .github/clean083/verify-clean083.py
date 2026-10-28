@@ -30,7 +30,8 @@ for token in [
     # CLEAN 08.3 native apply lifecycle
     'canonical_002828_applied_v4_native_appearance',
     'appearancePatchJson',
-    'getDeclaredMethod("h", android.content.SharedPreferences.class, String.class)',
+    'settings.getDeclaredMethod(',
+    '"h", android.content.SharedPreferences.class, String.class);',
     'Class.forName("hj3")',
     'migrate.invoke(null, false)',
     'CLEAN083 native appearance applied cardsBg=',
