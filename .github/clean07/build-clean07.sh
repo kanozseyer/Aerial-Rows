@@ -9,6 +9,7 @@ from pathlib import Path
 src=Path('.github/clean06/build-clean06.sh').read_text()
 repls={
     'UNSIGNED=/tmp/unsigned-clean06.apk':'UNSIGNED=/tmp/unsigned-clean07.apk',
+    '/tmp/unsigned-clean06.apk':'/tmp/unsigned-clean07.apk',
     'FINAL=/tmp/Projectivy-CLEAN-06-RedLight-One-Row.apk':'FINAL=/tmp/Projectivy-CLEAN-07-RedLight-All-Rows.apk',
     'ART=/tmp/clean06-artifact':'ART=/tmp/clean07-artifact',
     '.github/clean06/patch-manifest.py':'.github/clean07/patch-manifest.py',
