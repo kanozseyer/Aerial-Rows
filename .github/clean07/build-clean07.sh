@@ -15,6 +15,7 @@ repls={
     '.github/clean06/RedLightDiscoveryEngine.java':'.github/clean07/RedLightDiscoveryEngine.java',
     '.github/clean06/RedLightDiscoveryProvider.java':'.github/clean07/RedLightDiscoveryProvider.java',
     "'CLEAN06 SUCCESS'":"'CLEAN07 SUCCESS'",
+    "'redlight:shelf:trending:movies'":"'redlight:shelf:'",
     '/tmp/verify-clean06':'/tmp/verify-clean07',
     '.github/clean06/verify-clean06.py':'.github/clean07/verify-clean07.py',
 }
