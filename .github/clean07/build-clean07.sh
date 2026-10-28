@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# CLEAN 07B deliberately inherits the proven CLEAN 06D packaging/signing pipeline.
+# CLEAN 07D deliberately inherits the proven CLEAN 06D packaging/signing pipeline.
 # Generate a temporary build script by replacing only CLEAN 07 stage-specific
 # sources/manifest/verifier/output names, then add the presentation-only grouped
 # channel hook before rebuilding Projectivy.
@@ -9,10 +9,10 @@ python3 - <<'PY'
 from pathlib import Path
 src=Path('.github/clean06/build-clean06.sh').read_text()
 repls={
-    'UNSIGNED=/tmp/unsigned-clean06.apk':'UNSIGNED=/tmp/unsigned-clean07b.apk',
-    '/tmp/unsigned-clean06.apk':'/tmp/unsigned-clean07b.apk',
-    'FINAL=/tmp/Projectivy-CLEAN-06-RedLight-One-Row.apk':'FINAL=/tmp/Projectivy-CLEAN-07B-RedLight-All-Rows-Channel-UI.apk',
-    'ART=/tmp/clean06-artifact':'ART=/tmp/clean07b-artifact',
+    'UNSIGNED=/tmp/unsigned-clean06.apk':'UNSIGNED=/tmp/unsigned-clean07d.apk',
+    '/tmp/unsigned-clean06.apk':'/tmp/unsigned-clean07d.apk',
+    'FINAL=/tmp/Projectivy-CLEAN-06-RedLight-One-Row.apk':'FINAL=/tmp/Projectivy-CLEAN-07D-RedLight-All-Rows-Checkbox-Picker.apk',
+    'ART=/tmp/clean06-artifact':'ART=/tmp/clean07d-artifact',
     '.github/clean06/patch-manifest.py':'.github/clean07/patch-manifest.py',
     '.github/clean06/RedLightDiscoveryEngine.java':'.github/clean07/RedLightDiscoveryEngine.java',
     '.github/clean06/RedLightDiscoveryProvider.java':'.github/clean07/RedLightDiscoveryProvider.java',
@@ -33,7 +33,7 @@ if anchor not in src:
     raise SystemExit('CLEAN07 manifest patch anchor missing')
 src=src.replace(anchor, anchor+'python3 .github/clean07/patch-grouped-channel-ui.py /tmp/pj\n',1)
 
-# Compile the tiny presentation bridge into the existing embedded classes4.dex.
+# Compile the presentation bridge into the existing embedded classes4.dex.
 anchor='.github/clean07/RedLightDiscoveryProvider.java\n'
 if anchor not in src:
     raise SystemExit('CLEAN07 javac source anchor missing')
