@@ -2,7 +2,7 @@ name: Probe CLEAN 07F Grouped Channel Construction
 
 on:
   push:
-    branches: [projectivy-clean07e-stock-multiselect]
+    branches: [projectivy-clean07f-native-multiselect]
     paths:
       - '.github/workflows/probe-clean07f-grouped-channel.yml'
   workflow_dispatch:
@@ -34,7 +34,7 @@ jobs:
           /tmp/jadx/bin/jadx --no-res --show-bad-code -d /tmp/jadx-out /tmp/projectivy.apk >/tmp/probe07f/jadx.log 2>&1 || true
           java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/apk-out >/tmp/probe07f/apktool.log 2>&1
 
-          for cls in g70 k00 he2 ie2 ge2 i5 vu ft fh3 r10 w40; do
+          for cls in g70 k00 he2 ie2 ge2 i5 vu ft fh3 r10 w40 je2 am1; do
             f="/tmp/jadx-out/sources/defpackage/${cls}.java"
             [ -f "$f" ] && cp "$f" "/tmp/probe07f/${cls}.java"
             find /tmp/apk-out -name "${cls}.smali" -print -quit | while read -r s; do [ -n "$s" ] && cp "$s" "/tmp/probe07f/${cls}.smali"; done
@@ -50,7 +50,7 @@ jobs:
             find /tmp/apk-out -path "*/androidx/preference/${cls}.smali" -print -quit | while read -r s; do [ -n "$s" ] && cp "$s" "/tmp/probe07f/${cls}.smali"; done
           done
 
-          grep -RniE 'k00\.e|class ft|class fh3|ListPreference|MultiSelectListPreference|setEntries|setEntryValues|setValue|setValues|new-instance|he2|ie2|action_categories_list|\.n[ ;=]' /tmp/probe07f > /tmp/probe07f/HITS.txt || true
+          grep -RniE 'onResume|onStart|onStop|onPause|void [A-Z]\(|k00\.e|class ft|class fh3|ListPreference|MultiSelectListPreference|he2|ie2|action_categories_list|\.n[ ;=]' /tmp/probe07f > /tmp/probe07f/HITS.txt || true
           sha256sum /tmp/projectivy.apk > /tmp/probe07f/OFFICIAL_SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
