@@ -22,7 +22,8 @@ os.symlink(verify_l, verify_k, target_is_directory=True)
 runpy.run_path('.github/clean07k/verify-clean07k.py', run_name='__main__')
 
 # Presentation-only source-heading override must exist in g70 and remain scoped
-# to internal_provider_id values beginning with redlight:.
+# to internal_provider_id values beginning with redlight:. Apktool may rename
+# branch labels during rebuild, so verify semantic instructions, not label names.
 g70s = list(verify_l.rglob('g70.smali'))
 assert len(g70s) == 1, g70s
 g70 = g70s[0].read_text()
@@ -33,13 +34,15 @@ body = g70[start:end]
 for token in [
     'const-string v6, "internal_provider_id"',
     'const-string v6, "redlight:"',
+    'Ljava/lang/String;->startsWith(Ljava/lang/String;)Z',
     'const-string v4, "Red Light"',
-    ':clean07l_channel_label_ready',
 ]:
     assert token in body, token
+assert body.find('const-string v6, "internal_provider_id"') < body.find('const-string v6, "redlight:"')
+assert body.find('const-string v6, "redlight:"') < body.find('const-string v4, "Red Light"')
 
 # The embedded runtime must contain the exact installed-addon icon path and use
-# Android TV's native channel-logo URI. This covers Edit Channels + Home titles.
+# Android TV's native channel-logo plumbing. This covers Edit Channels + Home titles.
 with zipfile.ZipFile(apk) as z:
     c4 = z.read('classes4.dex')
     for token in [
