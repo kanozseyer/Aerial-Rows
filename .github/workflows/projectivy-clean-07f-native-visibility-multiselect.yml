@@ -1,0 +1,40 @@
+name: Projectivy CLEAN 07F - Native Visibility MultiSelect
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean07f-native-visibility-multiselect]
+    paths:
+      - '.github/workflows/projectivy-clean-07f-native-visibility-multiselect.yml'
+      - '.github/clean07f/**'
+      - '.github/clean07/**'
+      - '.github/clean06/**'
+      - '.github/clean05/**'
+      - '.github/clean04/**'
+      - '.github/clean03/**'
+      - '.github/clean02/**'
+      - '.github/patch-clean-01k-projectivy-telemetry.py'
+      - '.github/patch-clean-01h-external-license.py'
+      - '.github/patch-clean-01g-surgical-dex.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 07F
+        shell: bash
+        run: bash .github/clean07f/build-clean07f.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-07F-Native-Visibility-MultiSelect
+          path: /tmp/clean07f-artifact/*
+          retention-days: 30
