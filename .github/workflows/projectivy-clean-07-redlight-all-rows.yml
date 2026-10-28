@@ -29,11 +29,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Build and verify CLEAN 07B
+      - name: Build and verify CLEAN 07D
         shell: bash
         run: bash .github/clean07/build-clean07.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: Projectivy-CLEAN-07B-RedLight-All-Rows-Channel-UI
-          path: /tmp/clean07b-artifact/*
+          name: Projectivy-CLEAN-07D-RedLight-All-Rows-Checkbox-Picker
+          path: /tmp/clean07d-artifact/*
           retention-days: 30
