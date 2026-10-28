@@ -1,0 +1,43 @@
+name: Projectivy CLEAN 07L - Red Light Branding
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean07l-redlight-branding]
+    paths:
+      - '.github/workflows/projectivy-clean-07l-redlight-branding.yml'
+      - '.github/clean07l/**'
+      - '.github/clean07k/**'
+      - '.github/clean07h/**'
+      - '.github/clean07f/**'
+      - '.github/clean07/**'
+      - '.github/clean06/**'
+      - '.github/clean05/**'
+      - '.github/clean04/**'
+      - '.github/clean03/**'
+      - '.github/clean02/**'
+      - '.github/patch-clean-01k-projectivy-telemetry.py'
+      - '.github/patch-clean-01h-external-license.py'
+      - '.github/patch-clean-01g-surgical-dex.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 07L
+        shell: bash
+        run: bash .github/clean07l/build-clean07l.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-07L-RedLight-Branding
+          path: /tmp/clean07l-artifact/*
+          retention-days: 30
