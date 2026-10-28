@@ -1,0 +1,38 @@
+name: Projectivy CLEAN 06 - Red Light One Row
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-06-redlight-one-row.yml'
+      - '.github/clean06/**'
+      - '.github/clean05/**'
+      - '.github/clean04/**'
+      - '.github/clean03/**'
+      - '.github/clean02/**'
+      - '.github/patch-clean-01k-projectivy-telemetry.py'
+      - '.github/patch-clean-01h-external-license.py'
+      - '.github/patch-clean-01g-surgical-dex.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 06
+        shell: bash
+        run: bash .github/clean06/build-clean06.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-06-RedLight-One-Row
+          path: /tmp/clean06-artifact/*
+          retention-days: 30
