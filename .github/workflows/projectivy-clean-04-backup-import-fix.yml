@@ -1,0 +1,207 @@
+name: Projectivy CLEAN 04 - Backup Import Fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean-rebuild-472]
+    paths:
+      - '.github/workflows/projectivy-clean-04-backup-import-fix.yml'
+      - '.github/clean04/patch-backup-decrypt.py'
+      - '.github/clean03/patch-decoded.py'
+      - '.github/clean03/AerialSettingsActivity.java'
+      - '.github/clean02/AerialService.java'
+      - '.github/patch-clean-01k-projectivy-telemetry.py'
+      - '.github/patch-clean-01h-external-license.py'
+      - '.github/patch-clean-01g-surgical-dex.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact official Projectivy 4.72
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/official.apk
+          echo 'a312935837b7cf323880455c322f4c98060e3e37e8c6187963fb2c4764534aae  /tmp/official.apk' | sha256sum -c -
+          unzip -p /tmp/official.apk classes.dex > /tmp/classes.dex
+          unzip -p /tmp/official.apk classes2.dex > /tmp/classes2.dex
+
+      - name: Reproduce frozen LEAN BASE DEX behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/patch-clean-01k-projectivy-telemetry.py /tmp/classes.dex /tmp/classes2.dex /tmp/classes-lean.dex /tmp/classes2-lean.dex | tee /tmp/dex-base-patch.txt
+
+      - name: Create decode input
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile
+          repl={'classes.dex':open('/tmp/classes-lean.dex','rb').read(),'classes2.dex':open('/tmp/classes2-lean.dex','rb').read()}
+          with zipfile.ZipFile('/tmp/official.apk') as zin, zipfile.ZipFile('/tmp/decode-input.apk','w') as zout:
+              for i in zin.infolist():
+                  if i.filename.startswith('META-INF/'): continue
+                  data=repl.get(i.filename,zin.read(i.filename))
+                  n=zipfile.ZipInfo(i.filename,i.date_time)
+                  n.compress_type=i.compress_type; n.comment=i.comment; n.extra=i.extra
+                  n.internal_attr=i.internal_attr; n.external_attr=i.external_attr
+                  n.create_system=i.create_system; n.create_version=i.create_version
+                  n.extract_version=i.extract_version; n.flag_bits=i.flag_bits
+                  zout.writestr(n,data)
+          PY
+
+      - name: Apply CLEAN 03 plus CLEAN 04 decrypt fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar d -f /tmp/decode-input.apk -o /tmp/pj >/dev/null
+          python3 .github/clean03/patch-decoded.py /tmp/pj
+          python3 .github/clean04/patch-backup-decrypt.py /tmp/pj | tee /tmp/backup-fix.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/pj/res/values/attrs.xml'); s=p.read_text(); marker='</resources>'
+          extra='''    <attr name="state_liftable" format="boolean" />\n    <attr name="state_lifted" format="boolean" />\n    <attr name="state_swiped" format="boolean" />\n'''
+          if 'name="state_liftable"' not in s: p.write_text(s.replace(marker,extra+marker))
+          PY
+          java -jar /tmp/apktool.jar b /tmp/pj -o /tmp/rebuilt.apk >/dev/null
+          unzip -p /tmp/rebuilt.apk classes.dex > /tmp/classes-clean04.dex
+          unzip -p /tmp/rebuilt.apk AndroidManifest.xml > /tmp/AndroidManifest.xml
+
+      - name: Build isolated Aerial provider and Configure DEX
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLATFORM="$(ls -d "$ANDROID_HOME"/platforms/android-* | sort -V | tail -1)"
+          ANDROID_JAR="$PLATFORM/android.jar"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          mkdir -p /tmp/aerial-classes /tmp/aerial-dex
+          javac -source 8 -target 8 -cp "$ANDROID_JAR" -d /tmp/aerial-classes .github/clean02/AerialService.java .github/clean03/AerialSettingsActivity.java
+          mapfile -t CLASSFILES < <(find /tmp/aerial-classes -name '*.class' -type f | sort)
+          "$BT/d8" --lib "$ANDROID_JAR" --min-api 21 --output /tmp/aerial-dex "${CLASSFILES[@]}"
+          cp /tmp/aerial-dex/classes.dex /tmp/classes4.dex
+
+      - name: Fetch pinned Aerial catalogue
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://raw.githubusercontent.com/kanozseyer/Aerial-Rows/fbb317593c02c9997f380bbe5cf6a2ceb2bb9f81/projectivy-aerial-rows-provider/src/main/assets/aerials.json' -o /tmp/aerials.json
+          python3 -m json.tool /tmp/aerials.json >/dev/null
+          sha256sum /tmp/aerials.json | tee /tmp/aerials-SHA256.txt
+
+      - name: Repack CLEAN 04
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile
+          repl={'classes.dex':open('/tmp/classes-clean04.dex','rb').read(),'classes2.dex':open('/tmp/classes2-lean.dex','rb').read(),'AndroidManifest.xml':open('/tmp/AndroidManifest.xml','rb').read()}
+          removed=[]
+          with zipfile.ZipFile('/tmp/official.apk') as zin, zipfile.ZipFile('/tmp/unsigned.apk','w') as zout:
+              for i in zin.infolist():
+                  if i.filename.startswith('META-INF/'): continue
+                  if i.filename.startswith('lib/') and not i.filename.startswith('lib/arm64-v8a/'):
+                      removed.append(i.filename); continue
+                  data=repl.get(i.filename,zin.read(i.filename))
+                  n=zipfile.ZipInfo(i.filename,i.date_time)
+                  n.compress_type=i.compress_type; n.comment=i.comment; n.extra=i.extra
+                  n.internal_attr=i.internal_attr; n.external_attr=i.external_attr
+                  n.create_system=i.create_system; n.create_version=i.create_version
+                  n.extract_version=i.extract_version; n.flag_bits=i.flag_bits
+                  zout.writestr(n,data)
+              assert len(removed)==9, removed
+              zout.writestr('classes4.dex',open('/tmp/classes4.dex','rb').read(),compress_type=zipfile.ZIP_DEFLATED)
+              zout.writestr('assets/aerials.json',open('/tmp/aerials.json','rb').read(),compress_type=zipfile.ZIP_DEFLATED)
+          PY
+          unzip -t /tmp/unsigned.apk >/dev/null
+
+      - name: Verify CLEAN 04 isolation and decrypt fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar /tmp/apktool.jar d -f /tmp/unsigned.apk -o /tmp/verify >/tmp/final-decode.log 2>&1
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,zipfile,json
+          def body(path,sig):
+              s=Path(path).read_text(); m=re.search(sig+r'\n(.*?)\.end method',s,re.S); assert m,sig; return m.group(1)
+          def begins_return(path,sig):
+              b=body(path,sig); lines=[x.strip() for x in b.splitlines() if x.strip() and not x.strip().startswith('.line')]; assert 'return-void' in lines[:4]
+          begins_return('/tmp/verify/smali/it1.smali',r'\.method public final g\(\)V')
+          begins_return('/tmp/verify/smali_classes2/rc1.smali',r'\.method public final h\(\)V')
+          begins_return('/tmp/verify/smali/com/spocky/projengmenu/utils/PTUtils.smali',r'\.method public static e\(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;\)V')
+          begins_return('/tmp/verify/smali/com/spocky/projengmenu/PTApplication.smali',r'\.method public final e\(\)V')
+          s71=list(Path('/tmp/verify').rglob('s71.smali')); assert len(s71)==1
+          b=body(s71[0],r'\.method public static b\(\[B\)\[B')
+          assert 'ProjectivyAccessibilityService;->s0:B' not in b
+          assert 'const/16 v0, 0x10' in b
+          bs=Path('/tmp/verify/smali/bs4.smali').read_text(); assert '8c00feaf-c7be-43c2-80f9-d49853aaa99a' in bs
+          m=Path('/tmp/verify/AndroidManifest.xml').read_text()
+          for x in ['AerialService','AerialSettingsActivity','settingsActivity','FirebaseInitProvider','RemoteConfigRegistrar','FirebaseInstallationsRegistrar']: assert x in m,x
+          for x in ['CrashlyticsRegistrar','FirebaseSessionsRegistrar','AnalyticsConnectorRegistrar','TransportRegistrar','AppMeasurementService','SessionLifecycleService','JobInfoSchedulerService']: assert x not in m,x
+          with zipfile.ZipFile('/tmp/unsigned.apk') as z:
+              names=z.namelist(); libs=[n for n in names if n.startswith('lib/') and n.endswith('.so')]
+              assert len(libs)==3 and all(n.startswith('lib/arm64-v8a/') for n in libs)
+              assert 'classes4.dex' in names and 'assets/aerials.json' in names
+              assert 'assets/launcher_default_profile.json' not in names
+              json.loads(z.read('assets/aerials.json'))
+          print('PASS: CLEAN 04 = CLEAN 03 + fixed 16-byte .plbackup decrypt salt only')
+          PY
+
+      - name: Align sign and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.pk8?format=TEXT' | base64 -d > /tmp/testkey.pk8
+          curl -fL --retry 3 'https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/testkey.x509.pem?format=TEXT' | base64 -d > /tmp/testkey.x509.pem
+          "$BT/zipalign" -P 16 -f 4 /tmp/unsigned.apk /tmp/aligned.apk
+          "$BT/apksigner" sign --key /tmp/testkey.pk8 --cert /tmp/testkey.x509.pem --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out /tmp/Projectivy-CLEAN-04-Backup-Import-Fix.apk /tmp/aligned.apk
+          "$BT/apksigner" verify --verbose --print-certs /tmp/Projectivy-CLEAN-04-Backup-Import-Fix.apk | tee /tmp/apksigner.txt
+          "$BT/zipalign" -P 16 -c -v 4 /tmp/Projectivy-CLEAN-04-Backup-Import-Fix.apk > /tmp/zipalign.txt
+          "$BT/aapt" dump badging /tmp/Projectivy-CLEAN-04-Backup-Import-Fix.apk | head -1 | tee /tmp/package.txt
+          grep -q "package: name='com.spocky.projengmenu'" /tmp/package.txt
+          grep -q "versionName='4.72'" /tmp/package.txt
+
+      - name: Prove payload scope and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee /tmp/scope.txt
+          import zipfile,hashlib,os
+          a=zipfile.ZipFile('/tmp/official.apk'); b=zipfile.ZipFile('/tmp/Projectivy-CLEAN-04-Backup-Import-Fix.apk')
+          ign=lambda n:n.startswith('META-INF/')
+          aa={i.filename for i in a.infolist() if not ign(i.filename)}; bb={i.filename for i in b.infolist() if not ign(i.filename)}
+          missing=sorted(aa-bb); extra=sorted(bb-aa)
+          assert len(missing)==9 and all(n.startswith(('lib/armeabi-v7a/','lib/x86/','lib/x86_64/')) for n in missing),missing
+          assert extra==['assets/aerials.json','classes4.dex'],extra
+          changed=[n for n in sorted(aa & bb) if hashlib.sha256(a.read(n)).digest()!=hashlib.sha256(b.read(n)).digest()]
+          assert changed==['AndroidManifest.xml','classes.dex','classes2.dex'],changed
+          assert a.read('classes3.dex')==b.read('classes3.dex')
+          assert a.read('resources.arsc')==b.read('resources.arsc')
+          print('missing:',missing); print('extra:',extra); print('changed:',changed)
+          print('official APK bytes:',os.path.getsize('/tmp/official.apk'))
+          print('CLEAN04 APK bytes:',os.path.getsize('/tmp/Projectivy-CLEAN-04-Backup-Import-Fix.apk'))
+          PY
+          sha256sum /tmp/Projectivy-CLEAN-04-Backup-Import-Fix.apk | tee /tmp/SHA256.txt
+          mkdir -p /tmp/artifact
+          cp /tmp/Projectivy-CLEAN-04-Backup-Import-Fix.apk /tmp/artifact/
+          cp /tmp/SHA256.txt /tmp/scope.txt /tmp/dex-base-patch.txt /tmp/backup-fix.txt /tmp/apksigner.txt /tmp/zipalign.txt /tmp/package.txt /tmp/final-decode.log /tmp/aerials-SHA256.txt /tmp/artifact/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-04-Backup-Import-Fix
+          path: /tmp/artifact/*
+          retention-days: 30
