@@ -3,7 +3,8 @@ set -euo pipefail
 
 # CLEAN 08 is frozen CLEAN 07L plus canonical Home layout restoration and
 # live Red Light semantic reconciliation. Generate a temporary 07L build with
-# only CLEAN08 stage substitutions.
+# only CLEAN08 stage substitutions. Keep 07L's internal temp-script names intact
+# so the nested wrapper chain cannot overwrite itself.
 python3 - <<'PY'
 from pathlib import Path
 src=Path('.github/clean07l/build-clean07l.sh').read_text()
@@ -18,14 +19,16 @@ repls={
     '/tmp/unsigned-clean07l.apk':'/tmp/unsigned-clean08.apk',
     '/tmp/Projectivy-CLEAN-07L-RedLight-Branding.apk':'/tmp/Projectivy-CLEAN-08-Canonical-Dynamic-Home-Layout.apk',
     '/tmp/clean07l-artifact':'/tmp/clean08-artifact',
-    '/tmp/build-clean07l-wrapper.sh':'/tmp/build-clean08-wrapper.sh',
-    '/tmp/build-clean07l-generated.sh':'/tmp/build-clean08-generated.sh',
 }
 for old,new in repls.items():
     if old not in src:
         raise SystemExit(f'expected CLEAN07L build anchor missing: {old}')
     src=src.replace(old,new)
-Path('/tmp/build-clean08-generated.sh').write_text(src)
+Path('/tmp/build-clean08-stage.sh').write_text(src)
 PY
 
-bash /tmp/build-clean08-generated.sh
+bash /tmp/build-clean08-stage.sh
+
+test -f /tmp/Projectivy-CLEAN-08-Canonical-Dynamic-Home-Layout.apk
+mkdir -p /tmp/clean08-artifact
+cp -f /tmp/Projectivy-CLEAN-08-Canonical-Dynamic-Home-Layout.apk /tmp/clean08-artifact/
