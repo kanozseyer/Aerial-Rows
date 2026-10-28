@@ -126,7 +126,7 @@ public final class RedLightDiscoveryEngine {
             if(n>=MAX_PROGRAMS)break;
             if(e.dir()&&!raw(e.uri).contains("tmdb_id="))continue;
             ContentValues v=new ContentValues(); v.put("channel_id",channel); v.put("title",e.name); v.put("description",e.mediaType!=null?e.mediaType:"Red Light");
-            v.put("type",programType(e)); v.put("intent_uri",homeIntent(c).toUri(0)); v.put("internal_provider_id",raw(e.uri)); v.put("weight",MAX_PROGRAMS-n); v.put("poster_art_aspect_ratio",5);
+            v.put("type",programType(e)); v.put("intent_uri",programIdentityIntent(c,raw(e.uri)).toUri(0)); v.put("internal_provider_id",raw(e.uri)); v.put("weight",MAX_PROGRAMS-n); v.put("poster_art_aspect_ratio",5);
             String poster=art==null?null:art.posterFor(e);
             if(poster!=null&&!poster.isEmpty()){v.put("poster_art_uri",poster);artwork++;}
             try{if(c.getContentResolver().insert(TvContract.PreviewPrograms.CONTENT_URI,v)!=null)n++;}catch(Throwable t){Log.i(TAG,"CLEAN06 preview insert failed for "+e.name);}
@@ -150,6 +150,19 @@ public final class RedLightDiscoveryEngine {
 
     private static Intent homeIntent(Context c){
         Intent i=new Intent(Intent.ACTION_MAIN); i.setComponent(new ComponentName(c.getPackageName(),"com.spocky.projengmenu.ui.home.MainActivity")); i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP); return i;
+    }
+
+    /**
+     * CLEAN 06 intentionally has no playback trampoline yet, but Projectivy must
+     * still see each preview program as a distinct item. Give every card an
+     * explicit MainActivity intent with unique inert data derived from its real
+     * Red Light plugin URI. Clicking still only returns to Projectivy Home.
+     */
+    private static Intent programIdentityIntent(Context c,String pluginUri){
+        Intent i=homeIntent(c);
+        Uri data=new Uri.Builder().scheme("projectivy-clean06").authority("redlight").appendQueryParameter("target",pluginUri==null?"":pluginUri).build();
+        i.setData(data);
+        return i;
     }
 
     private static int programType(Entry e){String m=e.mediaType==null?"":e.mediaType.toLowerCase(Locale.ROOT);if("movie".equals(m))return 0;if("tvshow".equals(m))return 1;if("episode".equals(m))return 2;return 5;}
