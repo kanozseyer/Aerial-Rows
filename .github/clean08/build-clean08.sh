@@ -8,7 +8,7 @@ python3 - <<'PY'
 from pathlib import Path
 src=Path('.github/clean07l/build-clean07l.sh').read_text()
 old='python3 .github/clean07l/prepare-redlight-icon.py\n'
-new='python3 .github/clean07l/prepare-redlight-icon.py\npython3 .github/clean08/prepare-canonical-layout.py\n'
+new='python3 .github/clean07l/prepare-redlight-icon.py\npython3 .github/clean08/prepare-canonical-layout-v2.py\n'
 if old not in src:
     raise SystemExit('CLEAN07L prepare anchor missing')
 src=src.replace(old,new,1)
