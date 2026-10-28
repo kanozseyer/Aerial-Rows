@@ -1,0 +1,47 @@
+name: Projectivy CLEAN 08.2 - Final Card BG
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean08-2-final-cardbg]
+    paths:
+      - '.github/workflows/projectivy-clean-08-2-final-cardbg.yml'
+      - '.github/clean082/**'
+      - '.github/clean081/**'
+      - '.github/clean08/**'
+      - '.github/clean07l/**'
+      - '.github/clean07k/**'
+      - '.github/clean07h/**'
+      - '.github/clean07f/**'
+      - '.github/clean07/**'
+      - '.github/clean06/**'
+      - '.github/clean05/**'
+      - '.github/clean04/**'
+      - '.github/clean03/**'
+      - '.github/clean02/**'
+      - '.github/patch-clean-01k-projectivy-telemetry.py'
+      - '.github/patch-clean-01h-external-license.py'
+      - '.github/patch-clean-01g-surgical-dex.py'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 08.2
+        shell: bash
+        run: bash .github/clean082/build-clean082.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-08-2-Final-CardBG
+          path: /tmp/clean082-artifact/*
+          retention-days: 30
+          if-no-files-found: error
