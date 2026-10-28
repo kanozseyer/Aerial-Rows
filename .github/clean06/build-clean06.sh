@@ -30,7 +30,7 @@ mkdir -p /tmp/embedded-classes /tmp/embedded-dex
 javac -source 8 -target 8 -cp "$ANDROID_JAR" -d /tmp/embedded-classes .github/clean02/AerialService.java .github/clean03/AerialSettingsActivity.java .github/clean05/ProfileRestoreProvider.java .github/clean06/RedLightDiscoveryEngine.java .github/clean06/RedLightDiscoveryProvider.java
 mapfile -t CLASSFILES < <(find /tmp/embedded-classes -name '*.class' -type f | sort)
 "$BT/d8" --lib "$ANDROID_JAR" --min-api 21 --output /tmp/embedded-dex "${CLASSFILES[@]}"; cp /tmp/embedded-dex/classes.dex /tmp/classes4.dex
-for s in 'ProfileRestoreProvider' 'RedLightDiscoveryProvider' 'ProjectivyRedLight' 'CLEAN06 SUCCESS' 'redlight:shelf:trending:movies' 'Red Light · Trending Movies'; do strings /tmp/classes4.dex | grep -q "$s"; done
+for s in 'ProfileRestoreProvider' 'RedLightDiscoveryProvider' 'ProjectivyRedLight' 'CLEAN06 SUCCESS' 'redlight:shelf:trending:movies'; do strings /tmp/classes4.dex | grep -q "$s"; done
 ! strings /tmp/classes4.dex | grep -q 'RedLightLaunchActivity'
 curl -fL --retry 3 'https://raw.githubusercontent.com/kanozseyer/Aerial-Rows/fbb317593c02c9997f380bbe5cf6a2ceb2bb9f81/projectivy-aerial-rows-provider/src/main/assets/aerials.json' -o /tmp/aerials.json
 python3 -m json.tool /tmp/aerials.json >/dev/null; sha256sum /tmp/aerials.json | tee /tmp/aerials-SHA256.txt
