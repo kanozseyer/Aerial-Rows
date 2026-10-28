@@ -40,6 +40,13 @@ jobs:
             find /tmp/apk-out -name "${cls}.smali" -print -quit | while read -r s; do [ -n "$s" ] && cp "$s" "/tmp/probe07f/${cls}.smali"; done
           done
 
+          for name in CategoryPreferencesFragment CategoryAppsPreferencesFragment; do
+            f="$(find /tmp/jadx-out/sources -name "${name}.java" -print -quit)"
+            [ -n "$f" ] && cp "$f" "/tmp/probe07f/${name}.java"
+            s="$(find /tmp/apk-out -name "${name}.smali" -print -quit)"
+            [ -n "$s" ] && cp "$s" "/tmp/probe07f/${name}.smali"
+          done
+
           custom="/tmp/jadx-out/sources/com/spocky/projengmenu/ui/sidePanels/settings/preference/CustomListPreference.java"
           [ -f "$custom" ] && cp "$custom" /tmp/probe07f/CustomListPreference.java
           find /tmp/apk-out -path '*/com/spocky/projengmenu/ui/sidePanels/settings/preference/CustomListPreference.smali' -print -quit | while read -r s; do [ -n "$s" ] && cp "$s" /tmp/probe07f/CustomListPreference.smali; done
@@ -50,7 +57,8 @@ jobs:
             find /tmp/apk-out -path "*/androidx/preference/${cls}.smali" -print -quit | while read -r s; do [ -n "$s" ] && cp "$s" "/tmp/probe07f/${cls}.smali"; done
           done
 
-          grep -RniE 'k00\.e|class ft|class f70|ListPreference|MultiSelectListPreference|setEntries|setEntryValues|setValue|setValues|new-instance|he2|ie2|action_categories_list|\.n[ ;=]' /tmp/probe07f > /tmp/probe07f/HITS.txt || true
+          grep -RniE 'prefs.*visible|visible|\.n[ ;=]|action_categories_list|w40\.|i5' /tmp/jadx-out/sources/com/spocky/projengmenu/ui/sidePanels/settings /tmp/jadx-out/sources/defpackage > /tmp/probe07f/VISIBLE_HITS.txt || true
+          grep -RniE 'k00\.e|class ft|class f70|ListPreference|MultiSelectListPreference|he2|ie2' /tmp/probe07f > /tmp/probe07f/HITS.txt || true
           sha256sum /tmp/projectivy.apk > /tmp/probe07f/OFFICIAL_SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
