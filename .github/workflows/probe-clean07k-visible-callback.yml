@@ -1,0 +1,75 @@
+name: Probe CLEAN 07K Visible Callback
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean07k-from-07h]
+    paths:
+      - '.github/workflows/probe-clean07k-visible-callback.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Decode and map category Visible callback
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o /tmp/projectivy.apk
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          rm -rf /tmp/apk-out /tmp/probe07k
+          mkdir -p /tmp/probe07k/files
+          java -jar /tmp/apktool.jar d -f /tmp/projectivy.apk -o /tmp/apk-out >/tmp/probe07k/apktool.log 2>&1
+
+          find /tmp/apk-out -name 'CategoryAppsPreferencesFragment.smali' -o -name 'i5.smali' -o -name 'ft.smali' | sort > /tmp/probe07k/KEY_FILES.txt
+
+          grep -Rni --include='*.smali' 'Li5;->n:Z' /tmp/apk-out/smali* > /tmp/probe07k/VISIBLE_FIELD_REFS.txt || true
+          grep -RniE --include='*.smali' 'SwitchPreference|CheckBoxPreference|TwoStatePreference|setChecked|isChecked' /tmp/apk-out/smali* | grep -E 'CategoryApps|Li5;|ft;|preferenceFragment' > /tmp/probe07k/TOGGLE_REFS.txt || true
+          grep -RniE 'name="[^"]*(visible|visibility)[^"]*"|>Visible<|>Visibility<' /tmp/apk-out/res > /tmp/probe07k/VISIBLE_RESOURCES.txt || true
+
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/apk-out')
+          out=Path('/tmp/probe07k/SNIPPETS.txt')
+          hits=[]
+          for f in root.glob('smali*/**/*.smali'):
+              try: lines=f.read_text(errors='ignore').splitlines()
+              except: continue
+              for i,line in enumerate(lines):
+                  if 'Li5;->n:Z' in line:
+                      hits.append((f,i,lines))
+          with out.open('w') as w:
+              for f,i,lines in hits:
+                  w.write('\n'+'='*100+'\n')
+                  w.write(str(f)+'\n')
+                  w.write('='*100+'\n')
+                  a=max(0,i-45); b=min(len(lines),i+55)
+                  for n in range(a,b):
+                      w.write(f'{n+1:05d}: {lines[n]}\n')
+          # Copy unique hit files and key fragment files for inspection.
+          seen=set()
+          for f,_,_ in hits:
+              if f in seen: continue
+              seen.add(f)
+              dst=Path('/tmp/probe07k/files')/(f.name.replace('.smali','')+'-'+str(abs(hash(str(f))))+'.smali')
+              dst.write_text(f.read_text(errors='ignore'))
+          for name in ['CategoryAppsPreferencesFragment.smali','ft.smali','i5.smali']:
+              for f in root.glob('smali*/**/'+name):
+                  dst=Path('/tmp/probe07k/files')/name
+                  dst.write_text(f.read_text(errors='ignore'))
+          print('visible refs:', len(hits))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clean07k-visible-callback-probe
+          path: /tmp/probe07k
+          retention-days: 7
