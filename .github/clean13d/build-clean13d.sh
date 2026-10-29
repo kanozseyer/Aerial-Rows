@@ -60,7 +60,13 @@ cmp -s "$PG" /tmp/pg-before-clean13d.smali && { echo 'pg.smali did not change'; 
 grep -Fq 'addClockDateActions(Ljava/lang/Object;Ljava/util/List;)V' "$PG"
 grep -Fq 'handleClockDateAction(Ljava/lang/Object;Ljava/lang/Object;)Z' "$PG"
 
-java -jar "$APKTOOL" b /tmp/pj13d -o /tmp/rebuilt13d.apk >/tmp/rebuild-clean13d.log 2>&1
+if ! java -jar "$APKTOOL" b /tmp/pj13d -o /tmp/rebuilt13d.apk >/tmp/rebuild-clean13d.log 2>&1; then
+  echo '===== CLEAN13D APKTOOL REBUILD FAILURE ====='
+  cat /tmp/rebuild-clean13d.log
+  echo '===== PATCHED pg.smali METHODS ====='
+  grep -n -A35 -B8 'StatusBarCustomizationBridge' "$PG" || true
+  exit 1
+fi
 unzip -p /tmp/rebuilt13d.apk classes2.dex > /tmp/classes2-clean13d.dex
 test -s /tmp/classes2-clean13d.dex
 
