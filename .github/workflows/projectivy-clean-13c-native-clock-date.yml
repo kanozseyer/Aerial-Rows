@@ -1,0 +1,29 @@
+name: Projectivy CLEAN 13C - Native Clock Date
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean13c-native-clock-setter
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN13C
+        run: bash .github/clean13c/build-clean13c.sh
+      - name: Upload CLEAN13C
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13C-Native-Clock-Date
+          path: /tmp/clean13c-artifact/*
+          if-no-files-found: error
