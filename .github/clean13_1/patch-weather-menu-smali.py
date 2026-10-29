@@ -35,19 +35,23 @@ def inject_after_locals(text, sig, injection, marker):
     return text[:start] + block + text[end:]
 
 
-def inject_before_return(text, sig, injection, marker):
+def inject_before_every_return_void(text, sig, injection, marker):
     start, end = method_span(text, sig)
     block = text[start:end]
     if marker in block: raise SystemExit('already patched: ' + marker)
-    pos = block.rfind('    return-void')
-    if pos < 0: raise SystemExit('return-void not found: ' + sig)
-    block = block[:pos] + injection + '\n' + block[pos:]
-    return text[:start] + block + text[end:]
+    needle = '    return-void'
+    count = block.count(needle)
+    if count < 1: raise SystemExit('return-void not found: ' + sig)
+    block = block.replace(needle, injection + '\n' + needle)
+    return text[:start] + block + text[end:], count
 
-# qg = native Appearance > Status Bar page. Add Weather as a sibling after native rows,
-# and intercept its click before qg's built-in IDs 10 (Clock) / 20 (icons).
+# qg = native Appearance > Status Bar page.
+# CLEAN13.1B originally inserted only before qg.e0's last textual return. On Shield
+# that return is not the runtime exit path, so Weather never appeared. Insert the
+# sibling action before EVERY qg.e0 return instead: whichever branch Projectivy
+# takes, the Weather row is added exactly once on that execution path.
 s = qg.read_text()
-s = inject_before_return(
+s, qg_return_count = inject_before_every_return_void(
     s,
     '.method public final e0(Ljava/util/List;Landroid/os/Bundle;)V',
     '    invoke-static {p0, p1}, Lcom/spocky/projengmenu/embedded/WeatherStatusBarBridge;->addWeatherParentAction(Ljava/lang/Object;Ljava/util/List;)V\n',
@@ -79,13 +83,14 @@ weather_title = '''\n\n.method public G0()Ljava/lang/String;\n    .locals 1\n\n 
 s = s.rstrip() + weather_title
 pg.write_text(s)
 
-for path, tokens in [
-    (qg, ['addWeatherParentAction', 'handleWeatherParentAction']),
-    (pg, ['populateWeatherPage', 'handleWeatherPageAction', 'isWeatherPage', 'const-string v0, "Weather"']),
-]:
-    t = path.read_text()
-    for token in tokens:
-        if t.count(token) != 1:
-            raise SystemExit(f'{path.name}: expected exactly one {token}, got {t.count(token)}')
+qt = qg.read_text()
+pt = pg.read_text()
+if qt.count('addWeatherParentAction') != qg_return_count:
+    raise SystemExit(f'qg: expected {qg_return_count} addWeatherParentAction hooks, got {qt.count("addWeatherParentAction")}')
+if qt.count('handleWeatherParentAction') != 1:
+    raise SystemExit('qg: parent handler hook count mismatch')
+for token in ['populateWeatherPage', 'handleWeatherPageAction', 'isWeatherPage', 'const-string v0, "Weather"']:
+    if pt.count(token) != 1:
+        raise SystemExit(f'pg: expected exactly one {token}, got {pt.count(token)}')
 
-print('PASS: CLEAN13.1B qg Status Bar sibling + pg native Weather page patched')
+print(f'PASS: CLEAN13.1C qg Weather sibling patched on all {qg_return_count} qg.e0 exit paths + pg native Weather page')
