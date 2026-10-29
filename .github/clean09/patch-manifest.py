@@ -14,7 +14,10 @@ if name in s:
 if s.count('    </application>') != 1:
     raise SystemExit('CLEAN09 application close anchor mismatch')
 
-activity = '''        <activity android:excludeFromRecents="true" android:exported="true" android:launchMode="singleTop" android:name="com.spocky.projengmenu.embedded.RedLightLaunchActivity" android:noHistory="true" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>\n'''
+# CLEAN09.1: Projectivy re-pins preview-program ACTION_VIEW intents to its own
+# package and drops the explicit component. Register a deliberately narrow VIEW
+# resolver so plugin://plugin.video.redlight/... resolves back to our trampoline.
+activity = '''        <activity android:excludeFromRecents="true" android:exported="true" android:launchMode="singleTop" android:name="com.spocky.projengmenu.embedded.RedLightLaunchActivity" android:noHistory="true" android:theme="@android:style/Theme.Translucent.NoTitleBar">\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW"/>\n                <category android:name="android.intent.category.DEFAULT"/>\n                <data android:scheme="plugin" android:host="plugin.video.redlight"/>\n            </intent-filter>\n        </activity>\n'''
 s = s.replace('    </application>', activity + '    </application>', 1)
 manifest.write_text(s)
 
@@ -29,4 +32,4 @@ if 'name="state_liftable"' not in a:
         raise SystemExit('CLEAN09 attrs resource close anchor missing')
     attrs.write_text(a.replace(marker, extra + marker, 1))
 
-print('PASS: CLEAN09 RedLightLaunchActivity registered + apktool attrs restored')
+print('PASS: CLEAN09.1 RedLightLaunchActivity + narrow Red Light VIEW resolver registered')
