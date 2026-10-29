@@ -1,9 +1,9 @@
-name: Projectivy CLEAN 09 - Movie Episode Playback
+name: Projectivy CLEAN 09.1 - Movie Episode Playback Intent Filter
 
 on:
   workflow_dispatch:
   push:
-    branches: [projectivy-clean09-movie-episode-playback]
+    branches: [projectivy-clean09-1-intent-filter]
     paths:
       - '.github/workflows/projectivy-clean-09-movie-episode-playback.yml'
       - '.github/clean09/**'
@@ -38,12 +38,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Build and verify CLEAN 09
+      - name: Build and verify CLEAN 09.1
         shell: bash
         run: bash .github/clean09/build-clean09.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: Projectivy-CLEAN-09-Movie-Episode-Playback
-          path: /tmp/clean09-artifact/*
+          name: Projectivy-CLEAN-09-1-Movie-Episode-Playback-Intent-Filter
+          path: /tmp/clean091-artifact/*
           retention-days: 30
           if-no-files-found: error
