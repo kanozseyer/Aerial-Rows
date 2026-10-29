@@ -17,7 +17,14 @@ with zipfile.ZipFile(base) as zb, zipfile.ZipFile(cand) as zc:
     if changed != ['classes4.dex']:
         raise SystemExit(f'rescue scope violation changed={changed}')
     dex = zc.read('classes4.dex')
-    for token in [b'CLEAN13 RESCUE removed clock format override', b'appearance_statusbar_clock_format_l1', b'CLEAN12.1 SUCCESS channels=', b'CLEAN10.3 browse clean uri=', b'CLEAN11.1']:
+    for token in [
+        b'CLEAN13 RESCUE removed clock format override',
+        b'appearance_statusbar_clock_format_l1',
+        b'CLEAN12.1 SUCCESS channels=',
+        b'CLEAN12 discovery COMPLETE attempt=',
+        b'CLEAN10.3 browse clean uri=',
+        b'CLEAN12 Kodi provider retention lease=',
+    ]:
         if token not in dex:
             raise SystemExit('missing rescue/frozen marker: '+repr(token))
 print('PASS: CLEAN13 rescue changes classes4.dex only and retains frozen stack')
