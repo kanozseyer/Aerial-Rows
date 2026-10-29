@@ -7,6 +7,7 @@ on:
       - projectivy-clean13-1-weather
     paths:
       - '.github/clean13_1/trace-native-weather-ui.sh'
+      - '.github/clean13_1/trace-native-ui-helpers.sh'
       - '.github/workflows/projectivy-clean-13-1-native-ui-trace.yml'
 
 permissions:
@@ -22,5 +23,5 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Trace native Projectivy Weather UI paths
-        run: bash .github/clean13_1/trace-native-weather-ui.sh
+      - name: Trace native Projectivy category icon/toggle helpers
+        run: bash .github/clean13_1/trace-native-ui-helpers.sh
