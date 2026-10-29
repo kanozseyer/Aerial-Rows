@@ -1,0 +1,32 @@
+name: Projectivy CLEAN 10.1 - TV Show GUI Navigation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean10-1-gui-navigation
+    paths:
+      - '.github/clean101/**'
+      - '.github/workflows/projectivy-clean-10-1-tv-show-gui-navigation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 10.1
+        shell: bash
+        run: bash .github/clean101/build-clean101.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-10-1-TV-Show-GUI-Navigation
+          path: /tmp/clean101-artifact/*
+          if-no-files-found: error
