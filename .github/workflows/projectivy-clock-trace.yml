@@ -34,17 +34,20 @@ jobs:
           unzip -q /tmp/jadx.zip -d /tmp/jadx
           /tmp/jadx/bin/jadx --version
 
-      - name: Decompile Projectivy main DEX and trace clock renderer
+      - name: Decompile Projectivy and trace clock renderer
         run: |
           set -euo pipefail
           APK=/tmp/Projectivy-CLEAN-12-1B-Description-Normalization-Fix.apk
           OUT=/tmp/projectivy-jadx
           TRACE=/tmp/clock-trace.txt
-          rm -rf "$OUT" "$TRACE"
+          SRC=/tmp/clock-src
+          rm -rf "$OUT" "$TRACE" "$SRC"
+          mkdir -p "$SRC"
           /tmp/jadx/bin/jadx --no-res -d "$OUT" "$APK" >/tmp/jadx.log 2>&1 || true
 
           python3 - <<'PY'
           from pathlib import Path
+          import shutil
           root=Path('/tmp/projectivy-jadx/sources')
           needles=[
               'appearance_statusbar_clock_format_l1',
@@ -68,17 +71,27 @@ jobs:
                       out.append(f'\n--- context around line {i+1} ---')
                       for j in range(a,b): out.append(f'{j+1:05d}: {lines[j]}')
           Path('/tmp/clock-trace.txt').write_text('\n'.join(out))
-          print('\n'.join(out))
+
+          wanted={'yh3.java','hj3.java','pg.java','w54.java','ClockView.java','MainTitleView.java'}
+          dst=Path('/tmp/clock-src')
+          for p in root.rglob('*.java'):
+              if p.name in wanted:
+                  target=dst/(p.parent.name+'__'+p.name)
+                  shutil.copy2(p,target)
+                  print('COPIED',p,'->',target)
           PY
 
+          echo '--- source files ---'
+          find "$SRC" -type f -maxdepth 1 -print
           echo '--- JADX errors/warnings tail ---'
           tail -100 /tmp/jadx.log || true
 
       - name: Upload clock trace
         uses: actions/upload-artifact@v4
         with:
-          name: Projectivy-Clock-Trace
+          name: Projectivy-Clock-Trace-Sources
           path: |
             /tmp/clock-trace.txt
             /tmp/jadx.log
+            /tmp/clock-src/*
           if-no-files-found: error
