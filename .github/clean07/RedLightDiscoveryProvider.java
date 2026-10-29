@@ -13,9 +13,11 @@ import android.os.Looper;
 import android.util.Log;
 
 import java.lang.ref.WeakReference;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** CLEAN 07 foreground-only dynamic Red Light sync trigger. */
+/** CLEAN 11 foreground-only Red Light sync with Kodi-native readiness gate. */
 public final class RedLightDiscoveryProvider extends ContentProvider {
     private static final String TAG = "ProjectivyRedLight";
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
@@ -38,32 +40,45 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
                 if (!RUNNING.compareAndSet(false, true)) return;
                 final int n = ++attempt;
                 final WeakReference<Activity> activityRef = new WeakReference<>(a);
-                Log.i(TAG, "CLEAN07 discovery armed attempt=" + n + " on MainActivity resume");
+                Log.i(TAG, "CLEAN11 discovery armed attempt=" + n + " on MainActivity resume");
                 new Thread(() -> {
                     try {
                         try { Thread.sleep(1800L); } catch (InterruptedException ignored) {}
+
+                        // Never poke Kodi's exported file provider while the native core is cold.
+                        // Kodi 21.3's provider delegates to native _requestJSON(), which is not
+                        // registered until Kodi's real native activity/core has started. Port
+                        // 9090 is already proven by CLEAN10.3 TV browsing as the native-ready
+                        // boundary on this Shield. If it is absent, leave Android TV's persisted
+                        // Red Light rows/cards untouched and retry on a future Home resume.
+                        if (!isKodiNativeReady()) {
+                            Log.i(TAG, "CLEAN11 Kodi native not ready - cached rows retained; sync deferred");
+                            return;
+                        }
+
+                        Log.i(TAG, "CLEAN11 Kodi native ready - starting Red Light sync");
                         boolean ok = RedLightDiscoveryEngine.syncOnce(app);
                         if (ok) {
                             complete = true;
-                            Log.i(TAG, "CLEAN07 discovery COMPLETE attempt=" + n);
+                            Log.i(TAG, "CLEAN11 discovery COMPLETE attempt=" + n);
                             unregister();
                             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                                 Activity activity = activityRef.get();
                                 if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
                                 try {
-                                    Log.i(TAG, "CLEAN07 requesting Projectivy channel-model reload");
+                                    Log.i(TAG, "CLEAN11 requesting Projectivy channel-model reload");
                                     activity.recreate();
                                 } catch (Throwable t) {
-                                    Log.i(TAG, "CLEAN07 Projectivy reload request failed");
+                                    Log.i(TAG, "CLEAN11 Projectivy reload request failed");
                                 }
                             }, 450L);
                         } else {
-                            Log.i(TAG, "CLEAN07 discovery INCOMPLETE attempt=" + n + " — will retry on next MainActivity resume");
+                            Log.i(TAG, "CLEAN11 discovery INCOMPLETE attempt=" + n + " - will retry on next MainActivity resume");
                         }
                     } finally {
                         RUNNING.set(false);
                     }
-                }, "clean07-redlight").start();
+                }, "clean11-redlight").start();
             }
             @Override public void onActivityCreated(Activity a, Bundle b) {}
             @Override public void onActivityStarted(Activity a) {}
@@ -73,8 +88,21 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
             @Override public void onActivityDestroyed(Activity a) {}
         };
         app.registerActivityLifecycleCallbacks(callbacks);
-        Log.i(TAG, "CLEAN07 dynamic discovery provider armed");
+        Log.i(TAG, "CLEAN11 dynamic discovery provider armed with Kodi-native readiness gate");
         return true;
+    }
+
+    private static boolean isKodiNativeReady() {
+        Socket socket = null;
+        try {
+            socket = new Socket();
+            socket.connect(new InetSocketAddress("127.0.0.1", 9090), 180);
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        } finally {
+            if (socket != null) try { socket.close(); } catch (Throwable ignored) {}
+        }
     }
 
     private void unregister() {
