@@ -44,13 +44,14 @@ for s in \
   strings /tmp/classes4-clean13d.dex | grep -Fq "$s"
 done
 
-# Patch only pg.smali in classes2 so Projectivy's existing Status Bar -> Clock
-# settings page delegates our new actions to the embedded bridge.
+# Patch only pg.smali in classes2. Decode with -r/--no-res so Projectivy's
+# resources.arsc remains opaque and apktool never attempts to relink Material3
+# resources we did not touch.
 if [ ! -f "$APKTOOL" ]; then
   curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o "$APKTOOL"
 fi
 rm -rf /tmp/pj13d /tmp/rebuilt13d.apk
-java -jar "$APKTOOL" d -f "$BASE" -o /tmp/pj13d >/tmp/decode-clean13d.log 2>&1
+java -jar "$APKTOOL" d -r -f "$BASE" -o /tmp/pj13d >/tmp/decode-clean13d.log 2>&1
 PG="$(find /tmp/pj13d -path '*/pg.smali' -print -quit)"
 test -n "$PG"
 cp "$PG" /tmp/pg-before-clean13d.smali
