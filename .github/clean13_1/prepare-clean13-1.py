@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+# CLEAN13.1B keeps the frozen CLEAN13D2 Clock page intact. Weather gets its
+# own sibling page from the native Status Bar parent (qg) via classes2 smali.
+# Here we only wire Home rendering/refresh into the proven status-bar lifecycle.
 p = Path('.github/clean13d/StatusBarCustomizationBridge.java')
 s = p.read_text()
-
-marker = '            Log.i(TAG, "CLEAN13D2 native clock/date actions added; unified default");\n'
-assert s.count(marker) == 1, f'actions marker count={s.count(marker)}'
-s = s.replace(marker,
-'''            WeatherStatusBarBridge.addWeatherActions(fragment, list);\n            Log.i(TAG, "CLEAN13D2 native clock/date actions added; unified default");\n''', 1)
-
-old = '            if (!handled) return false;\n'
-assert s.count(old) == 1, f'handler marker count={s.count(old)}'
-s = s.replace(old, '            if (!handled) return WeatherStatusBarBridge.handleWeatherAction(fragment, action);\n', 1)
 
 old = '''        try {\n            applyClockPreference(activity);\n            final WeakReference<Activity> ref = new WeakReference<>(activity);\n'''
 new = '''        try {\n            applyClockPreference(activity);\n            WeatherStatusBarBridge.applyToHome(activity);\n            final WeakReference<Activity> ref = new WeakReference<>(activity);\n'''
@@ -23,5 +17,9 @@ new = '''                        try {\n                            applyVisual(
 assert s.count(old) == 1, f'delayed visual marker count={s.count(old)}'
 s = s.replace(old, new, 1)
 
+# Guard against accidentally re-embedding weather controls in Clock.
+assert 'WeatherStatusBarBridge.addWeatherActions(fragment, list);' not in s
+assert 'WeatherStatusBarBridge.handleWeatherAction(fragment, action)' not in s
+
 p.write_text(s)
-print('PASS: CLEAN13.1 weather wired into frozen CLEAN13D2 status bar bridge')
+print('PASS: CLEAN13.1B weather removed from Clock page; Home rendering retained')
