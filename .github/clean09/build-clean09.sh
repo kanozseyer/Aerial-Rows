@@ -2,9 +2,9 @@
 set -euo pipefail
 
 BASE=/tmp/Projectivy-CLEAN-08-5-Raw-Alpha-Process-Reload.apk
-UNSIGNED=/tmp/unsigned-clean09.apk
-FINAL=/tmp/Projectivy-CLEAN-09-Movie-Episode-Playback.apk
-ART=/tmp/clean09-artifact
+UNSIGNED=/tmp/unsigned-clean091.apk
+FINAL=/tmp/Projectivy-CLEAN-09-1-Movie-Episode-Playback-Intent-Filter.apk
+ART=/tmp/clean091-artifact
 APKTOOL=/tmp/apktool.jar
 
 # 1) Produce the exact frozen CLEAN08.5 output first. This also leaves the
@@ -48,8 +48,9 @@ for s in \
   strings /tmp/classes4-clean09.dex | grep -q "$s"
 done
 
-# 4) Generate a binary manifest from the frozen APK with only the CLEAN09
-# Activity added. All other APK entries come directly from the frozen APK.
+# 4) Generate a binary manifest from the frozen APK with the CLEAN09.1 activity
+# and narrow Red Light VIEW resolver added. All other APK entries come directly
+# from the frozen APK.
 rm -rf /tmp/pj-clean09-manifest
 java -jar "$APKTOOL" d -f "$BASE" -o /tmp/pj-clean09-manifest >/dev/null
 python3 .github/clean09/patch-manifest.py /tmp/pj-clean09-manifest
@@ -61,7 +62,7 @@ unzip -p /tmp/rebuilt-clean09-manifest.apk AndroidManifest.xml > /tmp/AndroidMan
 python3 - <<'PY'
 import zipfile
 base='/tmp/Projectivy-CLEAN-08-5-Raw-Alpha-Process-Reload.apk'
-out='/tmp/unsigned-clean09.apk'
+out='/tmp/unsigned-clean091.apk'
 repl={
     'classes4.dex': open('/tmp/classes4-clean09.dex','rb').read(),
     'AndroidManifest.xml': open('/tmp/AndroidManifest-clean09.xml','rb').read(),
@@ -88,37 +89,38 @@ assert set(repl).issubset(seen), (set(repl)-seen)
 PY
 unzip -t "$UNSIGNED" >/dev/null
 
-# 6) Decode and run every inherited CLEAN08.5 invariant plus CLEAN09 guards.
+# 6) Decode and run every inherited CLEAN08.5 invariant plus CLEAN09.1 guards.
 rm -rf /tmp/verify-clean09
 java -jar "$APKTOOL" d -f "$UNSIGNED" -o /tmp/verify-clean09 >/tmp/final-clean09-decode.log 2>&1
 python3 .github/clean09/verify-clean09.py "$UNSIGNED"
 
 # 7) Same final alignment/signing identity as the frozen custom builds.
-"$BT/zipalign" -P 16 -f 4 "$UNSIGNED" /tmp/aligned-clean09.apk
+"$BT/zipalign" -P 16 -f 4 "$UNSIGNED" /tmp/aligned-clean091.apk
 "$BT/apksigner" sign \
   --key /tmp/testkey.pk8 \
   --cert /tmp/testkey.x509.pem \
   --v1-signing-enabled true \
   --v2-signing-enabled true \
   --v3-signing-enabled true \
-  --out "$FINAL" /tmp/aligned-clean09.apk
-"$BT/apksigner" verify --verbose --print-certs "$FINAL" | tee /tmp/apksigner-clean09.txt
-"$BT/zipalign" -P 16 -c -v 4 "$FINAL" > /tmp/zipalign-clean09.txt
-"$BT/aapt" dump badging "$FINAL" | head -1 | tee /tmp/package-clean09.txt
-"$BT/aapt" dump xmltree "$FINAL" AndroidManifest.xml > /tmp/manifest-clean09.txt
+  --out "$FINAL" /tmp/aligned-clean091.apk
+"$BT/apksigner" verify --verbose --print-certs "$FINAL" | tee /tmp/apksigner-clean091.txt
+"$BT/zipalign" -P 16 -c -v 4 "$FINAL" > /tmp/zipalign-clean091.txt
+"$BT/aapt" dump badging "$FINAL" | head -1 | tee /tmp/package-clean091.txt
+"$BT/aapt" dump xmltree "$FINAL" AndroidManifest.xml > /tmp/manifest-clean091.txt
 
-grep -q "package: name='com.spocky.projengmenu'" /tmp/package-clean09.txt
-grep -q "versionName='4.72'" /tmp/package-clean09.txt
-grep -q 'RedLightLaunchActivity' /tmp/manifest-clean09.txt
+grep -q "package: name='com.spocky.projengmenu'" /tmp/package-clean091.txt
+grep -q "versionName='4.72'" /tmp/package-clean091.txt
+grep -q 'RedLightLaunchActivity' /tmp/manifest-clean091.txt
+grep -q 'plugin.video.redlight' /tmp/manifest-clean091.txt
 
-sha256sum "$FINAL" | tee /tmp/SHA256-clean09.txt
+sha256sum "$FINAL" | tee /tmp/SHA256-clean091.txt
 mkdir -p "$ART"
 cp -f "$FINAL" "$ART/"
 cp -f \
-  /tmp/SHA256-clean09.txt \
-  /tmp/apksigner-clean09.txt \
-  /tmp/zipalign-clean09.txt \
-  /tmp/package-clean09.txt \
-  /tmp/manifest-clean09.txt \
+  /tmp/SHA256-clean091.txt \
+  /tmp/apksigner-clean091.txt \
+  /tmp/zipalign-clean091.txt \
+  /tmp/package-clean091.txt \
+  /tmp/manifest-clean091.txt \
   /tmp/final-clean09-decode.log \
   "$ART/"
