@@ -11,6 +11,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 
 import java.lang.ref.WeakReference;
@@ -18,17 +19,19 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** CLEAN 11.1 foreground-only Red Light sync + Kodi provider retention lease. */
+/** CLEAN 12: cold-safe Red Light sync + Kodi retention lease + throttled warm refresh. */
 public final class RedLightDiscoveryProvider extends ContentProvider {
     private static final String TAG = "ProjectivyRedLight";
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
     private static final Object KODI_LEASE_LOCK = new Object();
     private static final Uri KODI_FILE_PROVIDER = Uri.parse("content://org.xbmc.kodi.file");
+    private static final long REFRESH_INTERVAL_MS = 5L * 60L * 1000L;
     private static volatile ContentProviderClient kodiProviderLease;
 
     private Application app;
     private Application.ActivityLifecycleCallbacks callbacks;
-    private volatile boolean complete;
+    private volatile boolean hasSuccessfulSync;
+    private volatile long lastSuccessfulSyncElapsed;
     private int attempt;
 
     @Override public boolean onCreate() {
@@ -40,49 +43,72 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
 
         callbacks = new Application.ActivityLifecycleCallbacks() {
             @Override public void onActivityResumed(Activity a) {
-                if (complete || a == null || !a.getClass().getName().equals("com.spocky.projengmenu.ui.home.MainActivity")) return;
+                if (a == null || !a.getClass().getName().equals("com.spocky.projengmenu.ui.home.MainActivity")) return;
+
+                long now = SystemClock.elapsedRealtime();
+                if (hasSuccessfulSync && lastSuccessfulSyncElapsed > 0L) {
+                    long age = now - lastSuccessfulSyncElapsed;
+                    if (age < REFRESH_INTERVAL_MS) {
+                        Log.i(TAG, "CLEAN12 refresh throttled ageMs=" + age
+                                + " remainingMs=" + (REFRESH_INTERVAL_MS - age));
+                        return;
+                    }
+                }
+
                 if (!RUNNING.compareAndSet(false, true)) return;
                 final int n = ++attempt;
+                final boolean refresh = hasSuccessfulSync;
                 final WeakReference<Activity> activityRef = new WeakReference<>(a);
-                Log.i(TAG, "CLEAN11.1 discovery armed attempt=" + n + " on MainActivity resume");
+                Log.i(TAG, "CLEAN12 discovery armed attempt=" + n
+                        + " mode=" + (refresh ? "refresh" : "initial")
+                        + " on MainActivity resume");
+
                 new Thread(() -> {
                     try {
                         try { Thread.sleep(1800L); } catch (InterruptedException ignored) {}
 
-                        // Preserve CLEAN11's safety rule: never acquire/query Kodi's provider
-                        // while Kodi's native core is cold. The stable provider client is only
-                        // acquired after port 9090 proves native Kodi is already alive.
+                        // Preserve CLEAN11/CLEAN11.1's safety rule: never acquire/query Kodi's
+                        // exported provider while its native core is cold. Port 9090 remains
+                        // the proven native-ready boundary on this Shield.
                         if (!isKodiNativeReady()) {
-                            Log.i(TAG, "CLEAN11.1 Kodi native not ready - cached rows retained; no provider lease");
+                            Log.i(TAG, "CLEAN12 Kodi native not ready - cached rows retained; no provider lease");
                             return;
                         }
 
                         boolean leased = ensureKodiProviderLease(app);
-                        Log.i(TAG, "CLEAN11.1 Kodi provider retention lease=" + leased);
-                        Log.i(TAG, "CLEAN11.1 Kodi native ready - starting Red Light sync");
+                        Log.i(TAG, "CLEAN12 Kodi provider retention lease=" + leased);
+                        Log.i(TAG, "CLEAN12 Kodi native ready - starting Red Light "
+                                + (refresh ? "refresh" : "initial sync"));
 
                         boolean ok = RedLightDiscoveryEngine.syncOnce(app);
                         if (ok) {
-                            complete = true;
-                            Log.i(TAG, "CLEAN11.1 discovery COMPLETE attempt=" + n);
-                            unregister();
+                            hasSuccessfulSync = true;
+                            lastSuccessfulSyncElapsed = SystemClock.elapsedRealtime();
+                            Log.i(TAG, "CLEAN12 discovery COMPLETE attempt=" + n
+                                    + " mode=" + (refresh ? "refresh" : "initial"));
+
+                            // CLEAN12 intentionally keeps the lifecycle callback registered.
+                            // A later Home resume may perform another sync, but only after the
+                            // five-minute freshness window has expired. This prevents CLEAN11.1's
+                            // long-lived process from leaving Continue Watching/In Progress stale.
                             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                                 Activity activity = activityRef.get();
                                 if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
                                 try {
-                                    Log.i(TAG, "CLEAN11.1 requesting Projectivy channel-model reload");
+                                    Log.i(TAG, "CLEAN12 requesting Projectivy channel-model reload");
                                     activity.recreate();
                                 } catch (Throwable t) {
-                                    Log.i(TAG, "CLEAN11.1 Projectivy reload request failed");
+                                    Log.i(TAG, "CLEAN12 Projectivy reload request failed");
                                 }
                             }, 450L);
                         } else {
-                            Log.i(TAG, "CLEAN11.1 discovery INCOMPLETE attempt=" + n + " - will retry on next MainActivity resume");
+                            Log.i(TAG, "CLEAN12 discovery INCOMPLETE attempt=" + n
+                                    + " - will retry on next eligible MainActivity resume");
                         }
                     } finally {
                         RUNNING.set(false);
                     }
-                }, "clean11-1-redlight").start();
+                }, "clean12-redlight").start();
             }
             @Override public void onActivityCreated(Activity a, Bundle b) {}
             @Override public void onActivityStarted(Activity a) {}
@@ -92,7 +118,7 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
             @Override public void onActivityDestroyed(Activity a) {}
         };
         app.registerActivityLifecycleCallbacks(callbacks);
-        Log.i(TAG, "CLEAN11.1 discovery provider armed with Kodi-native gate + retention lease");
+        Log.i(TAG, "CLEAN12 discovery provider armed with cold gate + retention lease + 5m refresh throttle");
         return true;
     }
 
@@ -111,8 +137,8 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
 
     /**
      * Hold a stable reference to Kodi's exported file provider only after native Kodi is ready.
-     * Android process importance follows active provider dependencies, so while Projectivy is the
-     * foreground Home process this should make Kodi substantially harder for LMK to evict.
+     * Android process importance follows active provider dependencies; CLEAN11.1 runtime testing
+     * proved this lowers Kodi from oom_score_adj 700 to 0 on Home and about 150 under app pressure.
      */
     private static boolean ensureKodiProviderLease(Context context) {
         if (kodiProviderLease != null) return true;
@@ -122,24 +148,17 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
                 ContentProviderClient client = context.getContentResolver()
                         .acquireContentProviderClient(KODI_FILE_PROVIDER);
                 if (client == null) {
-                    Log.i(TAG, "CLEAN11.1 Kodi provider lease unavailable");
+                    Log.i(TAG, "CLEAN12 Kodi provider lease unavailable");
                     return false;
                 }
                 kodiProviderLease = client;
-                Log.i(TAG, "CLEAN11.1 Kodi provider lease ACQUIRED");
+                Log.i(TAG, "CLEAN12 Kodi provider lease ACQUIRED");
                 return true;
             } catch (Throwable t) {
-                Log.e(TAG, "CLEAN11.1 Kodi provider lease failed", t);
+                Log.e(TAG, "CLEAN12 Kodi provider lease failed", t);
                 return false;
             }
         }
-    }
-
-    private void unregister() {
-        try {
-            if (app != null && callbacks != null) app.unregisterActivityLifecycleCallbacks(callbacks);
-        } catch (Throwable ignored) {}
-        callbacks = null;
     }
 
     @Override public String getType(Uri u) { return null; }
