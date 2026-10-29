@@ -41,16 +41,21 @@ required = [
     b'ProjectivyWeather',
     b'CLEAN13.1B Weather sibling added to Status Bar',
     b'CLEAN13.1B Weather native page opened',
-    b'CLEAN13.1B Weather native page populated',
+    b'CLEAN13.1D Weather native page populated',
     b'CLEAN13.1B location dialog opened',
     b'CLEAN13.1B status order=settings/status icons > weather > date > clock',
     b'CLEAN13.1B idle pill watcher attached',
     b'CLEAN13.1B idle pill iconsCollapsed=',
+    b'CLEAN13.1D show weather=',
+    b'CLEAN13.1D manual refresh requested',
+    b'CLEAN13.1D geocoded via',
     b'CLEAN13.1 weather refreshed',
+    b'WeatherMenuDrawable',
     b'Weather location',
     b'Temperature unit',
     b'Open-Meteo',
     b'CC BY 4.0',
+    b'api.postcodes.io/postcodes/',
     b'geocoding-api.open-meteo.com/v1/search',
     b'api.open-meteo.com/v1/forecast',
     b'temperature_2m,weather_code,is_day',
@@ -76,6 +81,6 @@ for forbidden in [
     if forbidden in d4:
         raise SystemExit('forbidden location marker present: ' + forbidden.decode())
 
-print('PASS: CLEAN13.1B scope exact: classes2.dex + classes4.dex only')
+print('PASS: CLEAN13.1D scope exact: classes2.dex + classes4.dex only')
 print('classes2 sha256', hashlib.sha256(d2).hexdigest())
 print('classes4 sha256', hashlib.sha256(d4).hexdigest())
