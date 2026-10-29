@@ -22,11 +22,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Build and verify CLEAN13.1E
-        run: bash .github/clean13_1/build-clean13-1e.sh
-      - name: Upload CLEAN13.1E
+      - name: Build and verify CLEAN13.1F
+        run: bash .github/clean13_1/build-clean13-1f.sh
+      - name: Upload CLEAN13.1F
         uses: actions/upload-artifact@v4
         with:
-          name: Projectivy-CLEAN-13-1E-Weather-UI-Polish
+          name: Projectivy-CLEAN-13-1F-Weather-Final-Polish
           path: /tmp/clean13-1-artifact/**
           if-no-files-found: error
