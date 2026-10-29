@@ -12,6 +12,7 @@ APKTOOL=/tmp/apktool.jar
 bash .github/clean13c/build-clean13c.sh
 test -f "$BASE"
 python3 .github/clean13d/prepare-clean13d.py
+python3 .github/clean13d/fix-bridge-compile.py
 
 PLATFORM="$(ls -d "$ANDROID_HOME"/platforms/android-* | sort -V | tail -1)"
 ANDROID_JAR="$PLATFORM/android.jar"
