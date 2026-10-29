@@ -78,10 +78,24 @@ helper = r'''    private static void placeWeatherBetweenStatusAndClock(ViewGroup
 '''
 s = s.replace(anchor, helper + anchor, 1)
 
-needle = '''                parent.addView(badge, index, lp);\n                Log.i(TAG, "CLEAN13.1 weather badge attached");\n            }\n\n            SharedPreferences p = prefs(activity);\n'''
-replacement = '''                parent.addView(badge, index, lp);\n                Log.i(TAG, "CLEAN13.1 weather badge attached");\n            }\n\n            placeWeatherBetweenStatusAndClock(parent, icons, clock, badge);\n            final ViewGroup orderParent = parent;\n            final View orderIcons = icons;\n            final View orderClock = clock;\n            final View orderBadge = badge;\n            activity.getWindow().getDecorView().postDelayed(new Runnable() {\n                @Override public void run() {\n                    placeWeatherBetweenStatusAndClock(orderParent, orderIcons, orderClock, orderBadge);\n                }\n            }, 100L);\n\n            SharedPreferences p = prefs(activity);\n'''
-assert s.count(needle) == 1, f'weather attachment anchor count={s.count(needle)}'
-s = s.replace(needle, replacement, 1)
+# Insert the ordering pass just before render() reads Weather prefs. Using positions
+# rather than an exact multi-line anchor makes this resilient to the earlier D/G
+# source transformations while still guaranteeing we are inside render().
+render_start = s.index('    private static void render(Activity activity) {')
+prefs_pos = s.index('            SharedPreferences p = prefs(activity);', render_start)
+order_block = r'''            placeWeatherBetweenStatusAndClock(parent, icons, clock, badge);
+            final ViewGroup orderParent = parent;
+            final View orderIcons = icons;
+            final View orderClock = clock;
+            final View orderBadge = badge;
+            activity.getWindow().getDecorView().postDelayed(new Runnable() {
+                @Override public void run() {
+                    placeWeatherBetweenStatusAndClock(orderParent, orderIcons, orderClock, orderBadge);
+                }
+            }, 100L);
+
+'''
+s = s[:prefs_pos] + order_block + s[prefs_pos:]
 
 for token in [
     'CLEAN13.1H native checkbox Show weather=',
