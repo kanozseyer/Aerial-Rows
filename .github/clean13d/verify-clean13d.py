@@ -16,11 +16,13 @@ changed=[k for k in b if b[k]!=c[k]]
 if sorted(changed)!=['classes2.dex','classes4.dex']:
     raise SystemExit('unexpected changed members: '+repr(changed))
 
-# classes4 must contain the CLEAN13D bridge while retaining the proven stack.
+# classes4 must contain the corrected CLEAN13D2 bridge while retaining the proven stack.
 d4=c['classes4.dex']
 for token in [
     b'ProjectivyStatusBar',
-    b'CLEAN13D native clock/date actions added',
+    b'CLEAN13D2 native clock/date actions added; unified default',
+    b'Show date',
+    b'Date format',
     b'Clock & date background',
     b'Combined with status icons',
     b'CLEAN13D visual mode=',
@@ -39,6 +41,6 @@ for token in [b'addClockDateActions', b'handleClockDateAction', b'StatusBarCusto
     if token not in d2:
         raise SystemExit('classes2 bridge marker missing: '+token.decode())
 
-print('PASS: CLEAN13D scope exact: only classes2.dex + classes4.dex changed')
+print('PASS: CLEAN13D2 scope exact: only classes2.dex + classes4.dex changed')
 print('classes2 sha256',hashlib.sha256(d2).hexdigest())
 print('classes4 sha256',hashlib.sha256(d4).hexdigest())
