@@ -1,0 +1,84 @@
+name: Projectivy Clock Renderer Trace
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clock-trace
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build frozen CLEAN12.1B APK
+        run: bash .github/clean121b/build-clean121b.sh
+
+      - name: Download JADX
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            -o /tmp/jadx.zip \
+            https://github.com/skylot/jadx/releases/download/v1.5.6/jadx-1.5.6.zip
+          mkdir -p /tmp/jadx
+          unzip -q /tmp/jadx.zip -d /tmp/jadx
+          /tmp/jadx/bin/jadx --version
+
+      - name: Decompile Projectivy main DEX and trace clock renderer
+        run: |
+          set -euo pipefail
+          APK=/tmp/Projectivy-CLEAN-12-1B-Description-Normalization-Fix.apk
+          OUT=/tmp/projectivy-jadx
+          TRACE=/tmp/clock-trace.txt
+          rm -rf "$OUT" "$TRACE"
+          /tmp/jadx/bin/jadx --no-res -d "$OUT" "$APK" >/tmp/jadx.log 2>&1 || true
+
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/projectivy-jadx/sources')
+          needles=[
+              'appearance_statusbar_clock_format_l1',
+              'appearance_statusbar_clock_format_l2',
+              'appearance_statusbar_clock_show',
+              'appearance_statusbar_clock_size',
+              'EEEE d MMMM',
+          ]
+          out=[]
+          for p in root.rglob('*.java'):
+              try: text=p.read_text(errors='replace')
+              except: continue
+              if any(n in text for n in needles):
+                  lines=text.splitlines()
+                  hits=[]
+                  for i,line in enumerate(lines):
+                      if any(n in line for n in needles): hits.append(i)
+                  out.append('\n'+'='*100+'\nFILE: '+str(p)+'\n'+'='*100)
+                  for i in hits:
+                      a=max(0,i-80); b=min(len(lines),i+121)
+                      out.append(f'\n--- context around line {i+1} ---')
+                      for j in range(a,b): out.append(f'{j+1:05d}: {lines[j]}')
+          Path('/tmp/clock-trace.txt').write_text('\n'.join(out))
+          print('\n'.join(out))
+          PY
+
+          echo '--- JADX errors/warnings tail ---'
+          tail -100 /tmp/jadx.log || true
+
+      - name: Upload clock trace
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-Clock-Trace
+          path: |
+            /tmp/clock-trace.txt
+            /tmp/jadx.log
+          if-no-files-found: error
