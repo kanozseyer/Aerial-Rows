@@ -1,0 +1,30 @@
+name: Projectivy CLEAN 13 RESCUE - Clock Reset
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean13-rescue-clock-reset
+    paths:
+      - '.github/clean13rescue/**'
+      - '.github/workflows/projectivy-clean-13-rescue-clock-reset.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN13 rescue
+        run: bash .github/clean13rescue/build-clean13-rescue.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-RESCUE-Clock-Reset
+          path: /tmp/clean13-rescue-artifact/*
