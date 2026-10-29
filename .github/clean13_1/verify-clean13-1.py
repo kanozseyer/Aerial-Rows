@@ -15,15 +15,37 @@ b = members(base)
 c = members(cand)
 if set(b) != set(c):
     raise SystemExit('archive member set changed')
-changed = [k for k in b if b[k] != c[k]]
-if changed != ['classes4.dex'] and sorted(changed) != ['classes4.dex']:
+changed = sorted(k for k in b if b[k] != c[k])
+if changed != ['classes2.dex', 'classes4.dex']:
     raise SystemExit('unexpected changed members: ' + repr(changed))
 
+# classes2: only native Status Bar/Clock page hooks.
+d2 = c['classes2.dex']
+for token in [
+    b'WeatherStatusBarBridge',
+    b'addWeatherParentAction',
+    b'handleWeatherParentAction',
+    b'populateWeatherPage',
+    b'handleWeatherPageAction',
+    b'isWeatherPage',
+    b'StatusBarCustomizationBridge',
+    b'addClockDateActions',
+    b'handleClockDateAction',
+]:
+    if token not in d2:
+        raise SystemExit('classes2 marker missing: ' + token.decode(errors='replace'))
+
+# classes4: corrected weather implementation + full frozen stack.
 d4 = c['classes4.dex']
 required = [
     b'ProjectivyWeather',
-    b'CLEAN13.1 weather actions added',
-    b'CLEAN13.1 weather badge attached',
+    b'CLEAN13.1B Weather sibling added to Status Bar',
+    b'CLEAN13.1B Weather native page opened',
+    b'CLEAN13.1B Weather native page populated',
+    b'CLEAN13.1B location dialog opened',
+    b'CLEAN13.1B status order=settings/status icons > weather > date > clock',
+    b'CLEAN13.1B idle pill watcher attached',
+    b'CLEAN13.1B idle pill iconsCollapsed=',
     b'CLEAN13.1 weather refreshed',
     b'Weather location',
     b'Temperature unit',
@@ -44,9 +66,16 @@ for token in required:
     if token not in d4:
         raise SystemExit('classes4 marker missing: ' + token.decode(errors='replace'))
 
-for forbidden in [b'ACCESS_FINE_LOCATION', b'ACCESS_COARSE_LOCATION', b'LocationManager', b'FusedLocationProvider']:
+# Weather remains manual city/postcode only.
+for forbidden in [
+    b'ACCESS_FINE_LOCATION',
+    b'ACCESS_COARSE_LOCATION',
+    b'LocationManager',
+    b'FusedLocationProvider',
+]:
     if forbidden in d4:
         raise SystemExit('forbidden location marker present: ' + forbidden.decode())
 
-print('PASS: CLEAN13.1 scope exact: classes4.dex only')
+print('PASS: CLEAN13.1B scope exact: classes2.dex + classes4.dex only')
+print('classes2 sha256', hashlib.sha256(d2).hexdigest())
 print('classes4 sha256', hashlib.sha256(d4).hexdigest())
