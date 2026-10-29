@@ -9,7 +9,8 @@ b = b.replace(
     'python3 .github/clean13_1/fix-weather-controls.py\n',
     'python3 .github/clean13_1/fix-weather-controls.py\n'
     'python3 .github/clean13_1/fix-weather-polish.py\n'
-    'python3 .github/clean13_1/fix-weather-final-polish.py\n', 1)
+    'python3 .github/clean13_1/fix-weather-final-polish.py\n'
+    'python3 .github/clean13_1/fix-weather-anr-guard.py\n', 1)
 
 repl = {
     'unsigned-clean13-1d.apk': 'unsigned-clean13-1f.apk',
@@ -33,9 +34,8 @@ repl = {
 for old,new in repl.items():
     b = b.replace(old,new)
 
-# Runtime marker expectations for the final-polish source.
 b = b.replace("'CLEAN13.1B status order=settings/status icons > weather > date > clock' \\\n",
-              "'CLEAN13.1F status order=settings/status icons > weather > date > clock' \\\n  'CLEAN13.1F status order=settings/status icons > date > clock (weather hidden)' \\\n")
+              "'CLEAN13.1F status order=settings/status icons > weather > date > clock' \\\n  'CLEAN13.1F status order=settings/status icons > date > clock (weather hidden)' \\\n  'CLEAN13.1F status order layout changed' \\\n")
 b = b.replace("'CLEAN13.1D show weather=' \\\n",
               "'CLEAN13.1F show weather=' \\\n  'CLEAN13.1F native Show weather checkbox added' \\\n  'CLEAN13.1F Weather menu icon applied=' \\\n")
 Path('/tmp/build-clean13-1f-expanded.sh').write_text(b)
@@ -43,7 +43,7 @@ Path('/tmp/build-clean13-1f-expanded.sh').write_text(b)
 vpath = Path('.github/clean13_1/verify-clean13-1.py')
 v = vpath.read_text()
 v = v.replace("b'CLEAN13.1B status order=settings/status icons > weather > date > clock',",
-              "b'CLEAN13.1F status order=settings/status icons > weather > date > clock',\n    b'CLEAN13.1F status order=settings/status icons > date > clock (weather hidden)',")
+              "b'CLEAN13.1F status order=settings/status icons > weather > date > clock',\n    b'CLEAN13.1F status order=settings/status icons > date > clock (weather hidden)',\n    b'CLEAN13.1F status order layout changed',")
 v = v.replace("b'CLEAN13.1D show weather=',",
               "b'CLEAN13.1F show weather=',\n    b'CLEAN13.1F native Show weather checkbox added',\n    b'CLEAN13.1F Weather menu icon applied=',")
 v = v.replace("print('PASS: CLEAN13.1D scope exact: classes2.dex + classes4.dex only')",
