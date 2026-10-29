@@ -1,0 +1,35 @@
+name: Projectivy CLEAN 10.2 - TV Show URI Navigation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean10-2-uri-navigation
+    paths:
+      - '.github/clean102/**'
+      - '.github/workflows/projectivy-clean-10-2-tv-show-uri-navigation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 10.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x .github/clean102/build-clean102.sh
+          .github/clean102/build-clean102.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-10-2-TV-Show-URI-Navigation
+          path: /tmp/clean102-artifact/*
+          if-no-files-found: error
