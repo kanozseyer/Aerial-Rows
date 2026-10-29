@@ -1,0 +1,31 @@
+name: Projectivy CLEAN 12.1B - Description Normalization Fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean12-1b-ignore-description-normalization
+    paths:
+      - '.github/clean121b/**'
+      - '.github/workflows/projectivy-clean-12-1b-description-normalization.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 12.1B
+        run: bash .github/clean121b/build-clean121b.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-12-1B-Description-Normalization-Fix
+          path: /tmp/clean121b-artifact/
+          if-no-files-found: error
