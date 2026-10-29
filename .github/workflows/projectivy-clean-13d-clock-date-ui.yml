@@ -1,0 +1,32 @@
+name: Projectivy CLEAN 13D - Clock Date UI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean13d-clock-date-ui
+    paths:
+      - '.github/clean13d/**'
+      - '.github/workflows/projectivy-clean-13d-clock-date-ui.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN13D
+        run: bash .github/clean13d/build-clean13d.sh
+      - name: Upload CLEAN13D
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13D-Clock-Date-UI
+          path: /tmp/clean13d-artifact/**
+          if-no-files-found: error
