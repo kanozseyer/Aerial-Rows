@@ -3,6 +3,7 @@ package com.spocky.projengmenu.embedded;
 import android.app.Activity;
 import android.app.Application;
 import android.content.ContentProvider;
+import android.content.ContentProviderClient;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
@@ -17,10 +18,13 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** CLEAN 11 foreground-only Red Light sync with Kodi-native readiness gate. */
+/** CLEAN 11.1 foreground-only Red Light sync + Kodi provider retention lease. */
 public final class RedLightDiscoveryProvider extends ContentProvider {
     private static final String TAG = "ProjectivyRedLight";
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
+    private static final Object KODI_LEASE_LOCK = new Object();
+    private static final Uri KODI_FILE_PROVIDER = Uri.parse("content://org.xbmc.kodi.file");
+    private static volatile ContentProviderClient kodiProviderLease;
 
     private Application app;
     private Application.ActivityLifecycleCallbacks callbacks;
@@ -40,45 +44,45 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
                 if (!RUNNING.compareAndSet(false, true)) return;
                 final int n = ++attempt;
                 final WeakReference<Activity> activityRef = new WeakReference<>(a);
-                Log.i(TAG, "CLEAN11 discovery armed attempt=" + n + " on MainActivity resume");
+                Log.i(TAG, "CLEAN11.1 discovery armed attempt=" + n + " on MainActivity resume");
                 new Thread(() -> {
                     try {
                         try { Thread.sleep(1800L); } catch (InterruptedException ignored) {}
 
-                        // Never poke Kodi's exported file provider while the native core is cold.
-                        // Kodi 21.3's provider delegates to native _requestJSON(), which is not
-                        // registered until Kodi's real native activity/core has started. Port
-                        // 9090 is already proven by CLEAN10.3 TV browsing as the native-ready
-                        // boundary on this Shield. If it is absent, leave Android TV's persisted
-                        // Red Light rows/cards untouched and retry on a future Home resume.
+                        // Preserve CLEAN11's safety rule: never acquire/query Kodi's provider
+                        // while Kodi's native core is cold. The stable provider client is only
+                        // acquired after port 9090 proves native Kodi is already alive.
                         if (!isKodiNativeReady()) {
-                            Log.i(TAG, "CLEAN11 Kodi native not ready - cached rows retained; sync deferred");
+                            Log.i(TAG, "CLEAN11.1 Kodi native not ready - cached rows retained; no provider lease");
                             return;
                         }
 
-                        Log.i(TAG, "CLEAN11 Kodi native ready - starting Red Light sync");
+                        boolean leased = ensureKodiProviderLease(app);
+                        Log.i(TAG, "CLEAN11.1 Kodi provider retention lease=" + leased);
+                        Log.i(TAG, "CLEAN11.1 Kodi native ready - starting Red Light sync");
+
                         boolean ok = RedLightDiscoveryEngine.syncOnce(app);
                         if (ok) {
                             complete = true;
-                            Log.i(TAG, "CLEAN11 discovery COMPLETE attempt=" + n);
+                            Log.i(TAG, "CLEAN11.1 discovery COMPLETE attempt=" + n);
                             unregister();
                             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                                 Activity activity = activityRef.get();
                                 if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
                                 try {
-                                    Log.i(TAG, "CLEAN11 requesting Projectivy channel-model reload");
+                                    Log.i(TAG, "CLEAN11.1 requesting Projectivy channel-model reload");
                                     activity.recreate();
                                 } catch (Throwable t) {
-                                    Log.i(TAG, "CLEAN11 Projectivy reload request failed");
+                                    Log.i(TAG, "CLEAN11.1 Projectivy reload request failed");
                                 }
                             }, 450L);
                         } else {
-                            Log.i(TAG, "CLEAN11 discovery INCOMPLETE attempt=" + n + " - will retry on next MainActivity resume");
+                            Log.i(TAG, "CLEAN11.1 discovery INCOMPLETE attempt=" + n + " - will retry on next MainActivity resume");
                         }
                     } finally {
                         RUNNING.set(false);
                     }
-                }, "clean11-redlight").start();
+                }, "clean11-1-redlight").start();
             }
             @Override public void onActivityCreated(Activity a, Bundle b) {}
             @Override public void onActivityStarted(Activity a) {}
@@ -88,7 +92,7 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
             @Override public void onActivityDestroyed(Activity a) {}
         };
         app.registerActivityLifecycleCallbacks(callbacks);
-        Log.i(TAG, "CLEAN11 dynamic discovery provider armed with Kodi-native readiness gate");
+        Log.i(TAG, "CLEAN11.1 discovery provider armed with Kodi-native gate + retention lease");
         return true;
     }
 
@@ -102,6 +106,32 @@ public final class RedLightDiscoveryProvider extends ContentProvider {
             return false;
         } finally {
             if (socket != null) try { socket.close(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /**
+     * Hold a stable reference to Kodi's exported file provider only after native Kodi is ready.
+     * Android process importance follows active provider dependencies, so while Projectivy is the
+     * foreground Home process this should make Kodi substantially harder for LMK to evict.
+     */
+    private static boolean ensureKodiProviderLease(Context context) {
+        if (kodiProviderLease != null) return true;
+        synchronized (KODI_LEASE_LOCK) {
+            if (kodiProviderLease != null) return true;
+            try {
+                ContentProviderClient client = context.getContentResolver()
+                        .acquireContentProviderClient(KODI_FILE_PROVIDER);
+                if (client == null) {
+                    Log.i(TAG, "CLEAN11.1 Kodi provider lease unavailable");
+                    return false;
+                }
+                kodiProviderLease = client;
+                Log.i(TAG, "CLEAN11.1 Kodi provider lease ACQUIRED");
+                return true;
+            } catch (Throwable t) {
+                Log.e(TAG, "CLEAN11.1 Kodi provider lease failed", t);
+                return false;
+            }
         }
     }
 
