@@ -1,0 +1,38 @@
+name: Projectivy CLEAN 13.1J - Weather Selector
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean13-1j-weather-toggle-display
+    paths:
+      - '.github/clean13_1j/**'
+      - '.github/workflows/projectivy-clean-13-1j-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build CLEAN13.1J
+        shell: bash
+        run: bash .github/clean13_1j/build-clean13-1j.sh
+
+      - name: Upload CLEAN13.1J artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-1J-Weather-Selector
+          path: /tmp/clean13-1j-artifact/*
+          if-no-files-found: error
