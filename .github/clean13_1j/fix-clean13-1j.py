@@ -25,14 +25,18 @@ new = '''            list.add(makeDropdown(fragment, ID_SHOW_PARENT, "Show weath
 assert s.count(old) == 1, f'Show weather checked-row count={s.count(old)}'
 s = s.replace(old, new, 1)
 
-# The original Weather implementation already owns ID_SHOW_ON / ID_SHOW_OFF and
-# handles them by updating KEY_SHOW, refreshing the current menu, and applying Home.
+# CLEAN13.1D intentionally broadened the original handler so the former direct
+# parent row can toggle as well. Keep that proven handler untouched. The child IDs
+# used by the restored dropdown are still handled by this same block.
 for token in [
     'ID_SHOW_ON',
     'ID_SHOW_OFF',
-    'if (id == ID_SHOW_ON || id == ID_SHOW_OFF)',
-    'p.edit().putBoolean(KEY_SHOW, id == ID_SHOW_ON).apply()',
+    'if (id == ID_SHOW_PARENT || id == ID_SHOW_ON || id == ID_SHOW_OFF)',
+    'boolean show = id == ID_SHOW_PARENT ? !p.getBoolean(KEY_SHOW, true) : id == ID_SHOW_ON',
+    'p.edit().putBoolean(KEY_SHOW, show).commit()',
     'refreshMenu(fragment)',
+    'renderLastHome()',
+    'CLEAN13.1D show weather=',
 ]:
     assert token in s, token
 
