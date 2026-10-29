@@ -11,9 +11,33 @@ ART=/tmp/clean121-artifact
 bash .github/clean103/build-clean103.sh
 test -f "$BASE"
 
-# Only after CLEAN10.3 has completed do we apply the CLEAN12.1 programme-sync
-# delta. Then recompile classes4.dex from the already-prepared source tree.
+# CLEAN09 changed the original CLEAN07 sync anchor from programIdentityIntent()
+# to programIntent(c,e). Normalize only that single call so CLEAN12.1 can reuse
+# the frozen CLEAN07 sync block as its exact patch anchor, then restore the proven
+# CLEAN10.3 programIntent(c,e) routing immediately after the differential patch.
+python3 - <<'PY'
+from pathlib import Path
+p=Path('.github/clean07/RedLightDiscoveryEngine.java')
+t=p.read_text()
+old='            v.put("intent_uri", programIntent(c, e).toUri(0));\n'
+new='            v.put("intent_uri", programIdentityIntent(c, raw(e.uri)).toUri(0));\n'
+if t.count(old) != 1:
+    raise SystemExit(f'CLEAN12.1 CLEAN09 intent normalization mismatch: {t.count(old)}')
+p.write_text(t.replace(old,new,1))
+PY
+
 python3 .github/clean121/prepare-clean121.py
+
+python3 - <<'PY'
+from pathlib import Path
+p=Path('.github/clean07/RedLightDiscoveryEngine.java')
+t=p.read_text()
+old='            v.put("intent_uri", programIdentityIntent(c, identity).toUri(0));\n'
+new='            v.put("intent_uri", programIntent(c, e).toUri(0));\n'
+if t.count(old) != 1:
+    raise SystemExit(f'CLEAN12.1 CLEAN10.3 intent restore mismatch: {t.count(old)}')
+p.write_text(t.replace(old,new,1))
+PY
 
 PLATFORM="$(ls -d "$ANDROID_HOME"/platforms/android-* | sort -V | tail -1)"
 ANDROID_JAR="$PLATFORM/android.jar"
