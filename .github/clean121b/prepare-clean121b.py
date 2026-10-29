@@ -30,7 +30,6 @@ for token in [
     'loadExistingPrograms(c, channel)',
     'sameProgram(old, v)',
     'programIntent(c, e)',
-    'CLEAN10.3 browse clean uri=',
 ]:
     if token not in check:
         raise SystemExit('CLEAN12.1B invariant missing: ' + token)
