@@ -35,27 +35,43 @@ def inject_after_locals(text, sig, injection, marker):
     return text[:start] + block + text[end:]
 
 
-def inject_before_every_return_void(text, sig, injection, marker):
+def patch_qg_population(text):
+    sig = '.method public final e0(Ljava/util/List;Landroid/os/Bundle;)V'
     start, end = method_span(text, sig)
     block = text[start:end]
-    if marker in block: raise SystemExit('already patched: ' + marker)
+    if 'addWeatherParentAction' in block:
+        raise SystemExit('qg.e0 already patched')
+
+    # Frozen CLEAN13D2 qg.e0 is .locals 6 (v0..v5). Projectivy then reuses p0
+    # as action temporaries, so p0 is NOT the fragment at method exit. Preserve
+    # the original qg fragment in a new v6 register before any native code runs.
+    m = re.search(r'(^\s*\.locals\s+)(\d+)(\s*$)', block, re.M)
+    if not m:
+        raise SystemExit('qg.e0 locals not found')
+    original = int(m.group(2))
+    if original != 6:
+        raise SystemExit(f'qg.e0 unexpected locals={original}; frozen base expected 6')
+    a,b = m.span(2)
+    block = block[:a] + '7' + block[b:]
+    m2 = re.search(r'(^\s*\.locals\s+7\s*$)', block, re.M)
+    pos = m2.end()
+    block = block[:pos] + '\n\n    move-object v6, p0\n' + block[pos:]
+
     needle = '    return-void'
-    count = block.count(needle)
-    if count < 1: raise SystemExit('return-void not found: ' + sig)
-    block = block.replace(needle, injection + '\n' + needle)
-    return text[:start] + block + text[end:], count
+    if block.count(needle) != 1:
+        raise SystemExit(f'qg.e0 expected exactly one return-void, got {block.count(needle)}')
+    call = ('    invoke-static {v6, p1}, '
+            'Lcom/spocky/projengmenu/embedded/WeatherStatusBarBridge;'
+            '->addWeatherParentAction(Ljava/lang/Object;Ljava/util/List;)V\n\n')
+    block = block.replace(needle, call + needle, 1)
+    return text[:start] + block + text[end:]
 
 # qg = native Appearance > Status Bar page.
-# CLEAN13.1B originally inserted only before qg.e0's last textual return. On Shield
-# that return is not the runtime exit path, so Weather never appeared. Insert the
-# sibling action before EVERY qg.e0 return instead: whichever branch Projectivy
-# takes, the Weather row is added exactly once on that execution path.
+# Critical runtime fix: preserve the original qg fragment because Projectivy
+# repurposes p0 while constructing rows. CLEAN13.1B passed the final p0 value,
+# which was an action object, so contextOf() failed and Weather never appeared.
 s = qg.read_text()
-s, qg_return_count = inject_before_every_return_void(
-    s,
-    '.method public final e0(Ljava/util/List;Landroid/os/Bundle;)V',
-    '    invoke-static {p0, p1}, Lcom/spocky/projengmenu/embedded/WeatherStatusBarBridge;->addWeatherParentAction(Ljava/lang/Object;Ljava/util/List;)V\n',
-    'addWeatherParentAction')
+s = patch_qg_population(s)
 s = inject_after_locals(
     s,
     '.method public final i0(Lmu1;)V',
@@ -63,7 +79,7 @@ s = inject_after_locals(
     'handleWeatherParentAction')
 qg.write_text(s)
 
-# pg = native Clock page. Reuse the exact native page shell for Weather only when the
+# pg = native Clock page. Reuse its exact page shell for Weather only when the
 # bridge-marked pg instance was opened from the new Weather sibling action.
 s = pg.read_text()
 s = inject_after_locals(
@@ -85,12 +101,11 @@ pg.write_text(s)
 
 qt = qg.read_text()
 pt = pg.read_text()
-if qt.count('addWeatherParentAction') != qg_return_count:
-    raise SystemExit(f'qg: expected {qg_return_count} addWeatherParentAction hooks, got {qt.count("addWeatherParentAction")}')
-if qt.count('handleWeatherParentAction') != 1:
-    raise SystemExit('qg: parent handler hook count mismatch')
+for token in ['move-object v6, p0', 'invoke-static {v6, p1}', 'addWeatherParentAction', 'handleWeatherParentAction']:
+    if qt.count(token) != 1:
+        raise SystemExit(f'qg: expected exactly one {token}, got {qt.count(token)}')
 for token in ['populateWeatherPage', 'handleWeatherPageAction', 'isWeatherPage', 'const-string v0, "Weather"']:
     if pt.count(token) != 1:
         raise SystemExit(f'pg: expected exactly one {token}, got {pt.count(token)}')
 
-print(f'PASS: CLEAN13.1C qg Weather sibling patched on all {qg_return_count} qg.e0 exit paths + pg native Weather page')
+print('PASS: CLEAN13.1C preserves qg fragment in v6; Weather sibling + native Weather page patched')
