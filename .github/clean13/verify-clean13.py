@@ -31,8 +31,8 @@ with zipfile.ZipFile(base) as zb, zipfile.ZipFile(cand) as zc:
         b'EEE d MMM',
         b'CLEAN12.1 SUCCESS channels=',
         b'CLEAN12 discovery COMPLETE attempt=',
+        b'CLEAN12 Kodi provider retention lease=',
         b'CLEAN10.3 browse clean uri=',
-        b'CLEAN11.1',
     ]
     missing = [x.decode('utf-8', 'replace') for x in required if x not in dex]
     if missing:
