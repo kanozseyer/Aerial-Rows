@@ -1,0 +1,31 @@
+name: Projectivy CLEAN 12.1 - Differential Red Light Programs
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean12-1-differential-program-sync
+    paths:
+      - '.github/clean121/**'
+      - '.github/workflows/projectivy-clean-12-1-differential-program-sync.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 12.1
+        run: bash .github/clean121/build-clean121.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-12-1-Differential-RedLight-Programs
+          path: /tmp/clean121-artifact/
+          if-no-files-found: error
