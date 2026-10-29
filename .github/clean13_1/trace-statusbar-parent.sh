@@ -2,6 +2,7 @@
 set -euo pipefail
 
 # Build exact frozen CLEAN13D2 base so we inspect the same APK lineage.
+# Trace v2: identify the parent Status Bar settings page and ordering hooks.
 bash .github/clean13d/build-clean13d.sh
 APK=/tmp/Projectivy-CLEAN-13D2-Date-Background-Fix.apk
 APKTOOL=/tmp/apktool.jar
