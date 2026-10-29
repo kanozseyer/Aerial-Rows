@@ -1,0 +1,30 @@
+name: Projectivy CLEAN 13B - Date After Resume
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean13b-date-after-resume
+    paths:
+      - '.github/clean13b/**'
+      - '.github/workflows/projectivy-clean-13b-date-after-resume.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and verify CLEAN 13B
+        run: bash .github/clean13b/build-clean13b.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13B-Date-After-Resume
+          path: /tmp/clean13b-artifact/*
