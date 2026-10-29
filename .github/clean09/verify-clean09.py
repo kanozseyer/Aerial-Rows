@@ -77,10 +77,17 @@ for token in [
 ]:
     assert token in launch, token
 
-assert 'com.spocky.projengmenu.embedded.RedLightLaunchActivity' in manifest
-assert 'android:exported="true"' in manifest
-assert 'android:noHistory="true"' in manifest
-assert 'android:launchMode="singleTop"' in manifest
+for token in [
+    'com.spocky.projengmenu.embedded.RedLightLaunchActivity',
+    'android:exported="true"',
+    'android:noHistory="true"',
+    'android:launchMode="singleTop"',
+    'android.intent.action.VIEW',
+    'android.intent.category.DEFAULT',
+    'android:scheme="plugin"',
+    'android:host="plugin.video.redlight"',
+]:
+    assert token in manifest, token
 
 with zipfile.ZipFile(apk) as z:
     c4 = z.read('classes4.dex')
@@ -105,4 +112,4 @@ with zipfile.ZipFile(apk) as z:
     assert b'CLEAN07I resume-sync' not in c4
     assert b'CLEAN07J live-adapter registered' not in c4
 
-print('PASS: CLEAN09 = verified frozen CLEAN08.5 + exact two-file movie/episode playback delta')
+print('PASS: CLEAN09.1 = verified frozen CLEAN08.5 + movie/episode bridge + narrow Red Light VIEW resolver')
