@@ -8,16 +8,13 @@ on:
     paths:
       - '.github/clean14/**'
       - '.github/workflows/projectivy-clean-14-universal-carousel-audit.yml'
-  pull_request:
-    branches:
-      - projectivy-clean13-1p-show-date-native-checkbox
-
 concurrency:
   group: projectivy-clean14-carousel-audit
   cancel-in-progress: true
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   audit:
@@ -35,7 +32,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Rebuild CLEAN13.1P and audit shared horizontal row implementation
+      - name: Download exact runtime-approved CLEAN13.1P artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-1P-Show-Date-Native-Checkbox
+          run-id: 41138220969
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/clean13-1p-approved
+
+      - name: Audit the exact frozen CLEAN13.1P horizontal row implementation
         shell: bash
         run: bash .github/clean14/audit-clean14.sh
 
