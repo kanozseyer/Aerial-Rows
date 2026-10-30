@@ -53,7 +53,7 @@ for marker in \
   'CLEAN13.1P native checkbox built builder=hv1 action=iv1 checked=' \
   'CLEAN13.1P Show date native action=' \
   'CLEAN13.1P Show date checked=' \
-  'CLEAN13D native clock/date actions added'; do
+  'CLEAN13D2 native clock/date actions added; unified default'; do
   strings /tmp/classes4-clean13-1p.dex | grep -Fq "$marker"
 done
 
