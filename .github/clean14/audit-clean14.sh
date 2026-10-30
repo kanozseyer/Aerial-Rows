@@ -16,6 +16,7 @@ test -s "$P_OUTER"
 rm -rf "$DECODED" "$OUT" /tmp/clean13-1p-approved/unpacked
 mkdir -p "$OUT" /tmp/clean13-1p-approved/unpacked
 unzip -q "$P_OUTER" -d /tmp/clean13-1p-approved/unpacked
+unzip -q /tmp/clean13-1p-approved/unpacked/clean13-1p-artifact.zip -d /tmp/clean13-1p-approved/unpacked
 test -s "$P_APK"
 ACTUAL_P_SHA="$(sha256sum "$P_APK" | awk '{print $1}')"
 if [ "$ACTUAL_P_SHA" != "$EXPECTED_P_SHA" ]; then
@@ -40,9 +41,6 @@ with zipfile.ZipFile(apk) as z, open(output, "w") as out:
         digest = hashlib.sha256(z.read(info.filename)).hexdigest()
         out.write(f"{digest}  {info.filename}\n")
 PYHASH
-for evidence in /tmp/apksigner-clean13-1p.txt /tmp/package-clean13-1p.txt; do
-  if [ -s "$evidence" ]; then cp "$evidence" "$OUT/"; fi
-done
 java -jar "$APKTOOL" d -r -f "$P_APK" -o "$DECODED" > "$OUT/apktool-decode.txt" 2>&1
 
 python3 - "$DECODED" "$REPORT" <<'PY'
