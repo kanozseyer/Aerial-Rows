@@ -1,0 +1,30 @@
+name: Local AI Candidate - Projectivy CLEAN 13.1G - Weather Native UI Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'local-ai/**'
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build CLEAN13.1G from frozen CLEAN13
+        run: bash .github/clean13_1g/build-clean13-1g.sh
+      - name: Upload CLEAN13.1G APK and verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-1G-Weather-Native-UI
+          path: /tmp/clean13-1g-artifact/
+          if-no-files-found: error
