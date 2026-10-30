@@ -1,0 +1,32 @@
+name: Projectivy CLEAN 13.1K - Weather Choice + Monochrome Icons
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean13-1k-weather-choice-mono-icons]
+    paths:
+      - '.github/clean13_1k/**'
+      - '.github/workflows/projectivy-clean-13-1k-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build CLEAN13.1K
+        shell: bash
+        run: bash .github/clean13_1k/build-clean13-1k.sh
+      - name: Upload CLEAN13.1K artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-1K-Weather-Choice-Monochrome-Icons
+          path: /tmp/clean13-1k-artifact
+          retention-days: 90
