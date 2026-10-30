@@ -15,8 +15,8 @@ REPORT="$OUT/CLEAN14-ROW-AUDIT.txt"
 test -s "$P_OUTER"
 rm -rf "$DECODED" "$OUT" /tmp/clean13-1p-approved/unpacked
 mkdir -p "$OUT" /tmp/clean13-1p-approved/unpacked
+unzip -t "$P_OUTER" > "$OUT/APPROVED-P-ARTIFACT-ZIP-TEST.txt"
 unzip -q "$P_OUTER" -d /tmp/clean13-1p-approved/unpacked
-unzip -q /tmp/clean13-1p-approved/unpacked/clean13-1p-artifact.zip -d /tmp/clean13-1p-approved/unpacked
 test -s "$P_APK"
 ACTUAL_P_SHA="$(sha256sum "$P_APK" | awk '{print $1}')"
 if [ "$ACTUAL_P_SHA" != "$EXPECTED_P_SHA" ]; then
