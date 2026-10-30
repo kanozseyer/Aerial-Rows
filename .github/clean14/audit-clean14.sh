@@ -16,6 +16,19 @@ rm -rf "$DECODED" "$OUT"
 mkdir -p "$OUT"
 sha256sum "$P_APK" > "$OUT/P-APK-SHA256.txt"
 unzip -t "$P_APK" > "$OUT/P-APK-ZIP-TEST.txt"
+python3 - "$P_APK" "$OUT/P-APK-MEMBERS-SHA256.txt" <<'PYHASH'
+import hashlib, sys, zipfile
+apk, output = sys.argv[1:]
+with zipfile.ZipFile(apk) as z, open(output, "w") as out:
+    for info in z.infolist():
+        if info.filename.startswith("META-INF/"):
+            continue
+        digest = hashlib.sha256(z.read(info.filename)).hexdigest()
+        out.write(f"{digest}  {info.filename}\\n")
+PYHASH
+for evidence in /tmp/apksigner-clean13-1p.txt /tmp/package-clean13-1p.txt; do
+  if [ -s "$evidence" ]; then cp "$evidence" "$OUT/"; fi
+done
 java -jar "$APKTOOL" d -r -f "$P_APK" -o "$DECODED" > "$OUT/apktool-decode.txt" 2>&1
 
 python3 - "$DECODED" "$REPORT" <<'PY'
