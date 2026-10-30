@@ -65,7 +65,6 @@ jobs:
             grep -RniE 'name="[^"]*(side|panel|menu|settings|preference|navigation|drawer|dock|icon)[^"]*"' "$AOUT/res/values" 2>/dev/null | head -1400 || true
           } > "$OUT/SUMMARY.txt"
 
-          # Copy the highest-value named sources when present.
           mkdir -p "$OUT/sources"
           find "$JOUT/sources/com/spocky/projengmenu/ui/sidePanels" -type f -name '*.java' 2>/dev/null | while read -r f; do
             rel="${f#$JOUT/sources/}"
@@ -79,6 +78,24 @@ jobs:
             mkdir -p "$(dirname "$dst")"
             cp "$f" "$dst"
           done || true
+
+          # Exact obfuscated binders identified by the first pass.
+          for cls in gv hv pq0 cb3 gs1 lo2 wy1 wj2 ko2; do
+            f="$JOUT/sources/defpackage/${cls}.java"
+            if [ -f "$f" ]; then
+              mkdir -p "$OUT/sources/defpackage"
+              cp "$f" "$OUT/sources/defpackage/${cls}.java"
+            fi
+            s="$(find "$AOUT" -name "${cls}.smali" -print -quit)"
+            if [ -n "$s" ]; then
+              mkdir -p "$OUT/smali/defpackage"
+              cp "$s" "$OUT/smali/defpackage/${cls}.smali"
+            fi
+          done
+
+          for layout in icon_header_item.xml row_header.xml leanback_preference.xml preference.xml; do
+            [ -f "$AOUT/res/layout/$layout" ] && cp "$AOUT/res/layout/$layout" "$OUT/$layout"
+          done
 
           echo '===== SUMMARY PREVIEW ====='
           sed -n '1,800p' "$OUT/SUMMARY.txt"
