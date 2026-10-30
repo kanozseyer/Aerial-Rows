@@ -59,8 +59,8 @@ for marker in \
   'CLEAN13.1P manual refresh button clicked' \
   'CLEAN13.1P refresh start force=' \
   'CLEAN13.1P refresh completed success=' \
-  'refreshActiveWeatherPage' \\
-  'renderLastHome' \\
+  'refreshActiveWeatherPage' \
+  'renderLastHome' \
   'Updating...' \
   'CLEAN13.1P native checkbox built builder=hv1 action=iv1 checked=' \
   'CLEAN13.1P Show date native action=' \
@@ -145,7 +145,7 @@ printf '%s\n' \
   '- The Show Date action continues to save the checked state and refresh the native clock/date format.' \
   '- Manual Weather refresh now starts from the page Context, bypasses the Activity-only gate, and updates the last-updated row on completion.' \
   '- Manual refresh is forced even when Show Weather is off; automatic Home refresh retains its visibility and 30-minute cache rules.' \
-  '- Existing Home and active Weather-page refresh callbacks remain in place.' \\
+  '- Existing Home and active Weather-page refresh callbacks remain in place.' \
   '- Existing Clock format, Date format and Clock & date background options are retained.' \
   '- Only classes4.dex differs from CLEAN13.1O before signing.' \
   '- Runtime testing on the Shield is still required before freezing P.' \
