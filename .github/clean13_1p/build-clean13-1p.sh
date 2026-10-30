@@ -13,11 +13,15 @@ WEATHER=.github/clean13_1/WeatherStatusBarBridge.java
 bash .github/clean13_1o/build-clean13-1o.sh
 test -s "$O_APK"
 
-# Then patch only the Clock/Date bridge and rebuild classes4.dex.
+# Then patch the Clock/Date bridge plus the manual Weather refresh handler; rebuild classes4.dex.
 python3 .github/clean13_1p/fix-clean13-1p.py
 
 grep -Fq 'CLEAN13.1O native checkbox built builder=hv1 action=iv1 checked=' "$WEATHER"
 grep -Fq 'CLEAN13.1O show weather checked=' "$WEATHER"
+grep -Fq 'CLEAN13.1P manual refresh button clicked' "$WEATHER"
+grep -Fq 'CLEAN13.1P manual refresh dispatched context=' "$WEATHER"
+grep -Fq 'CLEAN13.1P refresh completed success=' "$WEATHER"
+grep -Fq 'startRefresh(context, fragment, a, true)' "$WEATHER"
 grep -Fq 'CLEAN13.1P native checkbox built builder=hv1 action=iv1 checked=' "$BRIDGE"
 grep -Fq 'CLEAN13.1P Show date native action=' "$BRIDGE"
 grep -Fq 'CLEAN13.1P Show date checked=' "$BRIDGE"
@@ -50,6 +54,10 @@ for marker in \
   'CLEAN13.1G Weather parent uses native Projectivy cloud icon' \
   'CLEAN13.1O native checkbox built builder=hv1 action=iv1 checked=' \
   'CLEAN13.1O show weather checked=' \
+  'CLEAN13.1P manual refresh button clicked' \
+  'CLEAN13.1P refresh start force=' \
+  'CLEAN13.1P refresh completed success=' \
+  'Updating…' \
   'CLEAN13.1P native checkbox built builder=hv1 action=iv1 checked=' \
   'CLEAN13.1P Show date native action=' \
   'CLEAN13.1P Show date checked=' \
@@ -96,6 +104,8 @@ assert changed == ['classes4.dex'], changed
 for token in [
     b'CLEAN13.1O native checkbox built builder=hv1 action=iv1 checked=',
     b'CLEAN13.1O show weather checked=',
+    b'CLEAN13.1P manual refresh button clicked',
+    b'CLEAN13.1P refresh completed success=',
     b'CLEAN13.1P native checkbox built builder=hv1 action=iv1 checked=',
     b'CLEAN13.1P Show date native action=',
     b'CLEAN13.1P Show date checked=',
@@ -128,7 +138,9 @@ printf '%s\n' \
   '- Built on top of the user-approved, runtime-tested CLEAN13.1O.' \
   '- CLEAN13.1O Show Weather checkbox, Weather page, native cloud icon/background and status order are preserved.' \
   '- Show Date uses the same DEX-audited Projectivy builder path: cb3.q0(yh3) -> hv1 -> cb3.z0(lu1) -> iv1.' \
-  '- The Show Date action continues to save the checked state and refresh the native clock/date format.' \
+  '- The Show Date action continues to save the checked state and refresh the native clock/date format.' \\
+  '- Manual Weather refresh now starts from the page Context, bypasses the Activity-only gate, and updates the last-updated row on completion.' \\
+  '- Manual refresh is forced even when Show Weather is off; automatic Home refresh retains its visibility and 30-minute cache rules.' \\
   '- Existing Clock format, Date format and Clock & date background options are retained.' \
   '- Only classes4.dex differs from CLEAN13.1O before signing.' \
   '- Runtime testing on the Shield is still required before freezing P.' \
