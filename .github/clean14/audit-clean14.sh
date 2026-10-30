@@ -61,7 +61,9 @@ interesting = re.compile(
     r"onScroll|onTouch|onKey|onInterceptTouchEvent|focusSearch|"
     r"dispatchKeyEvent|setSelectedPositionSmooth|getSelectedPosition|"
     r"setOverScrollMode|EdgeEffect|translationX|ViewPropertyAnimator|"
-    r"setOn[A-Za-z]+Listener|setOnTouchInterceptListener",
+    r"setOnScrollListener|setOnTouchListener|setOnKeyInterceptListener|"
+    r"setOnTouchInterceptListener|onChildViewHolderSelected|"
+    r"setOnChildViewHolderSelectedListener|addOnChildViewHolderSelectedListener",
     re.I,
 )
 target_classes = {
