@@ -91,6 +91,13 @@ public final class CLEAN15ChannelRefreshBridge {
                         settings.getPaddingBottom());
                 button.setScaleType(settings.getScaleType());
                 button.setImageResource(android.R.drawable.ic_popup_sync);
+                try {
+                    Field tintColor = settings.getClass().getField("x");
+                    Method tintMethod = button.getClass().getMethod("a", int.class);
+                    tintMethod.invoke(button, tintColor.getInt(settings));
+                } catch (Throwable ignored) {
+                    // The regular w12 tint callback below will apply the current row tint.
+                }
                 button.setFocusable(true);
                 button.setFocusableInTouchMode(true);
                 button.setClickable(true);
