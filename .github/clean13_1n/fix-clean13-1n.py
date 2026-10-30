@@ -101,14 +101,22 @@ old = '''            if (id == ID_SHOW_PARENT || id == ID_SHOW_ON || id == ID_SH
             }
 '''
 new = '''            if (id == ID_SHOW_PARENT) {
-                Method checked = findMethod(action.getClass(), "c");
-                boolean show = ((Boolean) checked.invoke(action)).booleanValue();
+                boolean nativeCheckbox = "iv1".equals(action.getClass().getName());
+                boolean show;
+                if (nativeCheckbox) {
+                    Method checked = findMethod(action.getClass(), "c");
+                    show = ((Boolean) checked.invoke(action)).booleanValue();
+                } else {
+                    // G's safe visible fallback is a normal action row, not an hv1 checkbox.
+                    show = !p.getBoolean(KEY_SHOW, true);
+                }
                 p.edit().putBoolean(KEY_SHOW, show).commit();
                 refreshMenu(fragment);
                 renderLastHome();
                 Activity a = activityOf(fragment);
                 if (a != null) render(a);
-                Log.i(TAG, "CLEAN13.1N show weather checkbox=" + show);
+                Log.i(TAG, "CLEAN13.1N show weather checkbox=" + show
+                        + " native=" + nativeCheckbox);
                 return true;
             }
 '''
