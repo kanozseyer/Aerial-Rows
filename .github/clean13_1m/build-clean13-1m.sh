@@ -8,6 +8,7 @@ FINAL=/tmp/Projectivy-CLEAN-13-1M-Weather-Native-Checkbox.apk
 ART=/tmp/clean13-1m-artifact
 
 # Rebuild the user-approved I baseline. This deliberately bypasses J/K/L.
+# CI trigger: CLEAN13.1M native-checkbox isolation.
 bash .github/clean13_1i/build-clean13-1i.sh
 test -f "$I_APK"
 
