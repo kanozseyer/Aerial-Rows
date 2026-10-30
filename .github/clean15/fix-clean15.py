@@ -51,7 +51,7 @@ w12 = find_one("w12.smali")
 patch_method(
     w12,
     ".method public final b(IZ)V",
-    "    invoke-virtual {{p0}}, Lw12;->getReorderView()Lcom/spocky/projengmenu/ui/home/header/IconHeaderImageView;\n",
+    "    invoke-virtual {p0}, Lw12;->getReorderView()Lcom/spocky/projengmenu/ui/home/header/IconHeaderImageView;\n",
     f"    invoke-static {{p0, p1}}, {bridge}->tint(Landroid/view/ViewGroup;I)V\n",
     "CLEAN15 w12 icon tint"
 )
