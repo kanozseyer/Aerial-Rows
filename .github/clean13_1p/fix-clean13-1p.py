@@ -329,6 +329,8 @@ new_method = r'''    private static void maybeRefresh(final Activity activity, f
 
                                 Activity a = activityRef.get();
                                 if (a != null && !a.isFinishing() && !a.isDestroyed()) render(a);
+                                renderLastHome();
+                                refreshActiveWeatherPage();
 
                                 Log.i(TAG, "CLEAN13.1P refresh completed success=" + completed
                                         + " fetchedAt=" + p.getLong(KEY_FETCHED, 0L)
@@ -359,6 +361,8 @@ for token in [
     'KEY_REFRESHING',
     'Update failed - ',
     'startRefresh(context, fragment, a, true)',
+    'renderLastHome();',
+    'refreshActiveWeatherPage();',
 ]:
     assert token in w, token
 
