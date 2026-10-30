@@ -9,7 +9,7 @@ on:
       - '.github/clean14/**'
       - '.github/workflows/projectivy-clean-14-universal-carousel-audit.yml'
 concurrency:
-  group: projectivy-clean14-carousel-audit
+  group: projectivy-clean14-approved-p-audit
   cancel-in-progress: true
 
 permissions:
