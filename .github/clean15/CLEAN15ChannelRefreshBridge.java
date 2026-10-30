@@ -317,6 +317,7 @@ public final class CLEAN15ChannelRefreshBridge {
 
     private static boolean syncRedLightWithoutLaunchingKodi(Context context) {
         AtomicBoolean providerRunning = null;
+        boolean acquiredProviderGuard = false;
         try {
             Class<?> provider = Class.forName(
                     "com.spocky.projengmenu.embedded.RedLightDiscoveryProvider");
@@ -331,6 +332,7 @@ public final class CLEAN15ChannelRefreshBridge {
                 Log.i(TAG, "CLEAN15 Red Light sync skipped; provider sync already active");
                 return false;
             }
+            acquiredProviderGuard = true;
 
             Method ready = provider.getDeclaredMethod("isKodiNativeReady");
             ready.setAccessible(true);
@@ -357,7 +359,9 @@ public final class CLEAN15ChannelRefreshBridge {
             Log.e(TAG, "CLEAN15 Red Light manual sync failed", error);
             return false;
         } finally {
-            if (providerRunning != null) providerRunning.set(false);
+            if (acquiredProviderGuard && providerRunning != null) {
+                providerRunning.set(false);
+            }
         }
     }
 
