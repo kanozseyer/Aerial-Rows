@@ -17,10 +17,10 @@ ART=/tmp/clean15-artifact
 
 rm -rf "$UNPACKED" "$DECODED" "$ART"
 mkdir -p "$UNPACKED" "$ART"
-test -s "$OUTER" || { echo "Missing downloaded CLEAN14 artifact: $OUTER"; find "$DOWNLOAD" -maxdepth 3 -type f -printf '%p %s bytes\\n'; exit 1; }
+test -s "$OUTER" || { echo "Missing downloaded CLEAN14 artifact: $OUTER"; find "$DOWNLOAD" -maxdepth 3 -type f -printf '%p %s bytes\n'; exit 1; }
 unzip -t "$OUTER" > "$ART/BASE-CLEAN14-artifact-zip-test.txt"
 unzip -q "$OUTER" -d "$UNPACKED"
-test -s "$BASE_APK" || { echo "Missing approved CLEAN14 APK: $BASE_APK"; find "$UNPACKED" -maxdepth 4 -type f -printf '%p %s bytes\\n'; exit 1; }
+test -s "$BASE_APK" || { echo "Missing approved CLEAN14 APK: $BASE_APK"; find "$UNPACKED" -maxdepth 4 -type f -printf '%p %s bytes\n'; exit 1; }
 
 ACTUAL_CLEAN14_SHA="$(sha256sum "$BASE_APK" | awk '{print $1}')"
 if [ "$ACTUAL_CLEAN14_SHA" != "$EXPECTED_CLEAN14_SHA" ]; then
@@ -186,7 +186,7 @@ grep -Fq "package: name='com.spocky.projengmenu' versionCode='97' versionName='4
 sha256sum "$FINAL" | tee "$ART/SHA256-clean15.txt"
 cp "$FINAL" "$ART/"
 
-printf '%s\\n' \
+printf '%s\n' \
   'CLEAN15 Channel Row Refresh candidate' \
   '- Built directly from the exact runtime-approved CLEAN14 APK.' \
   '- Preserves CLEAN14 universal carousel, Weather, Show Date, native Weather icon/background and status order.' \
