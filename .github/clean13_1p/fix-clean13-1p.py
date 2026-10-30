@@ -4,9 +4,12 @@ from pathlib import Path
 p = Path('.github/clean13d/StatusBarCustomizationBridge.java')
 s = p.read_text()
 
+# The CLEAN13D2 preparation stage changes Show Date into an On/Off dropdown.
+# Replace that exact post-build row with the same audited Projectivy Boolean
+# checkbox builder used by CLEAN13.1O Show Weather.
 for token in [
-    'list.add(makeCheckbox(fragment, context, ID_SHOW_DATE, "Show date"',
-    'public static boolean handleClockDateAction(Object fragment, Object action)',
+    'list.add(makeDropdown(fragment, ID_SHOW_DATE, "Show date",',
+    'if (id == ID_SHOW_DATE_ON) e.putBoolean(KEY_SHOW_DATE, true);',
     'private static Object makeCheckbox(Object fragment, Context context, long id, String title, boolean checked)',
 ]:
     assert token in s, token
@@ -15,8 +18,16 @@ if 'import java.lang.reflect.Constructor;' not in s:
     s = s.replace('import java.lang.reflect.Field;\n',
                   'import java.lang.reflect.Constructor;\nimport java.lang.reflect.Field;\n', 1)
 
-old_row = '''            list.add(makeCheckbox(fragment, context, ID_SHOW_DATE, "Show date",
-                    p.getBoolean(KEY_SHOW_DATE, true)));
+old_constants = '''    private static final long ID_SHOW_DATE_ON = 0x13D00201L;
+    private static final long ID_SHOW_DATE_OFF = 0x13D00202L;
+'''
+assert s.count(old_constants) == 1
+s = s.replace(old_constants, '', 1)
+
+old_row = '''            list.add(makeDropdown(fragment, ID_SHOW_DATE, "Show date",
+                    p.getBoolean(KEY_SHOW_DATE, true) ? "On" : "Off",
+                    new long[]{ID_SHOW_DATE_ON, ID_SHOW_DATE_OFF},
+                    new String[]{"On", "Off"}));
 '''
 new_row = '''            boolean showDateChecked = p.getBoolean(KEY_SHOW_DATE, true);
             Object showDateAction;
@@ -38,10 +49,9 @@ new_row = '''            boolean showDateChecked = p.getBoolean(KEY_SHOW_DATE, t
 assert s.count(old_row) == 1, f'Show Date row anchor={s.count(old_row)}'
 s = s.replace(old_row, new_row, 1)
 
-old_handler = '''            if (id == ID_SHOW_DATE) {
-                Method checked = findMethod(action.getClass(), "c");
-                e.putBoolean(KEY_SHOW_DATE, ((Boolean) checked.invoke(action)).booleanValue());
-            } else if (id == ID_CLOCK_SYSTEM) e.putString(KEY_CLOCK, CLOCK_SYSTEM);
+old_handler = '''            if (id == ID_SHOW_DATE_ON) e.putBoolean(KEY_SHOW_DATE, true);
+            else if (id == ID_SHOW_DATE_OFF) e.putBoolean(KEY_SHOW_DATE, false);
+            else if (id == ID_CLOCK_SYSTEM) e.putString(KEY_CLOCK, CLOCK_SYSTEM);
 '''
 new_handler = '''            boolean showDateChecked = p.getBoolean(KEY_SHOW_DATE, true);
             if (id == ID_SHOW_DATE) {
@@ -167,7 +177,8 @@ for token in [
 for forbidden in [
     'getDeclaredConstructor(Context.class)',
     'Class.forName("hv1")',
-    'makeCheckbox(fragment, context, ID_SHOW_DATE',
+    'ID_SHOW_DATE_ON',
+    'ID_SHOW_DATE_OFF',
     'private static Object makeCheckbox(',
 ]:
     assert forbidden not in s, forbidden
