@@ -222,10 +222,12 @@ w = w.replace(old_refresh_row, new_refresh_row, 1)
 
 old_refresh_handler = '''            if (id == ID_REFRESH) {
                 Activity a = activityOf(fragment);
+                Log.i(TAG, "CLEAN13.1D manual refresh requested");
                 if (a != null) {
                     maybeRefresh(a, true);
                     render(a);
                 }
+                refreshMenu(fragment);
                 return true;
             }
 '''
