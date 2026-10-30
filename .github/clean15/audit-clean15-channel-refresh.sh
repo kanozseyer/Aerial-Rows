@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+bash -n "$0"
 
 OUT=/tmp/clean15-audit
 DOWNLOAD=/tmp/clean14-approved
@@ -30,14 +31,14 @@ mkdir -p "$OUT/smali"
 for name in w12 r12 w40 v40 e70 i5 m60 jo4 f23 hv ui2 eb3; do
   while IFS= read -r file; do
     [ -n "$file" ] || continue
-    rel="${file#"$DECODED"/}"
+    rel="${file#${DECODED}/}"
     dest="$OUT/smali/${rel//\//__}"
     cp "$file" "$dest"
   done < <(find "$DECODED" -type f -name "$name.smali" | sort)
 done
 while IFS= read -r file; do
   [ -n "$file" ] || continue
-  rel="${file#"$DECODED"/}"
+  rel="${file#${DECODED}/}"
   dest="$OUT/smali/${rel//\//__}"
   cp "$file" "$dest"
 done < <(find "$DECODED" -type f -iname '*MainFragment*.smali' | sort)
