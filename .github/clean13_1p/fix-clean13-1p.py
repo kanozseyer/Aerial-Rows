@@ -185,3 +185,181 @@ for forbidden in [
 
 p.write_text(s)
 print('PASS: CLEAN13.1P Show Date uses the same audited native checkbox factory as CLEAN13.1O Show Weather')
+
+
+# CLEAN13.1P also fixes the manual Weather refresh path. The previous handler
+# required the settings page's Context to be an Activity, which is not guaranteed
+# for Projectivy's settings fragment. Start the request from its Context instead.
+weather_path = Path('.github/clean13_1/WeatherStatusBarBridge.java')
+w = weather_path.read_text()
+
+for token in [
+    'private static final String KEY_FETCHED = "fetched_at";',
+    'list.add(makeAction(fragment, ID_REFRESH, "Refresh weather", lastUpdatedLabel(p)));',
+    'if (id == ID_REFRESH) {',
+    'private static void maybeRefresh(final Activity activity, final boolean force) {',
+    'private static double[] geocode(Context context, String query) throws Exception {',
+]:
+    assert token in w, token
+
+w = w.replace(
+    '    private static final String KEY_FETCHED = "fetched_at";\n',
+    '    private static final String KEY_FETCHED = "fetched_at";\n'
+    '    private static final String KEY_REFRESHING = "refreshing";\n'
+    '    private static final String KEY_REFRESH_ERROR = "refresh_error";\n',
+    1)
+
+old_refresh_row = '''            list.add(makeAction(fragment, ID_REFRESH, "Refresh weather", lastUpdatedLabel(p)));
+'''
+new_refresh_row = '''            String refreshLabel = p.getBoolean(KEY_REFRESHING, false)
+                    ? "Updating…"
+                    : (p.getBoolean(KEY_REFRESH_ERROR, false)
+                    ? "Update failed - " + lastUpdatedLabel(p) : lastUpdatedLabel(p));
+            list.add(makeAction(fragment, ID_REFRESH, "Refresh weather", refreshLabel));
+'''
+assert w.count(old_refresh_row) == 1, f'refresh row anchor={w.count(old_refresh_row)}'
+w = w.replace(old_refresh_row, new_refresh_row, 1)
+
+old_refresh_handler = '''            if (id == ID_REFRESH) {
+                Activity a = activityOf(fragment);
+                if (a != null) {
+                    maybeRefresh(a, true);
+                    render(a);
+                }
+                return true;
+            }
+'''
+new_refresh_handler = '''            if (id == ID_REFRESH) {
+                Activity a = activityOf(fragment);
+                Log.i(TAG, "CLEAN13.1P manual refresh button clicked page="
+                        + fragment.getClass().getName());
+                startRefresh(context, fragment, a, true);
+                if (a != null) render(a);
+                Log.i(TAG, "CLEAN13.1P manual refresh dispatched context="
+                        + context.getClass().getName()
+                        + " activity=" + (a != null));
+                return true;
+            }
+'''
+assert w.count(old_refresh_handler) == 1, f'refresh handler anchor={w.count(old_refresh_handler)}'
+w = w.replace(old_refresh_handler, new_refresh_handler, 1)
+
+start = w.index('    private static void maybeRefresh(final Activity activity, final boolean force) {')
+end = w.index('    private static double[] geocode(Context context, String query) throws Exception {', start)
+old_method = w[start:end]
+new_method = r'''    private static void maybeRefresh(final Activity activity, final boolean force) {
+        if (activity == null) return;
+        startRefresh(activity, null, activity, force);
+    }
+
+    private static void startRefresh(final Context context, final Object menuFragment,
+                                     final Activity activity, final boolean force) {
+        if (context == null) {
+            Log.e(TAG, "CLEAN13.1P refresh has no Context force=" + force);
+            return;
+        }
+        Context application = context.getApplicationContext();
+        final Context app = application != null ? application : context;
+        final SharedPreferences p = prefs(app);
+
+        // Automatic Home refresh respects Show Weather. An explicit user refresh
+        // always works, even when the badge itself is currently hidden.
+        if (!force && !p.getBoolean(KEY_SHOW, true)) return;
+        final String query = p.getString(KEY_QUERY, "").trim();
+        if (query.length() == 0) {
+            Log.w(TAG, "CLEAN13.1P refresh skipped: no location configured force=" + force);
+            return;
+        }
+
+        long fetched = p.getLong(KEY_FETCHED, 0L);
+        boolean haveCoords = p.contains(KEY_LAT) && p.contains(KEY_LON);
+        if (!force && haveCoords && fetched > 0L
+                && System.currentTimeMillis() - fetched < REFRESH_MS) return;
+
+        if (!IN_FLIGHT.compareAndSet(false, true)) {
+            Log.i(TAG, "CLEAN13.1P refresh already in flight force=" + force);
+            if (menuFragment != null) refreshMenu(menuFragment);
+            return;
+        }
+
+        p.edit().putBoolean(KEY_REFRESHING, true).putBoolean(KEY_REFRESH_ERROR, false).apply();
+        if (menuFragment != null) refreshMenu(menuFragment);
+        Log.i(TAG, "CLEAN13.1P refresh start force=" + force
+                + " manual=" + (menuFragment != null) + " query=" + query);
+
+        final WeakReference<Activity> activityRef = new WeakReference<>(activity);
+        final WeakReference<Object> menuRef = new WeakReference<>(menuFragment);
+        try {
+            EXEC.execute(new Runnable() {
+                @Override public void run() {
+                    boolean success = false;
+                    try {
+                        SharedPreferences current = prefs(app);
+                        if (!query.equals(current.getString(KEY_QUERY, "").trim())) {
+                            throw new IOException("Weather location changed before refresh");
+                        }
+
+                        double lat;
+                        double lon;
+                        if (current.contains(KEY_LAT) && current.contains(KEY_LON)) {
+                            lat = Double.parseDouble(current.getString(KEY_LAT, "0"));
+                            lon = Double.parseDouble(current.getString(KEY_LON, "0"));
+                        } else {
+                            double[] coords = geocode(app, query);
+                            if (coords == null) throw new IOException("No geocoding result for " + query);
+                            lat = coords[0];
+                            lon = coords[1];
+                        }
+                        fetchCurrent(app, query, lat, lon);
+                        success = true;
+                    } catch (Throwable t) {
+                        Log.w(TAG, "CLEAN13.1P refresh failed force=" + force, t);
+                    } finally {
+                        IN_FLIGHT.set(false);
+                        final boolean completed = success;
+                        MAIN.post(new Runnable() {
+                            @Override public void run() {
+                                p.edit().putBoolean(KEY_REFRESHING, false)
+                                        .putBoolean(KEY_REFRESH_ERROR, !completed).apply();
+
+                                Object menu = menuRef.get();
+                                if (menu != null) refreshMenu(menu);
+
+                                Activity a = activityRef.get();
+                                if (a != null && !a.isFinishing() && !a.isDestroyed()) render(a);
+
+                                Log.i(TAG, "CLEAN13.1P refresh completed success=" + completed
+                                        + " fetchedAt=" + p.getLong(KEY_FETCHED, 0L)
+                                        + " manual=" + (menuRef.get() != null));
+                            }
+                        });
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            IN_FLIGHT.set(false);
+            p.edit().putBoolean(KEY_REFRESHING, false).putBoolean(KEY_REFRESH_ERROR, true).apply();
+            if (menuFragment != null) refreshMenu(menuFragment);
+            Log.e(TAG, "CLEAN13.1P refresh executor rejected request", t);
+        }
+    }
+
+'''
+assert old_method.count('maybeRefresh') == 1
+w = w[:start] + new_method + w[end:]
+
+for token in [
+    'CLEAN13.1P manual refresh button clicked',
+    'CLEAN13.1P manual refresh dispatched context=',
+    'CLEAN13.1P refresh start force=',
+    'CLEAN13.1P refresh completed success=',
+    'CLEAN13.1P refresh failed force=',
+    'KEY_REFRESHING',
+    'Update failed - ',
+    'startRefresh(context, fragment, a, true)',
+]:
+    assert token in w, token
+
+assert 'maybeRefresh(a, true);' not in w
+weather_path.write_text(w)
+print('PASS: CLEAN13.1P manual Weather refresh uses page Context, forces fetch, and refreshes its timestamp row')
