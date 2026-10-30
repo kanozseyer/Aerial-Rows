@@ -28,7 +28,7 @@ java -jar "$APKTOOL" d -f "$APK" -o "$DECODED" > "$OUT/apktool-decode.txt" 2>&1
 
 # Preserve the exact smali for the left rail, row model, TV cache and row refresh path.
 mkdir -p "$OUT/smali"
-for name in w12 r12 w40 v40 e70 i5 m60 jo4 f23 hv ui2 eb3; do
+for name in w12 r12 q12 t12 u12 gv w40 v40 e70 i5 m60 jo4 f23 hv ui2 eb3 IconHeaderImageView; do
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     rel="${file#${DECODED}/}"
