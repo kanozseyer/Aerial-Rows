@@ -58,60 +58,55 @@ PLATFORM="$(ls -d "$ANDROID_HOME"/platforms/android-* | sort -V | tail -1)"
 ANDROID_JAR="$PLATFORM/android.jar"
 BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
 
-# Recompile the full already-approved embedded bridge set plus CLEAN14.
-rm -rf /tmp/embedded14-classes /tmp/embedded14-dex
-mkdir -p /tmp/embedded14-classes /tmp/embedded14-dex
-javac -source 8 -target 8 -cp "$ANDROID_JAR" -d /tmp/embedded14-classes \
-  .github/clean02/AerialService.java \
-  .github/clean03/AerialSettingsActivity.java \
-  .github/clean05/ProfileRestoreProvider.java \
-  .github/clean07/RedLightDiscoveryEngine.java \
-  .github/clean07/RedLightDiscoveryProvider.java \
-  .github/clean07/ChannelVisualBridge.java \
-  .github/clean09/RedLightLaunchActivity.java \
-  .github/clean13d/StatusBarCustomizationBridge.java \
-  .github/clean13_1/WeatherStatusBarBridge.java \
+# Compile CLEAN14 into a new classes5.dex. This leaves every existing
+# approved P bridge DEX (including classes4.dex) byte-for-byte untouched.
+rm -rf /tmp/clean14-helper-classes /tmp/clean14-helper-dex
+mkdir -p /tmp/clean14-helper-classes /tmp/clean14-helper-dex
+javac -source 8 -target 8 -cp "$ANDROID_JAR" -d /tmp/clean14-helper-classes \
   .github/clean14/CLEAN14CarouselBridge.java
 
-mapfile -t CLASSFILES < <(find /tmp/embedded14-classes -name '*.class' -type f | sort)
-"$BT/d8" --lib "$ANDROID_JAR" --min-api 21 --output /tmp/embedded14-dex "${CLASSFILES[@]}"
-cp /tmp/embedded14-dex/classes.dex /tmp/classes4-clean14.dex
-test -s /tmp/classes4-clean14.dex
+mapfile -t CLASSFILES < <(find /tmp/clean14-helper-classes -name '*.class' -type f | sort)
+"$BT/d8" --lib "$ANDROID_JAR" --min-api 21 --output /tmp/clean14-helper-dex "${CLASSFILES[@]}"
+cp /tmp/clean14-helper-dex/classes.dex /tmp/classes5-clean14.dex
+test -s /tmp/classes5-clean14.dex
 
 for marker in \
+  'CLEAN14CarouselBridge' \
   'CLEAN14 shared carousel attached' \
   'CLEAN14 alignment mode=3 offset=' \
-  'CLEAN14 end bounce distancePx=' \
-  'CLEAN13.1I status order watcher attached' \
-  'CLEAN13.1G Weather parent uses native Projectivy cloud icon' \
-  'CLEAN13.1O native checkbox built builder=hv1 action=iv1 checked=' \
-  'CLEAN13.1P manual refresh button clicked' \
-  'CLEAN13.1P refresh completed success=' \
-  'CLEAN13.1P native checkbox built builder=hv1 action=iv1 checked=' \
-  'CLEAN13.1P Show date native action=' \
-  'CLEAN13.1P Show date checked=' \
-  'CLEAN13D2 native clock/date actions added; unified default' \
-  'CLEAN12.1 SUCCESS channels='; do
-  strings /tmp/classes4-clean14.dex | grep -Fq "$marker"
+  'CLEAN14 end bounce distancePx='; do
+  strings /tmp/classes5-clean14.dex | grep -Fq "$marker"
 done
 strings /tmp/classes-clean14.dex | grep -Fq 'CLEAN14CarouselBridge'
 strings /tmp/classes-clean14.dex | grep -Fq 'attach'
 strings /tmp/classes-clean14.dex | grep -Fq 'Landroid/view/ViewGroup;'
 
-# Repackage directly from the exact runtime-approved P APK.
+unzip -p "$P_APK" classes4.dex > /tmp/classes4-approved-p.dex
+for marker in \
+  'CLEAN13.1I status order watcher attached' \
+  'CLEAN13.1G Weather parent uses native Projectivy cloud icon' \
+  'CLEAN13.1O native checkbox built builder=hv1 action=iv1 checked=' \
+  'CLEAN13.1P manual refresh button clicked' \
+  'CLEAN13.1P refresh completed success=' \
+  'CLEAN13.1P Show date native action=' \
+  'CLEAN13.1P Show date checked='; do
+  strings /tmp/classes4-approved-p.dex | grep -Fq "$marker"
+done
+
+# Repackage directly from the exact runtime-approved P APK. Preserve all
+# existing DEX files and add only the new classes5.dex helper.
 python3 - "$P_APK" "$UNSIGNED" <<'PY'
 import sys, zipfile
 base, out = sys.argv[1:]
-replacements = {
-    'classes.dex': open('/tmp/classes-clean14.dex', 'rb').read(),
-    'classes4.dex': open('/tmp/classes4-clean14.dex', 'rb').read(),
-}
-seen = set()
+replacement = open('/tmp/classes-clean14.dex', 'rb').read()
+new_helper = open('/tmp/classes5-clean14.dex', 'rb').read()
 with zipfile.ZipFile(base) as zin, zipfile.ZipFile(out, 'w') as zout:
+    names = set(zin.namelist())
+    assert 'classes5.dex' not in names, 'P baseline already contains classes5.dex'
     for info in zin.infolist():
         if info.filename.startswith('META-INF/'):
             continue
-        data = replacements.get(info.filename, zin.read(info.filename))
+        data = replacement if info.filename == 'classes.dex' else zin.read(info.filename)
         item = zipfile.ZipInfo(info.filename, info.date_time)
         item.compress_type = info.compress_type
         item.comment = info.comment
@@ -123,8 +118,7 @@ with zipfile.ZipFile(base) as zin, zipfile.ZipFile(out, 'w') as zout:
         item.extract_version = info.extract_version
         item.flag_bits = info.flag_bits
         zout.writestr(item, data)
-        seen.add(info.filename)
-assert set(replacements).issubset(seen), 'missing DEX member in P APK'
+    zout.writestr('classes5.dex', new_helper, compress_type=zipfile.ZIP_DEFLATED)
 PY
 unzip -t "$UNSIGNED" > "$ART/unsigned-zip-test.txt"
 
@@ -137,22 +131,32 @@ def members(path):
                 if not i.filename.startswith('META-INF/')}
 old = members(base)
 new = members(candidate)
-assert set(old) == set(new), 'archive member set changed'
+assert set(new) == set(old) | {'classes5.dex'}, 'unexpected archive member change'
 changed = sorted(k for k in old if old[k] != new[k])
-assert changed == ['classes.dex', 'classes4.dex'], changed
-assert old['classes.dex'] != new['classes.dex']
-assert old['classes4.dex'] != new['classes4.dex']
+assert changed == ['classes.dex'], changed
+assert old['classes4.dex'] == new['classes4.dex'], 'approved P bridge DEX changed'
+assert b'CLEAN14CarouselBridge' in new['classes.dex']
 for token in [
     b'CLEAN14CarouselBridge',
     b'CLEAN14 shared carousel attached',
     b'CLEAN14 alignment mode=3 offset=',
     b'CLEAN14 end bounce distancePx=',
 ]:
+    assert token in new['classes5.dex'], token
+for token in [
+    b'CLEAN13.1I status order watcher attached',
+    b'CLEAN13.1G Weather parent uses native Projectivy cloud icon',
+    b'CLEAN13.1O native checkbox built builder=hv1 action=iv1 checked=',
+    b'CLEAN13.1P manual refresh button clicked',
+    b'CLEAN13.1P refresh completed success=',
+    b'CLEAN13.1P Show date native action=',
+    b'CLEAN13.1P Show date checked=',
+]:
     assert token in new['classes4.dex'], token
-assert b'CLEAN14CarouselBridge' in new['classes.dex']
-print('PASS: CLEAN14 scope exact: classes.dex + classes4.dex only vs approved P')
+print('PASS: CLEAN14 scope exact: classes.dex changed + classes5.dex added; all existing P DEX preserved')
 print('classes.dex sha256', hashlib.sha256(new['classes.dex']).hexdigest())
-print('classes4.dex sha256', hashlib.sha256(new['classes4.dex']).hexdigest())
+print('classes4.dex preserved sha256', hashlib.sha256(new['classes4.dex']).hexdigest())
+print('classes5.dex sha256', hashlib.sha256(new['classes5.dex']).hexdigest())
 PY
 
 # Use the same public AOSP testkey used by the approved P build. Fail if its
@@ -187,7 +191,7 @@ printf '%s\n' \
   '- At the end, the row stays fixed while focus traverses the remaining visible cards; moving left resumes scrolling only after focus passes the middle anchor.' \
   '- Adds a subtle 2dp elastic end bounce when rightward focus reaches the final card.' \
   '- Existing io4/ho4 touch-scroll settling listeners are not modified.' \
-  '- Only classes.dex and classes4.dex differ from approved CLEAN13.1P before signing.' \
+  '- Only classes.dex changes and classes5.dex is added; all existing CLEAN13.1P DEX files are preserved byte-for-byte.' \
   '- Runtime testing on the Shield is required before freezing CLEAN14.' \
   > "$ART/CLEAN14-NOTES.txt"
 
