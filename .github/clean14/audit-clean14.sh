@@ -24,7 +24,7 @@ with zipfile.ZipFile(apk) as z, open(output, "w") as out:
         if info.filename.startswith("META-INF/"):
             continue
         digest = hashlib.sha256(z.read(info.filename)).hexdigest()
-        out.write(f"{digest}  {info.filename}\\n")
+        out.write(f"{digest}  {info.filename}\n")
 PYHASH
 for evidence in /tmp/apksigner-clean13-1p.txt /tmp/package-clean13-1p.txt; do
   if [ -s "$evidence" ]; then cp "$evidence" "$OUT/"; fi
