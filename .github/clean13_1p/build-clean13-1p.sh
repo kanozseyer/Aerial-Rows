@@ -57,7 +57,7 @@ for marker in \
   'CLEAN13.1P manual refresh button clicked' \
   'CLEAN13.1P refresh start force=' \
   'CLEAN13.1P refresh completed success=' \
-  'Updating…' \
+  'Updating...' \
   'CLEAN13.1P native checkbox built builder=hv1 action=iv1 checked=' \
   'CLEAN13.1P Show date native action=' \
   'CLEAN13.1P Show date checked=' \
