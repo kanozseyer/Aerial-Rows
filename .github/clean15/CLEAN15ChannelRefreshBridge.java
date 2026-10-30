@@ -233,7 +233,7 @@ public final class CLEAN15ChannelRefreshBridge {
                 REFRESH_RUNNING.set(false);
                 return;
             }
-            button.postDelayed(new Runnable() {
+            MAIN.postDelayed(new Runnable() {
                 @Override
                 public void run() {
                     REFRESH_RUNNING.set(false);
