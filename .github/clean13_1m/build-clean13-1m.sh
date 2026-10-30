@@ -8,7 +8,6 @@ FINAL=/tmp/Projectivy-CLEAN-13-1M-Weather-Native-Checkbox.apk
 ART=/tmp/clean13-1m-artifact
 
 # Rebuild the user-approved I baseline. This deliberately bypasses J/K/L.
-# CI trigger: CLEAN13.1M native-checkbox isolation.
 bash .github/clean13_1i/build-clean13-1i.sh
 test -f "$I_APK"
 
@@ -49,6 +48,9 @@ mapfile -t CLASSFILES < <(find /tmp/embedded131m-classes -name '*.class' -type f
 cp /tmp/embedded131m-dex/classes.dex /tmp/classes4-clean13-1m.dex
 test -s /tmp/classes4-clean13-1m.dex
 
+# Materialize strings once. This avoids grep -q closing a pipe early under pipefail
+# and also tells us exactly which static assertion failed.
+strings /tmp/classes4-clean13-1m.dex > /tmp/classes4-clean13-1m.strings
 for marker in \
   'CLEAN13.1M Show weather checkbox built=' \
   'CLEAN13.1M show weather checkbox=' \
@@ -58,7 +60,11 @@ for marker in \
   'CLEAN13D native clock/date actions added' \
   'api.postcodes.io/postcodes/' \
   'api.open-meteo.com/v1/forecast'; do
-  strings /tmp/classes4-clean13-1m.dex | grep -Fq "$marker"
+  if ! grep -F "$marker" /tmp/classes4-clean13-1m.strings >/dev/null; then
+    echo "MISSING CLEAN13.1M DEX MARKER: $marker"
+    exit 1
+  fi
+  echo "PASS DEX MARKER: $marker"
 done
 
 # Repackage directly from I; only classes4 may differ before signing.
