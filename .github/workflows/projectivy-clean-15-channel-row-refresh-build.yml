@@ -1,0 +1,53 @@
+name: Projectivy CLEAN15 - Channel Row Refresh Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean15-channel-row-refresh
+    paths:
+      - '.github/clean15/**'
+      - '.github/workflows/projectivy-clean-15-channel-row-refresh-build.yml'
+
+concurrency:
+  group: projectivy-clean15-channel-row-refresh-build
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout CLEAN15 development branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact runtime-approved CLEAN14 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Projectivy-CLEAN-14-Universal-Carousel
+          run-id: 41141678073
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/clean14-approved
+
+      - name: Build CLEAN15 from frozen CLEAN14
+        shell: bash
+        run: bash .github/clean15/build-clean15.sh
+
+      - name: Upload verified CLEAN15 candidate and build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-15-Channel-Row-Refresh
+          path: /tmp/clean15-artifact.zip
+          if-no-files-found: error
