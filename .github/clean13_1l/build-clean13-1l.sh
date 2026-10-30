@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# CLEAN13.1L CI trigger after workflow registration.
 
 J_APK=/tmp/Projectivy-CLEAN-13-1J-Weather-Selector.apk
 UNSIGNED=/tmp/unsigned-clean13-1l.apk
