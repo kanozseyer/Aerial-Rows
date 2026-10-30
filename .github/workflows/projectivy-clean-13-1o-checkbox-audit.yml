@@ -1,0 +1,39 @@
+name: Projectivy CLEAN 13.1O - Native Checkbox DEX Audit
+
+on:
+  push:
+    branches:
+      - projectivy-clean13-1o-checkbox-native-audit
+    paths:
+      - '.github/clean13_1o/**'
+      - '.github/workflows/projectivy-clean-13-1o-checkbox-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Audit native checkbox implementation from CLEAN13.1I
+        shell: bash
+        run: bash .github/clean13_1o/audit-native-checkbox.sh
+
+      - name: Upload focused DEX audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-1O-Native-Checkbox-Audit
+          path: /tmp/clean13-1o-audit.zip
+          if-no-files-found: error
