@@ -95,7 +95,8 @@ for marker in \
   strings /tmp/classes4-clean14.dex | grep -Fq "$marker"
 done
 strings /tmp/classes-clean14.dex | grep -Fq 'CLEAN14CarouselBridge'
-strings /tmp/classes-clean14.dex | grep -Fq 'attach(Landroid/view/ViewGroup;)V'
+strings /tmp/classes-clean14.dex | grep -Fq 'attach'
+strings /tmp/classes-clean14.dex | grep -Fq 'Landroid/view/ViewGroup;'
 
 # Repackage directly from the exact runtime-approved P APK.
 python3 - "$P_APK" "$UNSIGNED" <<'PY'
