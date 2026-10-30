@@ -138,9 +138,9 @@ printf '%s\n' \
   '- Built on top of the user-approved, runtime-tested CLEAN13.1O.' \
   '- CLEAN13.1O Show Weather checkbox, Weather page, native cloud icon/background and status order are preserved.' \
   '- Show Date uses the same DEX-audited Projectivy builder path: cb3.q0(yh3) -> hv1 -> cb3.z0(lu1) -> iv1.' \
-  '- The Show Date action continues to save the checked state and refresh the native clock/date format.' \\
-  '- Manual Weather refresh now starts from the page Context, bypasses the Activity-only gate, and updates the last-updated row on completion.' \\
-  '- Manual refresh is forced even when Show Weather is off; automatic Home refresh retains its visibility and 30-minute cache rules.' \\
+  '- The Show Date action continues to save the checked state and refresh the native clock/date format.' \
+  '- Manual Weather refresh now starts from the page Context, bypasses the Activity-only gate, and updates the last-updated row on completion.' \
+  '- Manual refresh is forced even when Show Weather is off; automatic Home refresh retains its visibility and 30-minute cache rules.' \
   '- Existing Clock format, Date format and Clock & date background options are retained.' \
   '- Only classes4.dex differs from CLEAN13.1O before signing.' \
   '- Runtime testing on the Shield is still required before freezing P.' \
