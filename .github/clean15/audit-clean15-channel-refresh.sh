@@ -48,7 +48,7 @@ mkdir -p "$OUT/resources"
 find "$DECODED/res" -type f \( -path '*/layout*/*' -o -path '*/drawable*/*' \) \
   | while IFS= read -r f; do
       if grep -qiE 'reorder|category|sidebar|settings|header|refresh' "$f"; then
-        rel="${f#"$DECODED/res/}"
+        rel="${f#${DECODED}/res/}"
         dest="$OUT/resources/${rel//\//__}"
         cp "$f" "$dest"
       fi
