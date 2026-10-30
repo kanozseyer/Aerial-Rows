@@ -12,6 +12,10 @@ on:
     branches:
       - projectivy-clean13-1p-show-date-native-checkbox
 
+concurrency:
+  group: projectivy-clean14-carousel-audit
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
