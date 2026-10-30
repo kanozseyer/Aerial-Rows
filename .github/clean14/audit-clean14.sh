@@ -1,21 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-P_APK=/tmp/Projectivy-CLEAN-13-1P-Show-Date-Native-Checkbox.apk
+P_OUTER=/tmp/clean13-1p-approved/clean13-1p-artifact.zip
+P_DIR=/tmp/clean13-1p-approved/unpacked/clean13-1p-artifact
+P_APK="$P_DIR/Projectivy-CLEAN-13-1P-Show-Date-Native-Checkbox.apk"
+EXPECTED_P_SHA=96936b6c03316cd067374b9060c0b4248b9d6e9e9f5106b81f05c94cc5d05c4f
 APKTOOL=/tmp/apktool.jar
 DECODED=/tmp/clean14-projectivy-decoded
 OUT=/tmp/clean14-row-audit
 REPORT="$OUT/CLEAN14-ROW-AUDIT.txt"
 
-# Rebuild the exact user-approved P stack. Do not build from main or an older baseline.
-bash .github/clean13_1p/build-clean13-1p.sh
+# Decode the exact runtime-approved P artifact from its original successful CI run.
+# Do not rebuild P here: a fresh signing pass can change the outer APK hash.
+test -s "$P_OUTER"
+rm -rf "$DECODED" "$OUT" /tmp/clean13-1p-approved/unpacked
+mkdir -p "$OUT" /tmp/clean13-1p-approved/unpacked
+unzip -q "$P_OUTER" -d /tmp/clean13-1p-approved/unpacked
 test -s "$P_APK"
-test -s "$APKTOOL"
-
-rm -rf "$DECODED" "$OUT"
-mkdir -p "$OUT"
+ACTUAL_P_SHA="$(sha256sum "$P_APK" | awk '{print $1}')"
+if [ "$ACTUAL_P_SHA" != "$EXPECTED_P_SHA" ]; then
+  echo "Approved P APK hash mismatch: expected $EXPECTED_P_SHA got $ACTUAL_P_SHA"
+  exit 1
+fi
+if [ ! -s "$APKTOOL" ]; then
+  curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o "$APKTOOL"
+fi
 sha256sum "$P_APK" > "$OUT/P-APK-SHA256.txt"
 unzip -t "$P_APK" > "$OUT/P-APK-ZIP-TEST.txt"
+cp "$P_DIR/SHA256-clean13-1p.txt" "$OUT/APPROVED-P-SHA256.txt"
+cp "$P_DIR/apksigner-clean13-1p.txt" "$OUT/apksigner-clean13-1p.txt"
+cp "$P_DIR/package-clean13-1p.txt" "$OUT/package-clean13-1p.txt"
 python3 - "$P_APK" "$OUT/P-APK-MEMBERS-SHA256.txt" <<'PYHASH'
 import hashlib, sys, zipfile
 apk, output = sys.argv[1:]
@@ -69,7 +83,7 @@ def add(s=""):
 add("CLEAN14 UNIVERSAL CAROUSEL — PROJECTIVY ROW/FOCUS AUDIT")
 add("=" * 68)
 add(f"Decoded APK: {root}")
-add("Source baseline: rebuilt from frozen CLEAN13.1P")
+add("Source baseline: exact runtime-approved CLEAN13.1P artifact from CI run 41138220969")
 add("Target package: com.spocky.projengmenu, v4.72 / code 97")
 add()
 add("SMALI DEX DIRECTORIES")
