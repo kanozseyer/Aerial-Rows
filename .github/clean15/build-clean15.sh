@@ -81,12 +81,10 @@ for marker in \
   'CLEAN15 Kodi is not ready; refusing to launch Kodi'; do
   strings /tmp/classes6-clean15.dex | grep -Fq "$marker"
 done
-for marker in \
-  'CLEAN15ChannelRefreshBridge;->install' \
-  'CLEAN15ChannelRefreshBridge;->bind' \
-  'CLEAN15ChannelRefreshBridge;->tint'; do
-  strings /tmp/classes-clean15.dex | grep -Fq "$marker"
-done
+strings /tmp/classes-clean15.dex | grep -Fq 'CLEAN15ChannelRefreshBridge'
+strings /tmp/classes-clean15.dex | grep -Fq 'install'
+strings /tmp/classes-clean15.dex | grep -Fq 'bind'
+strings /tmp/classes-clean15.dex | grep -Fq 'tint'
 
 unzip -p "$BASE_APK" classes4.dex > /tmp/classes4-approved-clean14.dex
 unzip -p "$BASE_APK" classes5.dex > /tmp/classes5-approved-clean14.dex
