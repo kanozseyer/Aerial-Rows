@@ -1,0 +1,53 @@
+name: Projectivy CLEAN14 - Universal Carousel Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean14-universal-carousel
+    paths:
+      - '.github/clean14/**'
+      - '.github/workflows/projectivy-clean-14-universal-carousel-build.yml'
+
+concurrency:
+  group: projectivy-clean14-universal-carousel-build
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout CLEAN14 working branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact runtime-approved CLEAN13.1P artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-1P-Show-Date-Native-Checkbox
+          run-id: 41138220969
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/clean13-1p-approved
+
+      - name: Build CLEAN14 on exact approved P baseline
+        shell: bash
+        run: bash .github/clean14/build-clean14.sh
+
+      - name: Upload verified CLEAN14 candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-14-Universal-Carousel
+          path: /tmp/clean14-artifact.zip
+          if-no-files-found: error
