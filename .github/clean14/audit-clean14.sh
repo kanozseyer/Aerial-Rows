@@ -32,10 +32,18 @@ interesting = re.compile(
     r"setFocusScrollStrategy|setSelectedPosition|setOnChildViewHolderSelectedListener|"
     r"setOnScrollListener|smoothScrollToPosition|scrollToPosition|smoothScrollBy|"
     r"scrollBy|requestChildFocus|focusSearch|onRequestChildFocus|"
-    r"WindowAlignment|ItemAlignment|setExtraLayoutSpace",
+    r"WindowAlignment|ItemAlignment|setExtraLayoutSpace|"
+    r"onScroll|onTouch|onKey|onInterceptTouchEvent|focusSearch|"
+    r"dispatchKeyEvent|setSelectedPositionSmooth|getSelectedPosition|"
+    r"setOverScrollMode|EdgeEffect|translationX|ViewPropertyAnimator|"
+    r"setOn[A-Za-z]+Listener|setOnTouchInterceptListener",
     re.I,
 )
-target_classes = {"jo4", "f23", "lu", "hb3", "ui2"}
+target_classes = {
+    "jo4", "f23", "lu", "hb3", "ui2",
+    "io4", "ho4", "nf0", "ku", "si2", "vi2",
+    "bu", "j3", "jv", "rw1", "mi",
+}
 leanback_classes = {
     "HorizontalGridView", "BaseGridView", "GridLayoutManager",
     "WindowAlignment", "ItemAlignmentFacet", "GridLayoutManager$Grid",
