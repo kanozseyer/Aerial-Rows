@@ -212,7 +212,7 @@ w = w.replace(
 old_refresh_row = '''            list.add(makeAction(fragment, ID_REFRESH, "Refresh weather", lastUpdatedLabel(p)));
 '''
 new_refresh_row = '''            String refreshLabel = p.getBoolean(KEY_REFRESHING, false)
-                    ? "Updating…"
+                    ? "Updating..."
                     : (p.getBoolean(KEY_REFRESH_ERROR, false)
                     ? "Update failed - " + lastUpdatedLabel(p) : lastUpdatedLabel(p));
             list.add(makeAction(fragment, ID_REFRESH, "Refresh weather", refreshLabel));
