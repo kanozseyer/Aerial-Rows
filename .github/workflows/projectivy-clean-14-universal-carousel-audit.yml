@@ -6,7 +6,7 @@ on:
     branches:
       - projectivy-clean14-universal-carousel
     paths:
-      - '.github/clean14/**'
+      - '.github/clean14/audit-clean14.sh'
       - '.github/workflows/projectivy-clean-14-universal-carousel-audit.yml'
 concurrency:
   group: projectivy-clean14-approved-p-audit
