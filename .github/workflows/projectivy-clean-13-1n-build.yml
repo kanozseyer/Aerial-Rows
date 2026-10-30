@@ -1,0 +1,35 @@
+name: Projectivy CLEAN 13.1N - Native Weather Checkbox Factory
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [projectivy-clean13-1n-native-checkbox-factory]
+    paths:
+      - '.github/clean13_1n/**'
+      - '.github/workflows/projectivy-clean-13-1n-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build CLEAN13.1N
+        shell: bash
+        run: bash .github/clean13_1n/build-clean13-1n.sh
+      - name: Upload CLEAN13.1N APK and verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-1N-Weather-Native-Checkbox-Factory
+          path: /tmp/clean13-1n-artifact/
+          if-no-files-found: error
+          retention-days: 90
