@@ -48,8 +48,6 @@ mapfile -t CLASSFILES < <(find /tmp/embedded131m-classes -name '*.class' -type f
 cp /tmp/embedded131m-dex/classes.dex /tmp/classes4-clean13-1m.dex
 test -s /tmp/classes4-clean13-1m.dex
 
-# Materialize strings once. This avoids grep -q closing a pipe early under pipefail
-# and also tells us exactly which static assertion failed.
 strings /tmp/classes4-clean13-1m.dex > /tmp/classes4-clean13-1m.strings
 for marker in \
   'CLEAN13.1M Show weather checkbox built=' \
@@ -57,7 +55,7 @@ for marker in \
   'CLEAN13.1I status order watcher attached' \
   'CLEAN13.1I status geometry phase=' \
   'CLEAN13.1G Weather parent uses native Projectivy cloud icon' \
-  'CLEAN13D native clock/date actions added' \
+  'CLEAN13D2 native clock/date actions added; unified default' \
   'api.postcodes.io/postcodes/' \
   'api.open-meteo.com/v1/forecast'; do
   if ! grep -F "$marker" /tmp/classes4-clean13-1m.strings >/dev/null; then
