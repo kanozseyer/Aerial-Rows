@@ -1,0 +1,89 @@
+name: Probe CLEAN13.1K Menu Icon Binders
+
+on:
+  push:
+    branches: [projectivy-clean13-1k-weather-choice-mono-icons]
+    paths:
+      - '.github/workflows/probe-clean13-1k-menu-icons.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Trace Projectivy side-panel and settings icon binders
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/projectivy.apk
+          OUT=/tmp/probe13k
+          JADX=/tmp/jadx
+          JOUT=/tmp/jadx-out
+          AOUT=/tmp/apk-out
+          mkdir -p "$OUT"
+          curl -fL --retry 3 'https://github.com/spocky/miproja1/releases/download/4.72/ProjectivyLauncher-4.72-c97-xda-release.apk' -o "$APK"
+          curl -fL --retry 3 'https://github.com/skylot/jadx/releases/download/v1.5.6/jadx-1.5.6.zip' -o /tmp/jadx.zip
+          unzip -q /tmp/jadx.zip -d "$JADX"
+          chmod +x "$JADX/bin/jadx"
+          curl -fL --retry 3 'https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar' -o /tmp/apktool.jar
+          rm -rf "$JOUT" "$AOUT"
+          "$JADX/bin/jadx" --show-bad-code -d "$JOUT" "$APK" >"$OUT/jadx.log" 2>&1 || true
+          java -jar /tmp/apktool.jar d -f "$APK" -o "$AOUT" >"$OUT/apktool.log" 2>&1
+
+          {
+            echo '===== PROJECTIVY 4.72 ====='
+            sha256sum "$APK"
+            echo
+            echo '===== SIDE PANEL SOURCE FILES ====='
+            find "$JOUT/sources/com/spocky/projengmenu/ui" -type f 2>/dev/null | grep -Ei 'side|panel|setting|menu|preference|navigation|drawer|dock' | sort | head -400 || true
+            echo
+            echo '===== SIDE PANEL / SETTINGS ICON CALLS ====='
+            grep -RniE 'setImageDrawable|setImageResource|setImageTintList|setColorFilter|DrawableCompat|loadIcon|getApplicationIcon|iconPack|iconDrawable|\.icon\b|ImageView' "$JOUT/sources/com/spocky/projengmenu/ui" 2>/dev/null | grep -Ei 'side|panel|setting|menu|preference|navigation|drawer|dock|icon' | head -1000 || true
+            echo
+            echo '===== GLOBAL APP ICON LOADERS ====='
+            grep -RniE 'getApplicationIcon|loadIcon\(|setImageDrawable|setImageTintList|setColorFilter|DrawableCompat\.setTint|PorterDuff' "$JOUT/sources" 2>/dev/null | head -1400 || true
+            echo
+            echo '===== PREFERENCE BINDERS ====='
+            grep -RniE 'onBindViewHolder|PreferenceViewHolder|CustomListPreference|setIcon\(|getIcon\(' "$JOUT/sources/com/spocky/projengmenu" 2>/dev/null | head -1200 || true
+            echo
+            echo '===== LAYOUTS WITH IMAGE VIEWS ====='
+            grep -RliE '<(ImageView|androidx\.appcompat\.widget\.AppCompatImageView|com\.google\.android\.material\.imageview)' "$AOUT/res/layout" 2>/dev/null | sort | head -500 || true
+            echo
+            echo '===== MENU/SIDE LAYOUT ICON IDS ====='
+            grep -RniE 'ImageView|icon|image' "$AOUT/res/layout" 2>/dev/null | grep -Ei 'side|panel|menu|setting|preference|navigation|drawer|dock|header' | head -1000 || true
+            echo
+            echo '===== RESOURCE NAMES ====='
+            grep -RniE 'name="[^"]*(side|panel|menu|settings|preference|navigation|drawer|dock|icon)[^"]*"' "$AOUT/res/values" 2>/dev/null | head -1400 || true
+          } > "$OUT/SUMMARY.txt"
+
+          # Copy the highest-value named sources when present.
+          mkdir -p "$OUT/sources"
+          find "$JOUT/sources/com/spocky/projengmenu/ui/sidePanels" -type f -name '*.java' 2>/dev/null | while read -r f; do
+            rel="${f#$JOUT/sources/}"
+            dst="$OUT/sources/$rel"
+            mkdir -p "$(dirname "$dst")"
+            cp "$f" "$dst"
+          done || true
+          find "$JOUT/sources/com/spocky/projengmenu/ui" -type f -name '*.java' 2>/dev/null | grep -Ei 'Preference|Menu|Side|Panel|Navigation|Drawer|Dock|Icon' | head -250 | while read -r f; do
+            rel="${f#$JOUT/sources/}"
+            dst="$OUT/sources/$rel"
+            mkdir -p "$(dirname "$dst")"
+            cp "$f" "$dst"
+          done || true
+
+          echo '===== SUMMARY PREVIEW ====='
+          sed -n '1,800p' "$OUT/SUMMARY.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clean13-1k-menu-icon-probe
+          path: /tmp/probe13k
+          retention-days: 7
