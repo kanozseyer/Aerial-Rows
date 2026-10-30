@@ -120,13 +120,14 @@ public final class CLEAN14CarouselBridge {
 
         @Override
         public void onGlobalFocusChanged(View oldFocus, View newFocus) {
-            applyAlignment();
-
             ViewGroup grid = gridRef.get();
             if (grid == null || oldFocus == null || newFocus == null) return;
 
             int oldPosition = adapterPosition(grid, oldFocus);
             int newPosition = adapterPosition(grid, newFocus);
+            if (oldPosition < 0 && newPosition < 0) return;
+
+            applyAlignment();
             int itemCount = adapterItemCount(grid);
 
             if (oldPosition >= 0 && newPosition > oldPosition
