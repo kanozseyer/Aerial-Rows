@@ -1,0 +1,53 @@
+name: Projectivy CLEAN15 - Channel Row Refresh Source Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - projectivy-clean15-channel-row-refresh
+    paths:
+      - '.github/clean15/audit-clean15-channel-refresh.sh'
+      - '.github/workflows/projectivy-clean-15-channel-row-refresh-audit.yml'
+
+concurrency:
+  group: projectivy-clean15-channel-row-refresh-audit
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout frozen CLEAN14-derived CLEAN15 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download exact runtime-approved CLEAN14 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Projectivy-CLEAN-14-Universal-Carousel
+          run-id: 41141678073
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/clean14-approved
+
+      - name: Audit exact CLEAN14 channel and left-rail implementation
+        shell: bash
+        run: bash .github/clean15/audit-clean15-channel-refresh.sh
+
+      - name: Upload source audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: CLEAN15-CHANNEL-ROW-REFRESH-SOURCE-AUDIT
+          path: /tmp/CLEAN15-CHANNEL-ROW-REFRESH-AUDIT.zip
+          if-no-files-found: error
