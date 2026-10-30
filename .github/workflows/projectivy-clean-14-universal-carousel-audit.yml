@@ -8,6 +8,9 @@ on:
     paths:
       - '.github/clean14/**'
       - '.github/workflows/projectivy-clean-14-universal-carousel-audit.yml'
+  pull_request:
+    branches:
+      - projectivy-clean13-1p-show-date-native-checkbox
 
 permissions:
   contents: read
