@@ -2,17 +2,22 @@
 set -euo pipefail
 
 OUT=/tmp/clean15-audit
-OUTER=/tmp/clean14-approved.zip
-APK=/tmp/clean14-approved/clean14-artifact/Projectivy-CLEAN-14-Universal-Carousel.apk
+DOWNLOAD=/tmp/clean14-approved
+OUTER="$DOWNLOAD/clean14-artifact.zip"
+UNPACKED=/tmp/clean14-approved-unpacked
+APK="$UNPACKED/clean14-artifact/Projectivy-CLEAN-14-Universal-Carousel.apk"
 DECODED=/tmp/clean14-decoded
 APKTOOL=/tmp/apktool-clean15.jar
 EXPECTED=06a5ed63040a61dd3705f7fb9e3e0b6eef4393e129d00d92eaef2b4781fb092d
 
-rm -rf "$OUT" "$DECODED" /tmp/clean14-approved
-mkdir -p "$OUT" /tmp/clean14-approved
+# actions/download-artifact has already extracted the GitHub artifact envelope.
+# Keep that downloaded directory intact; it contains the nested build archive.
+rm -rf "$OUT" "$DECODED" "$UNPACKED"
+mkdir -p "$OUT" "$UNPACKED"
+test -s "$OUTER" || { echo "Missing downloaded build archive: $OUTER"; find "$DOWNLOAD" -maxdepth 3 -type f -printf '%p %s bytes\\n'; exit 1; }
 unzip -t "$OUTER" > "$OUT/approved-artifact-zip-test.txt"
-unzip -q "$OUTER" -d /tmp/clean14-approved
-test -s "$APK"
+unzip -q "$OUTER" -d "$UNPACKED"
+test -s "$APK" || { echo "Missing CLEAN14 APK at: $APK"; find "$UNPACKED" -maxdepth 4 -type f -printf '%p %s bytes\\n'; exit 1; }
 ACTUAL="$(sha256sum "$APK" | awk '{print $1}')"
 test "$ACTUAL" = "$EXPECTED"
 printf '%s\n' "$ACTUAL" > "$OUT/approved-CLEAN14-sha256.txt"
