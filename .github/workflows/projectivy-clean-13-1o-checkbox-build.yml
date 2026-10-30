@@ -1,0 +1,39 @@
+name: Projectivy CLEAN 13.1O - Weather Checkbox Fix
+
+on:
+  push:
+    branches:
+      - projectivy-clean13-1o-checkbox-native-audit
+    paths:
+      - '.github/clean13_1o/**'
+      - '.github/workflows/projectivy-clean-13-1o-checkbox-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build CLEAN13.1O from approved I baseline
+        shell: bash
+        run: bash .github/clean13_1o/build-clean13-1o.sh
+
+      - name: Upload verified candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-1O-Weather-Checkbox-Routing-Fix
+          path: /tmp/clean13-1o-artifact.zip
+          if-no-files-found: error
