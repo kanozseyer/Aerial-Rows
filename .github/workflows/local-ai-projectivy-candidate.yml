@@ -1,0 +1,29 @@
+name: Local AI Candidate - Projectivy CLEAN 13.1M - Weather Native Checkbox
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'local-ai/**'
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build CLEAN13.1M
+        shell: bash
+        run: bash .github/clean13_1m/build-clean13-1m.sh
+      - name: Upload CLEAN13.1M artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Projectivy-CLEAN-13-1M-Weather-Native-Checkbox
+          path: /tmp/clean13-1m-artifact
+          retention-days: 90
